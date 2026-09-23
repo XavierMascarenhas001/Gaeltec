@@ -1,0 +1,12 @@
+flask>=2.3
+waitress>=2.1
+pandas>=1.5
+numpy
+pyarrow
+openpyxl
+xlsxwriter
+pyxlsb
+python-dateutil
+rapidfuzz
+python-docx
+pymupdf

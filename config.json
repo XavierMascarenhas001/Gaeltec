@@ -1,0 +1,22 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+
+  "_allowed_clients_help": "Only these computers can open the page. Add PC IP addresses or a whole subnet (e.g. 10.20.30.0/24). 127.0.0.1 = this server itself.",
+  "allowed_clients": ["127.0.0.1", "::1"],
+
+  "_access_key_help": "Optional shared password. Leave empty to rely on the IP list only.",
+  "access_key": "",
+
+  "_roots_help": "The ONLY folders the file browser can open. writable=true lets people save outputs there.",
+  "roots": [
+    {"name": "Project Tracker",   "path": "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning\\28.Project Tracker", "writable": true},
+    {"name": "Outages Programme", "path": "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning\\1 - Outages Programme", "writable": true},
+    {"name": "SPEN Planning",     "path": "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning", "writable": true}
+  ],
+
+  "logo_path": "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning\\28.Project Tracker\\Images\\GaeltecImage.png",
+
+  "_cors_help": "Only needed if index.html is hosted on GitHub Pages instead of opened from this server.",
+  "cors_origins": []
+}
