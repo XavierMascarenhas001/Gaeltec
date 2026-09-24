@@ -227,11 +227,16 @@ tr:nth-child(even) td{background:var(--bg)}
    Small helpers
    ====================================================================== */
 const Q = new URLSearchParams(location.search);
-const API = (Q.get("api") || window.GAELTEC_API || "").replace(/\/$/, "");
 const store = {
   get(k, d){ try{ const v = localStorage.getItem("gt_"+k); return v===null? d : JSON.parse(v);}catch(e){return d;} },
   set(k, v){ try{ localStorage.setItem("gt_"+k, JSON.stringify(v)); }catch(e){} }
 };
+/* Where the Python server (app.py) is. Normally the page is opened FROM the
+   server (http://<server>:8080) and this stays "". If the page is opened as a
+   file or from GitHub Pages, the address typed in the connection box is used. */
+const SERVED_BY_APP = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
+let API = (Q.get("api") || window.GAELTEC_API || store.get("api", "") ||
+           (SERVED_BY_APP ? "" : "http://localhost:8080")).replace(/\/$/, "");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $ = (sel, el=document) => el.querySelector(sel);
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
@@ -291,7 +296,7 @@ const TOOLS = [
    desc:"Read Block1 + PA CONTROL from many Control Files and build CF_aggregated (.xlsx + two .parquet files)."},
   {id:"master", n:3, c:"c3", icon:"db", title:"Build Master Parquet",
    desc:"Join CF_aggregated with the Project Tracker (PID / PO) and the miscelaneous file (MD Poling, Man_day)."},
-  {id:"materials", n:4, c:"c4", icon:"chart", title:"Materials / CV Excel Report",
+  {id:"materials", n:4, c:"c4", icon:"chart", title:"Outputs – Materials / CV Excel Report",
    desc:"Filter the master by district, project, circuit, category and dates, pick CV groups and export the Summary workbook."},
   {id:"wi", n:5, c:"c5", icon:"map", title:"Work Instructions & Map Check",
    desc:"Generate the Work Instructions Word document and cross-check WorkPack maps (PDF) against the Control File."},
@@ -873,8 +878,38 @@ function route(){
 }
 window.addEventListener("hashchange", route);
 
+
+/* ---------------- "can't reach the server" help box ---------------- */
+function showConnectHelp(notAllowed, detail){
+  const where = API || location.origin;
+  const b = h(`<section class="box" style="border-color:var(--err);margin-bottom:22px">
+    <h4><span class="num" style="background:var(--err)">!</span>${notAllowed ? "This computer isn't on the allowed list" : "The page can't reach the Gaeltec Tools server"}</h4>
+    ${notAllowed ? `<p class="hint">Add this PC's IP address to <b>allowed_clients</b> in <b>config.json</b> on the server, then restart <b>start_server.bat</b>.<br><small>${esc(detail)}</small></p>` : `
+    <p class="hint">This page is only the front end – the Python server does the work and browses the share. Tried: <b>${esc(where)}</b></p>
+    <ol style="margin:0 0 14px 18px;padding:0;line-height:1.7">
+      <li>On the PC that can reach <b>\\\\gaeltec-gl</b>, double-click <b>start_server.bat</b> and leave the black window open.</li>
+      <li>Open <b>http://localhost:8080</b> on that PC (or <b>http://&lt;that-PC-name&gt;:8080</b> from other PCs) – don't double-click index.html.</li>
+      <li>If you opened this page as a file or from GitHub, type the server address below and press Connect.</li>
+    </ol>
+    <div class="row"><div class="field grow"><label>Server address</label><input type="text" id="apiAddr" placeholder="http://localhost:8080"></div>
+    <button class="btn primary" id="apiGo">Connect</button>
+    ${SERVED_BY_APP ? "" : `<a class="btn" href="http://localhost:8080">Open http://localhost:8080</a>`}</div>`}
+  </section>`);
+  app.prepend(b);
+  const inp = $("#apiAddr", b);
+  if (inp){
+    inp.value = API || "http://localhost:8080";
+    $("#apiGo", b).onclick = () => {
+      let v = inp.value.trim().replace(/\/$/, "");
+      if (v && !/^https?:\/\//.test(v)) v = "http://" + v;
+      store.set("api", v); location.reload();
+    };
+  }
+}
+
 /* ---------------- start ---------------- */
 (async function(){
+  route();
   $("#logo").src = API + "/api/logo";
   const pill = $("#srv");
   try {
@@ -883,10 +918,11 @@ window.addEventListener("hashchange", route);
     const ok = roots.filter(r => r.reachable).length;
     pill.innerHTML = `<span class="dot ${ok ? "on" : "off"}"></span><span>${ok ? "Server connected · " + ok + "/" + roots.length + " folders reachable" : "Server up · network share not reachable"}</span>`;
   } catch(e){
-    pill.innerHTML = `<span class="dot off"></span><span>${esc(e.message.includes("allowed") ? "This computer is not allowed" : "Server not reachable")}</span>`;
+    const notAllowed = e.message.includes("allowed");
+    pill.innerHTML = `<span class="dot off"></span><span>${esc(notAllowed ? "This computer is not allowed" : "Server not reachable")}</span>`;
     pill.title = e.message;
+    showConnectHelp(notAllowed, e.message);
   }
-  route();
 })();
 </script>
 </body>

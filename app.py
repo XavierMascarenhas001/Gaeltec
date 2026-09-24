@@ -84,7 +84,7 @@ def _guard():
 @app.after_request
 def _cors(resp):
     origin = request.headers.get("Origin")
-    if origin and origin in CONFIG["cors_origins"]:
+    if origin and (origin in CONFIG["cors_origins"] or "*" in CONFIG["cors_origins"]):
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Access-Key"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"

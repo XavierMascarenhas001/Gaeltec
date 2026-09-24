@@ -17,6 +17,6 @@
 
   "logo_path": "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning\\28.Project Tracker\\Images\\GaeltecImage.png",
 
-  "_cors_help": "Only needed if index.html is hosted on GitHub Pages instead of opened from this server.",
-  "cors_origins": []
+  "_cors_help": "Pages opened from somewhere other than this server. \"null\" = index.html double-clicked as a file. Add e.g. \"https://<you>.github.io\" for GitHub Pages.",
+  "cors_origins": ["null"]
 }

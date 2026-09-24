@@ -84,3 +84,25 @@ import tool_build_master
 tool_build_master.run(r"...\CF_aggregated.parquet", r"...\Project Tracker.parquet",
                       r"...\miscelaneous.parquet", r"...\Master_24-09-2026.parquet")
 ```
+
+## "Server not reachable" / can't browse
+
+The page is only the front end. `app.py` must be running before anything
+works.
+
+1. On a PC that can open `\\gaeltec-gl\...`, double-click
+   **`start_server.bat`**. Leave the black window open, because closing it
+   stops the server.
+   * If the window says **"Address already in use"**, something else is using
+     port 8080. Change `"port"` in `config.json` (e.g. `8090`) and use that
+     number below.
+   * If it says **"No module named …"**, run
+     `pip install -r requirements.txt` (in an Anaconda Prompt if you use
+     Anaconda).
+2. Open **http://localhost:8080** on that PC, or
+   **http://&lt;that-PC-name&gt;:8080** from other PCs. Don't double-click
+   `index.html`, and don't open the GitHub copy.
+3. If the page was opened as a file or from GitHub, use the red box at the
+   top of the page to type the server address and press **Connect**.
+4. **"This computer is not allowed"** means you need to add that PC's IP to
+   `allowed_clients` in `config.json` and restart `start_server.bat`.
