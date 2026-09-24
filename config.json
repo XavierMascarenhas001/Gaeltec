@@ -1,6 +1,8 @@
 {
   "host": "0.0.0.0",
   "port": 8080,
+  "_open_browser_help": "Open http://localhost:<port> automatically when the server starts.",
+  "open_browser": true,
 
   "_allowed_clients_help": "Only these computers can open the page. Add PC IP addresses or a whole subnet (e.g. 10.20.30.0/24). 127.0.0.1 = this server itself.",
   "allowed_clients": ["127.0.0.1", "::1"],

@@ -722,15 +722,38 @@ def index():
     return send_from_directory(HERE, "index.html")
 
 
+def _port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sk:
+        return sk.connect_ex(("127.0.0.1", port)) == 0
+
+
 if __name__ == "__main__":
     host, port = CONFIG["host"], int(CONFIG["port"])
-    print(f"Gaeltec Tools running on http://{host}:{port}  (allowed: {', '.join(CONFIG['allowed_clients'])})")
+    local_url = f"http://localhost:{port}"
+    print("=" * 70)
+    print(" Gaeltec Tools server")
+    print("=" * 70)
+    if _port_in_use(port):
+        print(f"\n  !! Port {port} is already in use.")
+        print(f"     Either the server is ALREADY running (just open {local_url}),")
+        print(f"     or another program uses it - change \"port\" in config.json.\n")
+        if CONFIG.get("open_browser", True):
+            import webbrowser
+            webbrowser.open(local_url)
+        sys.exit(1)
+    print(f"  Open this page:   {local_url}")
+    print(f"  Other PCs:        http://{socket.gethostname()}:{port}")
+    print(f"  Allowed PCs:      {', '.join(CONFIG['allowed_clients'])}")
     for r in CONFIG["roots"]:
-        print(f"  root '{r['name']}': {r['path']}  {'OK' if os.path.isdir(r['path']) else 'NOT REACHABLE'}")
+        print(f"  Folder '{r['name']}': {'OK' if os.path.isdir(r['path']) else 'NOT REACHABLE'}  ({r['path']})")
     if CONFIG["dashboard_autostart"]:
         for k, d in DASH.items():
-            print(f"  starting dashboard '{d['title']}' on port {d['port']}...")
+            print(f"  Starting dashboard '{d['title']}' on port {d['port']}...")
             start_dashboard(k)
+    print("\n  Leave this window open - closing it stops the server.\n")
+    if CONFIG.get("open_browser", True) and not os.environ.get("GAELTEC_NO_BROWSER"):
+        import webbrowser
+        threading.Timer(2.0, lambda: webbrowser.open(local_url)).start()
     try:
         from waitress import serve
         serve(app, host=host, port=port, threads=16)
