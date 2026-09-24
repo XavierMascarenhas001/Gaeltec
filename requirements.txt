@@ -1,3 +1,4 @@
+# Web launcher + tools
 flask>=2.3
 waitress>=2.1
 pandas>=1.5
@@ -10,3 +11,9 @@ python-dateutil
 rapidfuzz
 python-docx
 pymupdf
+# Dashboards
+streamlit>=1.35
+plotly>=5.20
+# Optional: calendar grid in the Network Job Tracker's Outages Programme
+# section (falls back to a table if it isn't installed)
+streamlit-calendar>=1.2

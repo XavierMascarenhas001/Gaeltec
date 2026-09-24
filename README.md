@@ -9,10 +9,39 @@ on each user's PC. Everyone just opens a link.
 | 1 | Target Price → Control File | `tool_tp_to_cf.py` | TP → Template_CF script |
 | 2 | Aggregate Control Files | `tool_aggregate_cf.py` | Block1 / PA CONTROL aggregator |
 | 3 | Build Master Parquet | `tool_build_master.py` | both Build Master scripts (Man_day tick box) |
-| 4 | Materials / CV Excel Report | `tool_materials_report.py` | "Excel Export Tool" window |
+| 4 | Outputs (CV Excel Report) | `tool_materials_report.py` | "Excel Export Tool" window |
 | 5 | Work Instructions & Map Check | `tool_work_instructions.py` | 3-tab "Pole / Work Instructions Reporting Tool" |
 
 `app.py` is the web server and `index.html` is the page.
+
+## Dashboards
+
+The three Streamlit dashboards are started by the server and shown inside the
+page, under **Dashboards** on the home screen:
+
+| Tile | File | Port |
+|------|------|------|
+| Network Job Tracker | `network_job_tracker.py` | 8501 |
+| Master Control | `master_control_dashboard.py` | 8502 |
+| Materials Breakdown | `materials_breakdown_dashboard.py` (was `app.py`) + `engine.py` | 8503 |
+
+* With `dashboard_autostart: true` in `config.json`, all three start with the
+  server. Otherwise each one starts when you first open it. The first load can
+  take up to 90 seconds on the network share.
+* If one is already running, for example from Jupyter with
+  `launch_dashboard(...)`, the page just shows it and doesn't start a second
+  copy.
+* Each dashboard writes its output to `<key>_dashboard.log` next to `app.py`.
+  If a dashboard fails to start, the page shows the last lines of that log.
+* **Restart** reloads a dashboard. **Open in new tab** opens it full screen.
+* The dashboards run on their own ports, so the `allowed_clients` list does
+  **not** protect them. Use Windows Firewall to limit ports 8501–8503 to the
+  same PCs.
+* The Materials Breakdown file was renamed from `app.py` so it doesn't clash
+  with the web server. Its code is unchanged.
+* One line was added to `network_job_tracker.py`: the outage programme's
+  PID column is kept as text. That stops the repeated "Could not convert
+  'Not delivered' … column PID" warnings in the log.
 
 ## What changed and what didn't
 
@@ -35,6 +64,10 @@ on each user's PC. Everyone just opens a link.
 * The "Choose Line" pop-up (Target Price) became a review step: press
   **Check for similar lines**, then pick *Use line 1 / Use line 2 / Keep both*
   for each pair.
+* **Browse** opens the file browser straight away. If the server can't be
+  reached, it says so inside the browser.
+* **Upload** (next to Browse) sends a file from your own PC to the server. It
+  is saved in the **Uploaded files** folder, which you can also browse later.
 * Saving asks for a folder and a file name. If the file already exists, you
   get an "already exists – replace it?" prompt. Every output also gets a
   **Download** button.

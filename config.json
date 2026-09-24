@@ -18,5 +18,18 @@
   "logo_path": "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning\\28.Project Tracker\\Images\\GaeltecImage.png",
 
   "_cors_help": "Pages opened from somewhere other than this server. \"null\" = index.html double-clicked as a file. Add e.g. \"https://<you>.github.io\" for GitHub Pages.",
-  "cors_origins": ["null"]
+  "cors_origins": ["null"],
+
+  "_upload_help": "Files people upload from their own PC are saved here (shown as 'Uploaded files' in the browser).",
+  "upload_dir": "uploads",
+  "max_upload_mb": 1024,
+
+  "_dashboards_help": "Streamlit dashboards started by this server and shown in the page. autostart = start them all when the server starts.",
+  "dashboard_autostart": true,
+  "dashboard_start_timeout": 90,
+  "dashboards": [
+    {"key": "tracker",   "title": "Network Job Tracker", "script": "network_job_tracker.py",          "port": 8501},
+    {"key": "master",    "title": "Master Control",      "script": "master_control_dashboard.py",     "port": 8502},
+    {"key": "materials", "title": "Materials Breakdown", "script": "materials_breakdown_dashboard.py", "port": 8503}
+  ]
 }

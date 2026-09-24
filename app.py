@@ -15,10 +15,15 @@ Runs the five Gaeltec Python tools behind one web page (index.html).
 Start it with:   python app.py        (or double-click start_server.bat)
 Then open:       http://<this-computer-name>:8080
 """
+import atexit
 import io
 import ipaddress
 import json
 import os
+import re
+import socket
+import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -47,6 +52,23 @@ def load_config():
     cfg.setdefault("access_key", "")
     cfg.setdefault("roots", [])
     cfg.setdefault("cors_origins", [])
+    cfg.setdefault("upload_dir", os.path.join(HERE, "uploads"))
+    cfg.setdefault("max_upload_mb", 1024)
+    cfg.setdefault("dashboards", [
+        {"key": "tracker", "title": "Network Job Tracker", "script": "network_job_tracker.py", "port": 8501},
+        {"key": "master", "title": "Master Control", "script": "master_control_dashboard.py", "port": 8502},
+        {"key": "materials", "title": "Materials Breakdown", "script": "materials_breakdown_dashboard.py", "port": 8503},
+    ])
+    cfg.setdefault("dashboard_autostart", True)
+    cfg.setdefault("dashboard_start_timeout", 90)
+    # Files uploaded from people's own PCs land here, and it is browsable
+    # like any other allowed folder so the tools can pick them up.
+    if not os.path.isabs(cfg["upload_dir"]):
+        cfg["upload_dir"] = os.path.join(HERE, cfg["upload_dir"])
+    os.makedirs(cfg["upload_dir"], exist_ok=True)
+    if not any(os.path.normcase(os.path.abspath(r["path"])) == os.path.normcase(os.path.abspath(cfg["upload_dir"]))
+               for r in cfg["roots"]):
+        cfg["roots"].append({"name": "Uploaded files", "path": cfg["upload_dir"], "writable": True})
     return cfg
 
 
@@ -54,6 +76,7 @@ CONFIG = load_config()
 ALLOWED_NETS = [ipaddress.ip_network(c, strict=False) for c in CONFIG["allowed_clients"]]
 
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = int(CONFIG["max_upload_mb"]) * 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
@@ -530,6 +553,168 @@ def defaults():
 
 
 # ---------------------------------------------------------------------------
+# Upload from the user's own PC (goes into the "Uploaded files" folder)
+# ---------------------------------------------------------------------------
+_SAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+@app.post("/api/upload")
+def upload():
+    files = request.files.getlist("files")
+    if not files:
+        raise UserError("No file was received.")
+    day_dir = os.path.join(CONFIG["upload_dir"], datetime.now().strftime("%Y-%m-%d"))
+    os.makedirs(day_dir, exist_ok=True)
+    saved = []
+    for f in files:
+        name = _SAFE_NAME.sub("_", os.path.basename(f.filename or "")).strip(" .") or "upload"
+        base, ext = os.path.splitext(name)
+        target, n = os.path.join(day_dir, name), 1
+        while os.path.exists(target):
+            target = os.path.join(day_dir, f"{base} ({n}){ext}")
+            n += 1
+        f.save(target)
+        saved.append({"name": os.path.basename(target), "path": target})
+    return jsonify({"files": saved})
+
+
+@app.errorhandler(413)
+def _too_big(e):
+    return jsonify({"error": f"File too large (limit {CONFIG['max_upload_mb']} MB, see max_upload_mb in config.json)."}), 413
+
+
+# ---------------------------------------------------------------------------
+# Streamlit dashboards (started by this server, embedded in the page)
+# ---------------------------------------------------------------------------
+DASH = {d["key"]: dict(d, proc=None, state="stopped", error="", started=0.0) for d in CONFIG["dashboards"]}
+DASH_LOCK = threading.Lock()
+
+
+def _port_open(port):
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _dash_log_path(d):
+    return os.path.join(HERE, f"{d['key']}_dashboard.log")
+
+
+def _dash_log_tail(d, n=40):
+    try:
+        with open(_dash_log_path(d), encoding="utf-8", errors="replace") as f:
+            return "".join(f.readlines()[-n:])
+    except OSError:
+        return ""
+
+
+def _dash_status(d):
+    running = _port_open(d["port"])
+    if running:
+        state = "running"
+    elif d["proc"] is not None and d["proc"].poll() is None:
+        state = "starting"
+    elif d["state"] == "failed":
+        state = "failed"
+    else:
+        state = "stopped"
+    return {"key": d["key"], "title": d["title"], "port": d["port"], "state": state,
+            "external": running and d["proc"] is None, "error": d["error"] if state == "failed" else ""}
+
+
+def start_dashboard(key):
+    d = DASH.get(key)
+    if not d:
+        raise UserError(f"Unknown dashboard '{key}'.")
+    with DASH_LOCK:
+        if _port_open(d["port"]) or (d["proc"] is not None and d["proc"].poll() is None):
+            return  # already running / starting (maybe launched from Jupyter)
+        script = os.path.join(HERE, d["script"])
+        if not os.path.isfile(script):
+            d["state"], d["error"] = "failed", f"Dashboard script not found: {script}"
+            return
+        log = open(_dash_log_path(d), "w", encoding="utf-8")
+        cmd = [sys.executable, "-m", "streamlit", "run", script,
+               "--server.port", str(d["port"]), "--server.address", "0.0.0.0",
+               "--server.headless", "true", "--browser.gatherUsageStats", "false"]
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        d["proc"] = subprocess.Popen(cmd, cwd=HERE, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
+        d["state"], d["error"], d["started"] = "starting", "", time.time()
+
+    def watch():
+        # Network share = slow start; give it the full timeout before calling it failed.
+        deadline = time.time() + float(CONFIG["dashboard_start_timeout"])
+        while time.time() < deadline:
+            if _port_open(d["port"]):
+                d["state"] = "running"
+                return
+            if d["proc"] is not None and d["proc"].poll() is not None:
+                break
+            time.sleep(1)
+        d["state"] = "failed"
+        d["error"] = ("Didn't start within "
+                      f"{CONFIG['dashboard_start_timeout']} s. Last lines of {os.path.basename(_dash_log_path(d))}:\n"
+                      + _dash_log_tail(d))
+    threading.Thread(target=watch, daemon=True).start()
+
+
+def stop_dashboard(key):
+    d = DASH.get(key)
+    if not d:
+        raise UserError(f"Unknown dashboard '{key}'.")
+    with DASH_LOCK:
+        if d["proc"] is not None and d["proc"].poll() is None:
+            d["proc"].terminate()
+            try:
+                d["proc"].wait(10)
+            except subprocess.TimeoutExpired:
+                d["proc"].kill()
+        elif _port_open(d["port"]):
+            raise UserError(f"{d['title']} was started outside this server (e.g. from Jupyter) - stop it there.")
+        d["proc"], d["state"] = None, "stopped"
+
+
+@atexit.register
+def _stop_all_dashboards():
+    for d in DASH.values():
+        if d["proc"] is not None and d["proc"].poll() is None:
+            d["proc"].terminate()
+
+
+@app.get("/api/dashboards")
+def dashboards():
+    return jsonify([_dash_status(d) for d in DASH.values()])
+
+
+@app.post("/api/dashboards/<key>/start")
+def dashboard_start(key):
+    start_dashboard(key)
+    return jsonify(_dash_status(DASH[key]))
+
+
+@app.post("/api/dashboards/<key>/stop")
+def dashboard_stop(key):
+    stop_dashboard(key)
+    return jsonify(_dash_status(DASH[key]))
+
+
+@app.post("/api/dashboards/<key>/restart")
+def dashboard_restart(key):
+    if DASH.get(key) and DASH[key]["proc"] is not None:
+        stop_dashboard(key)
+    start_dashboard(key)
+    return jsonify(_dash_status(DASH[key]))
+
+
+@app.get("/api/dashboards/<key>/log")
+def dashboard_log(key):
+    d = DASH.get(key) or abort(404)
+    return jsonify({"log": _dash_log_tail(d, 200)})
+
+
+# ---------------------------------------------------------------------------
 # The page itself
 # ---------------------------------------------------------------------------
 @app.get("/")
@@ -542,6 +727,10 @@ if __name__ == "__main__":
     print(f"Gaeltec Tools running on http://{host}:{port}  (allowed: {', '.join(CONFIG['allowed_clients'])})")
     for r in CONFIG["roots"]:
         print(f"  root '{r['name']}': {r['path']}  {'OK' if os.path.isdir(r['path']) else 'NOT REACHABLE'}")
+    if CONFIG["dashboard_autostart"]:
+        for k, d in DASH.items():
+            print(f"  starting dashboard '{d['title']}' on port {d['port']}...")
+            start_dashboard(k)
     try:
         from waitress import serve
         serve(app, host=host, port=port, threads=16)

@@ -181,6 +181,14 @@ tr:nth-child(even) td{background:var(--bg)}
 @media (max-width:560px){#srv span:last-child{display:none}}
 @media (max-width:700px){.roots{width:130px}.frow .dt{display:none}header{padding:14px 16px}main{padding:18px 16px 50px}}
 .hidden{display:none!important}
+h2.section{margin:34px 0 4px;font-size:20px}
+.dstat[data-state=running]{color:var(--ok);background:var(--ok-soft)}
+.dstat[data-state=failed]{color:var(--err);background:var(--err-soft)}
+.dstat[data-state=starting]{color:var(--warn)}
+.toolhead .dstat{white-space:nowrap;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;background:var(--sky-soft)}
+.dashframe{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.dashframe iframe{display:block;width:100%;height:calc(100vh - 210px);min-height:640px;border:0;background:#fff}
+@media (max-width:700px){.toolhead{flex-wrap:wrap}}
 </style>
 </head>
 <body>
@@ -263,6 +271,17 @@ async function api(path, body, method){
   if (!r.ok) throw new Error(data.error || ("Server error " + r.status));
   return data;
 }
+async function uploadFiles(fileList){
+  const fd = new FormData();
+  [...fileList].forEach(f => fd.append("files", f, f.name));
+  const headers = {}; const key = store.get("key", ""); if (key) headers["X-Access-Key"] = key;
+  let r;
+  try { r = await fetch(API + "/api/upload", {method: "POST", body: fd, headers}); }
+  catch(e){ throw new Error("the server isn't reachable - start start_server.bat and open the page from it"); }
+  let data = {}; try { data = await r.json(); } catch(e) {}
+  if (!r.ok) throw new Error(data.error || ("Server error " + r.status));
+  return data.files;
+}
 const dl = p => API + "/api/download?path=" + encodeURIComponent(p) + (store.get("key","") ? "&key="+encodeURIComponent(store.get("key","")) : "");
 
 /* ======================================================================
@@ -283,6 +302,11 @@ const I = {
   filter:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>',
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
   save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8"/><rect x="7" y="13" width="10" height="8"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>',
+  grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  pound:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 6.5A4 4 0 0 0 9 8v12"/><path d="M6 13h8"/><path d="M6 20h12"/></svg>',
+  box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>',
+  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
   word:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="m8 13 1.5 5 2.5-4 2.5 4 1.5-5"/></svg>',
 };
 
@@ -296,10 +320,19 @@ const TOOLS = [
    desc:"Read Block1 + PA CONTROL from many Control Files and build CF_aggregated (.xlsx + two .parquet files)."},
   {id:"master", n:3, c:"c3", icon:"db", title:"Build Master Parquet",
    desc:"Join CF_aggregated with the Project Tracker (PID / PO) and the miscelaneous file (MD Poling, Man_day)."},
-  {id:"materials", n:4, c:"c4", icon:"chart", title:"Outputs – Materials / CV Excel Report",
-   desc:"Filter the master by district, project, circuit, category and dates, pick CV groups and export the Summary workbook."},
+  {id:"materials", n:4, c:"c4", icon:"chart", title:"Outputs (CV Excel Report)",
+   desc:"The Outputs workbook: filter the master by district, project, circuit, category and dates, pick CV groups and export Summary, Combined, category and CV8 / CV31 sheets."},
   {id:"wi", n:5, c:"c5", icon:"map", title:"Work Instructions & Map Check",
    desc:"Generate the Work Instructions Word document and cross-check WorkPack maps (PDF) against the Control File."},
+];
+
+const DASHES = [
+  {key:"tracker", c:"c2", icon:"grid", title:"Network Job Tracker",
+   desc:"Network jobs from the latest Master file, the outages programme calendar and job status."},
+  {key:"master", c:"c1", icon:"pound", title:"Master Control",
+   desc:"Job costing: totals by date and team leader, PID breakdown and financial health."},
+  {key:"materials", c:"c3", icon:"box", title:"Materials Breakdown",
+   desc:"Poles, Free Issue and GUK materials needed for the filtered Control File, with the maps check and Excel export."},
 ];
 
 /* ======================================================================
@@ -318,13 +351,23 @@ const FB = {
     t.classList.toggle("hidden", opts.mode === "folder" || opts.mode === "save" && !(opts.types||[]).length);
     const nm = $("#fbName"); nm.classList.toggle("hidden", opts.mode !== "save"); nm.value = opts.name || "";
     $("#fbOk").textContent = {folder:"Use this folder", save:"Save here", files:"Add selected", file:"Select"}[opts.mode];
-    await this.loadRoots();
+    $("#fb").classList.add("on");
+    const promise = new Promise(res => this.resolve = res);
+    $("#fbRoots").innerHTML = ""; $("#fbPath").textContent = ""; $("#fbSum").textContent = "";
+    $("#fbList").innerHTML = `<div class="empty">Connecting to the server…</div>`;
+    try { await this.loadRoots(); }
+    catch(e){
+      $("#fbList").innerHTML = `<div class="empty"><b>Can't browse: ${esc(e.message)}</b><br><br>
+        Browsing lists the network share <i>through the Gaeltec Tools server</i>, so the server must be running
+        (start_server.bat) and this page opened from it (http://&lt;server&gt;:8080).<br><br>
+        You can still close this and use <b>Upload</b> once the server is reachable.</div>`;
+      return promise;
+    }
     this.renderRoots();
     const start = opts.start || store.get("dir_" + (opts.key || "any")) || store.get("dir_any");
-    $("#fb").classList.add("on");
     try { await this.go(start && this.inRoots(start) ? start : (this.roots.find(r=>r.reachable)||this.roots[0]||{}).path); }
     catch(e){ this.go((this.roots[0]||{}).path).catch(()=>{}); }
-    return new Promise(res => this.resolve = res);
+    return promise;
   },
   inRoots(p){ const n = p.toLowerCase(); return this.roots.some(r => n.startsWith(r.path.toLowerCase())); },
   renderRoots(){
@@ -409,8 +452,26 @@ function box(n, title, hint){
 /* A file / folder picker field. kind: 'file' | 'files' | 'folder' */
 function pickField({label, kind, types, key, title, onChange}){
   const state = {value: kind === "files" ? [] : ""};
-  const el = h(`<div class="field grow"><label>${esc(label)}</label><div class="picked"><div class="chips"></div><button class="btn sm">${I.folder} Browse</button></div></div>`);
+  const canUpload = kind !== "folder";
+  const el = h(`<div class="field grow"><label>${esc(label)}</label><div class="picked"><div class="chips"></div><button class="btn sm">${I.folder} Browse</button>${canUpload ? `<button class="btn sm up" title="Upload from this computer">${I.up} Upload</button><input type="file" class="hidden"${kind === "files" ? " multiple" : ""}>` : ""}</div></div>`);
   const chips = $(".chips", el);
+  if (canUpload){
+    const inp = $("input[type=file]", el);
+    const exts = (types || []).map(t => t[1]).filter(Boolean).join(",");
+    if (exts && !(types || []).some(t => !t[1])) inp.accept = exts;
+    $(".up", el).onclick = () => inp.click();
+    inp.onchange = async () => {
+      if (!inp.files.length) return;
+      chips.innerHTML = `<span class="txt none">Uploading ${inp.files.length} file(s)…</span>`;
+      try {
+        const saved = await uploadFiles(inp.files);
+        const paths = saved.map(f => f.path);
+        state.value = kind === "files" ? [...new Set([...state.value, ...paths])] : paths[0];
+        render(); onChange && onChange(state.value);
+      } catch(e){ render(); alert("Upload failed: " + e.message); }
+      inp.value = "";
+    };
+  }
   const render = () => {
     chips.innerHTML = "";
     const vals = kind === "files" ? state.value : (state.value ? [state.value] : []);
@@ -568,6 +629,76 @@ function home(){
     g.append(tile);
   });
   app.append(g);
+
+  app.append(h(`<h2 class="section">Dashboards</h2>`));
+  app.append(h(`<p class="intro">Live Streamlit dashboards, started by the server and shown inside this page.</p>`));
+  const dg = h(`<div class="grid"></div>`);
+  DASHES.forEach(d => {
+    const tile = h(`<button class="tile"><div class="ico ${d.c}">${I[d.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag dstat" data-key="${d.key}">Checking…</span><h3>${esc(d.title)}</h3><p>${esc(d.desc)}</p><span class="go">Open dashboard ${I.arrow}</span></button>`);
+    tile.onclick = () => { location.hash = "dash/" + d.key; };
+    dg.append(tile);
+  });
+  app.append(dg);
+  api("/api/dashboards").then(list => list.forEach(st => {
+    const tag = app.querySelector(`.dstat[data-key="${st.key}"]`);
+    if (tag) { tag.textContent = DSTATE[st.state] || st.state; tag.dataset.state = st.state; }
+  })).catch(() => app.querySelectorAll(".dstat").forEach(t => { t.textContent = "Server not reachable"; t.dataset.state = "failed"; }));
+}
+
+const DSTATE = {running: "● Running", starting: "● Starting…", stopped: "○ Stopped", failed: "● Failed to start"};
+function dashHost(){
+  try { if (API) return new URL(API).hostname; } catch(e) {}
+  return location.hostname || "localhost";
+}
+
+let dashToken = 0;
+function pageDash(d){
+  const token = ++dashToken;
+  const head = h(`<div class="toolhead"><button class="btn back">${I.back} All tools</button><div class="ico ${d.c}">${I[d.icon].replace("<svg","<svg width=26 height=26")}</div>
+    <div style="flex:1"><h2>${esc(d.title)}</h2><p>${esc(d.desc)}</p></div>
+    <span class="tag dstat">Checking…</span><button class="btn sm" id="dRestart">Restart</button><a class="btn sm" id="dOpen" target="_blank" rel="noopener">${I.ext} Open in new tab</a></div>`);
+  $(".back", head).onclick = () => { location.hash = ""; };
+  const msg = h(`<section class="box"><p class="status">Checking the dashboard…</p><div class="log"></div></section>`);
+  const frameBox = h(`<div class="dashframe hidden"><iframe title="${esc(d.title)}"></iframe></div>`);
+  app.append(head, msg, frameBox);
+  const tag = $(".dstat", head), frame = $("iframe", frameBox), stat = $(".status", msg), log = $(".log", msg);
+  let loaded = false;
+
+  async function tick(){
+    if (token !== dashToken) return;              // left this page
+    let st;
+    try { st = (await api("/api/dashboards")).find(x => x.key === d.key); }
+    catch(e){ stat.className = "status err"; stat.textContent = "Can't reach the Gaeltec Tools server: " + e.message; tag.textContent = "Server not reachable"; tag.dataset.state = "failed"; return; }
+    if (!st) { stat.textContent = "This dashboard isn't configured on the server (config.json → dashboards)."; return; }
+    const url = `http://${dashHost()}:${st.port}/`;
+    $("#dOpen", head).href = url;
+    tag.textContent = DSTATE[st.state] || st.state; tag.dataset.state = st.state;
+    if (st.state === "running"){
+      if (!loaded){ frame.src = url; loaded = true; }
+      msg.classList.add("hidden"); frameBox.classList.remove("hidden");
+      setTimeout(tick, 15000);
+      return;
+    }
+    loaded = false; frameBox.classList.add("hidden"); msg.classList.remove("hidden");
+    if (st.state === "stopped"){
+      stat.className = "status"; stat.textContent = "Starting the dashboard…";
+      try { await api(`/api/dashboards/${d.key}/start`, {}); } catch(e){ stat.className = "status err"; stat.textContent = e.message; return; }
+    } else if (st.state === "starting"){
+      stat.className = "status"; stat.textContent = "Starting… the first load reads the Master file from the network share and can take up to 90 seconds.";
+    } else if (st.state === "failed"){
+      stat.className = "status err"; stat.textContent = "The dashboard didn't start. Press Restart to try again. Details:";
+      log.textContent = st.error || ""; log.classList.add("on");
+      return;
+    }
+    setTimeout(tick, 2000);
+  }
+  $("#dRestart", head).onclick = async () => {
+    loaded = false; frame.src = "about:blank"; frameBox.classList.add("hidden"); msg.classList.remove("hidden");
+    log.classList.remove("on"); stat.className = "status"; stat.textContent = "Restarting…";
+    try { await api(`/api/dashboards/${d.key}/restart`, {}); } catch(e){ stat.className = "status err"; stat.textContent = e.message; return; }
+    tick();
+  };
+  tick();
 }
 
 function toolHead(t){
@@ -873,6 +1004,11 @@ function route(){
   const id = location.hash.replace("#", "");
   const t = TOOLS.find(x => x.id === id);
   window.scrollTo(0, 0);
+  dashToken++;
+  if (id.startsWith("dash/")){
+    const d = DASHES.find(x => x.key === id.slice(5));
+    if (d){ app.innerHTML = ""; return pageDash(d); }
+  }
   if (!t) return home();
   app.innerHTML = ""; app.append(toolHead(t)); PAGES[id](t);
 }
