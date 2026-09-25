@@ -1,151 +1,82 @@
-# Gaeltec Tools – web launcher
+# Gaeltec Tools – runs in your browser, no server
 
-One web page with five tiles that run the Gaeltec Python tools. You pick files
-from the **server's** view of the network share, so there's nothing to install
-on each user's PC. Everyone just opens a link.
+`index.html` is the whole app. Open it in Chrome or Edge, pick a tool, and
+drag your files onto it. Your Python runs inside the browser and results
+download like normal files. Nothing is uploaded anywhere, and there's no
+server to start.
 
-| # | Tile | Python file | Was |
-|---|------|-------------|-----|
-| 1 | Target Price → Control File | `tool_tp_to_cf.py` | TP → Template_CF script |
-| 2 | Aggregate Control Files | `tool_aggregate_cf.py` | Block1 / PA CONTROL aggregator |
-| 3 | Build Master Parquet | `tool_build_master.py` | both Build Master scripts (Man_day tick box) |
-| 4 | Outputs (CV Excel Report) | `tool_materials_report.py` | "Excel Export Tool" window |
-| 5 | Work Instructions & Map Check | `tool_work_instructions.py` | 3-tab "Pole / Work Instructions Reporting Tool" |
+| # | Tile | Python file |
+|---|------|-------------|
+| 1 | Target Price → Control File | `tool_tp_to_cf.py` |
+| 2 | Aggregate Control Files | `tool_aggregate_cf.py` |
+| 3 | Build Master Parquet | `tool_build_master.py` |
+| 4 | Outputs (CV Excel Report) | `tool_materials_report.py` |
+| 5 | Work Instructions & Map Check | `tool_work_instructions.py` |
 
-`app.py` is the web server and `index.html` is the page.
+## Using it
+
+* **Open:** double-click `index.html`, or host it on GitHub Pages and share the
+  link.
+* **First load:** the page downloads Python (Pyodide 0.29.5 from
+  `cdn.jsdelivr.net`), which takes about 30 seconds the first time. After that
+  the browser keeps a copy. The pill at the top right says **Python ready**
+  when it's done.
+* **Adding files:** drag files onto a box, or click the box to choose them.
+  The file-type filters are the same as the old dialogs.
+* **Saving:** outputs download automatically. Each one also gets a
+  **Download** button, plus **Save to a folder…**, which lets you pick any
+  folder, including one on the network share.
+* **Map check:** drag a **month** or **year** folder from
+  `1 - Outages Programme` onto tab 3, or the whole programme folder. The
+  scan uses the dates from tab 1, exactly as before. Map names in the report
+  link to the real PDFs on `\\gaeltec-gl`.
+* **Outputs logos:** drop `GaeltecImage.png` and `SPEN.png` once. The page
+  remembers them.
+
+## What's the same, what's different
+
+* The tool files are the same code you run in Jupyter: same mappings, rules,
+  filters and Excel/Word formatting. They're built into `index.html` together
+  with the libraries they need.
+* The browser can't use threads, so PDFs and folders are read one after
+  another instead of 20 at a time. The results are the same, but big map
+  scans take longer.
+* rapidfuzz uses its own built-in pure-Python version. Its scores were checked
+  identical to the normal rapidfuzz on 4,000 string pairs.
+* In the map scan, an outage folder that is completely **empty** isn't listed
+  as "had no Workpack zones folder", because browsers don't pass empty
+  folders through. The results are otherwise unchanged.
+* Very large jobs, such as aggregating 75+ Control Files, run slower than in
+  Jupyter. They may hit the browser's memory limit; if that happens, do them
+  in batches.
 
 ## Dashboards
 
-The three Streamlit dashboards are started by the server and shown inside the
-page, under **Dashboards** on the home screen:
+The three Streamlit dashboards can't run inside a web page on their own.
+Start them from Jupyter as usual (Network Job Tracker 8501, Master Control
+8502, Materials Breakdown 8503) and the **Dashboards** section shows them
+while they're running.
 
-| Tile | File | Port |
-|------|------|------|
-| Network Job Tracker | `network_job_tracker.py` | 8501 |
-| Master Control | `master_control_dashboard.py` | 8502 |
-| Materials Breakdown | `materials_breakdown_dashboard.py` (was `app.py`) + `engine.py` | 8503 |
+`network_job_tracker.py` here has one extra line that keeps the outage
+programme's PID column as text. It stops the repeated "Could not convert
+'Not delivered' … column PID" warnings in its log. Copy it over yours if you
+want that.
 
-* With `dashboard_autostart: true` in `config.json`, all three start with the
-  server. Otherwise each one starts when you first open it. The first load can
-  take up to 90 seconds on the network share.
-* If one is already running, for example from Jupyter with
-  `launch_dashboard(...)`, the page just shows it and doesn't start a second
-  copy.
-* Each dashboard writes its output to `<key>_dashboard.log` next to `app.py`.
-  If a dashboard fails to start, the page shows the last lines of that log.
-* **Restart** reloads a dashboard. **Open in new tab** opens it full screen.
-* The dashboards run on their own ports, so the `allowed_clients` list does
-  **not** protect them. Use Windows Firewall to limit ports 8501–8503 to the
-  same PCs.
-* The Materials Breakdown file was renamed from `app.py` so it doesn't clash
-  with the web server. Its code is unchanged.
-* One line was added to `network_job_tracker.py`: the outage programme's
-  PID column is kept as text. That stops the repeated "Could not convert
-  'Not delivered' … column PID" warnings in the log.
+## Changing a tool
 
-## What changed and what didn't
+Edit the `tool_*.py` file, then run `python build_page.py` to rebuild
+`index.html`. The rest of the files are the parts `index.html` is built
+from:
 
-* The mapping dictionaries, rules, filters and Excel/Word formatting are
-  copied **word for word** from the original scripts. Only the tkinter
-  windows and dialogs were replaced.
-* The file dialogs became a file browser in the page. It only shows the
-  folders listed in `config.json`, and it keeps the same file-type filters
-  (e.g. the Target Price picker still defaults to `*.xlsm`).
-* The filters work the same way as before:
-  * **Materials:** the "All / N selected" tick-list boxes, the custom-value
-    **Add** box, All / None / OK / Cancel, "All (No Connections)", the fixed
-    Const/Mat category, the multi date filter (plan1 / plan2 / done /
-    datetouse / all / unplanned / undone, combined with OR), and the CV Groups
-    box.
-  * **Work Instructions:** search + click-to-toggle lists with counts,
-    All (visible) / Clear, a YYYY-MM-DD date range that also drives the
-    network scan, and a 500-row preview. The maps you pick are shared between
-    tabs 2 and 3, and are only read once.
-* The "Choose Line" pop-up (Target Price) became a review step: press
-  **Check for similar lines**, then pick *Use line 1 / Use line 2 / Keep both*
-  for each pair.
-* **Browse** opens the file browser straight away. If the server can't be
-  reached, it says so inside the browser.
-* **Upload** (next to Browse) sends a file from your own PC to the server. It
-  is saved in the **Uploaded files** folder, which you can also browse later.
-* Saving asks for a folder and a file name. If the file already exists, you
-  get an "already exists – replace it?" prompt. Every output also gets a
-  **Download** button.
-* The two Build Master scripts are now one. With **Man_day** ticked it works
-  like the newer script; unticked, it works like the older one.
-* A missing comma after `"Reinforcement_Lanark"` in the aggregator's
-  `file_project_mapping` was fixed. Without it, that script can't run.
+* `page_template.html` – the page layout
+* `worker.js` – runs Python in the browser
+* `bridge.py` – connects the page to the tools
+* `py_boot.py` – swaps in the no-threads and pure-rapidfuzz versions
+* `pylibs.zip` – openpyxl, xlsxwriter, python-docx, pyxlsb and rapidfuzz
 
-## Set up (once, on a Windows PC or server that can reach `\\gaeltec-gl`)
+## If it doesn't work
 
-1. Install Python 3.10+ (or use Anaconda).
-2. Copy this folder onto that machine, or `git clone` it from GitHub.
-3. Edit **`config.json`**:
-   * `allowed_clients` – the PCs that may use it. Add each PC's IP address
-     (run `ipconfig` on the PC) or a whole subnet such as `"10.20.30.0/24"`.
-     Anyone else gets "not on the allowed list".
-   * `roots` – the only folders the file browser can open. `writable: true`
-     lets people save outputs there.
-   * `access_key` – optional shared password on top of the IP list.
-4. Double-click **`start_server.bat`**. It installs the requirements and
-   starts the server on port 8080. Leave the window open.
-5. On the allowed PCs, open `http://<server-name>:8080`.
-   You may need to allow port 8080 through Windows Firewall on the server.
-
-The server account needs read and write access to the share. The page shows
-"x/y folders reachable" at the top right.
-
-## GitHub
-
-Put this folder in a GitHub repo so everyone runs the same version. To
-update, run `git pull` on the server and restart `start_server.bat`.
-
-You can also host `index.html` on **GitHub Pages** and point it at your
-server with `https://<you>.github.io/<repo>/?api=http://<server>:8080`. For
-that, add the Pages address to `cors_origins` in `config.json`. **Be aware:**
-browsers block an https page from calling a plain-http internal server
-("mixed content"). So unless the server has HTTPS, opening
-`http://<server>:8080` directly is the reliable option. That address serves
-exactly the same page.
-
-## Running a tool without the web page
-
-Each `tool_*.py` file can still be used from Jupyter, for example:
-
-```python
-import tool_build_master
-tool_build_master.run(r"...\CF_aggregated.parquet", r"...\Project Tracker.parquet",
-                      r"...\miscelaneous.parquet", r"...\Master_24-09-2026.parquet")
-```
-
-## "Server not reachable" / "Upload failed" / can't browse
-
-All three messages mean the page can't reach `app.py`. It has to be running
-before Browse, Upload, the tools or the dashboards can work.
-
-**Option A – double-click `start_server.bat`.** It looks for Anaconda
-(`%LOCALAPPDATA%\anaconda3`, `%USERPROFILE%\anaconda3`, `C:\ProgramData\anaconda3`)
-before trying `python`, installs the packages, starts the server and opens
-**http://localhost:8080**. Leave the black window open.
-
-**Option B – from JupyterLab:**
-
-```python
-%run "C:/Users/Xavier.Mascarenhas/OneDrive - Gaeltec Utilities Ltd/Desktop/gaeltec_web/start_from_jupyter.py"
-```
-
-(Use the path where you put the folder.) This starts the server in its own
-process, not inside the kernel, waits for it and opens the page. If the
-server doesn't start, it prints the last lines of `server.log`.
-
-**Then use the page that opens (http://localhost:8080).** Don't double-click
-`index.html`.
-
-If it still fails:
-* **"Port 8080 is already in use"**: the server is probably already running,
-  so just open http://localhost:8080. Otherwise change `"port"` in
-  `config.json`.
-* **"No module named …"**: in an Anaconda Prompt, run
-  `pip install -r requirements.txt` in this folder.
-* **"This computer is not allowed"**: add the PC's IP address to
-  `allowed_clients` in `config.json` and restart the server.
+* **"Couldn't download Python from cdn.jsdelivr.net"**: the PC is offline or
+  the site is blocked. Ask IT to allow `cdn.jsdelivr.net`.
+* **A dashboard shows "Not running"**: start it from Jupyter. The page checks
+  every few seconds and shows it once it's up.

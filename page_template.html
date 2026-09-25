@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gaeltec Tools</title>
+<!-- BUILT FILE - edit page_template.html / the .py files, then run build_page.py -->
+<style>
+:root{
+  --navy:#0B2545; --blue:#1F4E78; --sky:#00A6D6; --sky-soft:#E3F6FC;
+  --bg:#F2F5F9; --card:#FFFFFF; --ink:#16213A; --muted:#5B6B82; --line:#DCE3EC;
+  --ok:#1E8E5A; --ok-soft:#E3F5EC; --warn:#B7791F; --err:#C0392B; --err-soft:#FBEAEA;
+  --shadow:0 1px 2px rgba(16,33,58,.06),0 4px 16px rgba(16,33,58,.06);
+  --radius:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#0D1524;--card:#152036;--ink:#E6ECF5;--muted:#9AA9BF;--line:#26344F;
+        --sky-soft:#0F3346;--ok-soft:#10301F;--err-soft:#3A1717;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--sky)}
+
+/* ---------- header ---------- */
+header{background:linear-gradient(120deg,var(--navy),var(--blue));color:#fff;padding:18px 28px;display:flex;align-items:center;gap:16px}
+header img{height:46px;background:#fff;border-radius:8px;padding:4px 8px}
+header .brand h1{margin:0;font-size:22px;letter-spacing:.3px}
+header .brand p{margin:0;opacity:.8;font-size:13px}
+header .spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;font-size:13px;background:rgba(255,255,255,.14)}
+.dot{width:8px;height:8px;border-radius:50%;background:#aaa}
+.dot.on{background:#3DDC84}.dot.off{background:#FF6B6B}
+
+main{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
+
+/* ---------- home grid ---------- */
+.intro{color:var(--muted);margin:0 0 18px}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 22px;color:var(--muted);font-size:13px}
+.flow span.step{background:var(--card);border:1px solid var(--line);padding:4px 10px;border-radius:99px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:18px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;text-align:left;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s;display:flex;flex-direction:column;gap:10px}
+.tile:hover{transform:translateY(-3px);border-color:var(--sky);box-shadow:0 8px 28px rgba(0,120,180,.15)}
+.tile .ico{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;color:#fff}
+.tile h3{margin:4px 0 0;font-size:18px}
+.tile p{margin:0;color:var(--muted);font-size:14px;flex:1}
+.tile .tag{align-self:flex-start;font-size:12px;font-weight:600;color:var(--blue);background:var(--sky-soft);padding:3px 10px;border-radius:99px}
+@media (prefers-color-scheme: dark){.tile .tag{color:#7FD3F0}}
+.tile .go{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--sky)}
+.c1{background:linear-gradient(135deg,#1F4E78,#2E86C1)}.c2{background:linear-gradient(135deg,#0E7C86,#1ABC9C)}
+.c3{background:linear-gradient(135deg,#6C3FB5,#9B59B6)}.c4{background:linear-gradient(135deg,#C0762B,#E6A23C)}
+.c5{background:linear-gradient(135deg,#B03A48,#E4606D)}
+
+/* ---------- tool page ---------- */
+.toolhead{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.toolhead .ico{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:#fff;flex:none}
+.toolhead h2{margin:0;font-size:22px}
+.toolhead p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.back{margin-right:4px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px}
+.box h4{margin:0 0 12px;font-size:15px;display:flex;align-items:center;gap:10px}
+.num{width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
+.hint{color:var(--muted);font-size:13px;margin:-4px 0 12px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:13px;font-weight:600;color:var(--muted)}
+.grow{flex:1 1 280px}
+input[type=text],input[type=date],input[type=number],input[type=password],select{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:8px 11px;min-width:0}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--sky);outline-offset:1px}
+
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 14px;cursor:pointer;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--sky)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:#17405f}
+.btn.big{padding:12px 22px;font-size:16px;border-radius:12px}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:13px;border-radius:8px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn svg{width:18px;height:18px;flex:none}
+
+.picked{display:flex;align-items:center;gap:10px;border:1px dashed var(--line);border-radius:10px;padding:8px 10px;min-height:42px;background:var(--bg)}
+.picked .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.picked .txt.none{color:var(--muted);font-style:italic;flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--sky-soft);border-radius:8px;padding:3px 8px;font-size:13px;max-width:100%}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{border:0;background:none;cursor:pointer;padding:0 2px;color:var(--muted);font-size:15px;line-height:1}
+.status{font-size:14px;color:var(--muted)}
+.status.ok{color:var(--ok)}.status.err{color:var(--err)}
+
+/* ---------- run / log ---------- */
+.runbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.progress{height:6px;border-radius:99px;background:var(--line);overflow:hidden;flex:1 1 200px;display:none}
+.progress.on{display:block}
+.progress i{display:block;height:100%;width:35%;background:var(--sky);border-radius:99px;animation:slide 1.2s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+.log{margin-top:12px;background:#0E1A2B;color:#CFE3F7;border-radius:10px;padding:12px 14px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;max-height:280px;overflow:auto;white-space:pre-wrap;display:none}
+.log.on{display:block}
+.outputs{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.out{display:flex;align-items:center;gap:10px;background:var(--ok-soft);border-radius:10px;padding:9px 12px}
+.out .txt{flex:1;min-width:0}
+.out b{display:block}.out small{color:var(--muted);word-break:break-all}
+.errbox{background:var(--err-soft);color:var(--err);border-radius:10px;padding:10px 12px;margin-top:12px;white-space:pre-wrap;display:none}
+.errbox.on{display:block}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--card);padding:9px 16px;border-radius:10px;cursor:pointer;font-weight:600;display:flex;gap:8px;align-items:center}
+.tab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.tab .num{background:var(--sky-soft);color:var(--blue)}
+.tab.on .num{background:#fff}
+
+/* ---------- WI list filter (search + click to toggle) ---------- */
+.lfilters{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.lf{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+.lf .hd{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px}
+.lf .hd .cnt{color:var(--sky);font-weight:600}
+.lf input{padding:6px 9px;font-size:13px}
+.lf ul{list-style:none;margin:0;padding:0;height:170px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.lf li{padding:4px 8px;font-size:13px;cursor:pointer;user-select:none;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lf li:hover{background:var(--sky-soft)}
+.lf li.sel{background:var(--blue);color:#fff}
+.lf .btns{display:flex;gap:6px}
+
+/* ---------- Materials combobox (tick list + custom value) ---------- */
+.mfilters{display:flex;flex-wrap:wrap;gap:14px}
+.msc{position:relative}
+.msc>button{min-width:170px;justify-content:space-between}
+.msc>button .v{overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.pop{position:absolute;z-index:40;top:calc(100% + 6px);left:0;width:290px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.2);padding:10px;display:flex;flex-direction:column;gap:8px}
+.pop .list{max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px 6px}
+.pop label{display:flex;gap:8px;align-items:center;font-size:13px;padding:3px 2px;cursor:pointer}
+.pop .add{display:flex;gap:6px}.pop .add input{flex:1;padding:6px 9px}
+.pop .acts{display:flex;gap:6px;justify-content:flex-end}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow:auto;max-height:360px;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{position:sticky;top:0;background:var(--blue);color:#fff;text-align:left;padding:7px 9px;white-space:nowrap}
+td{padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+tr:nth-child(even) td{background:var(--bg)}
+
+/* ---------- TP pairs ---------- */
+.pair{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.pair .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+.pair .ln{font-size:14px;margin:2px 0}
+.pair .diff{font:12.5px Consolas,monospace;background:var(--bg);padding:6px 8px;border-radius:8px;margin:6px 0;word-break:break-word}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg label{padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600;border-right:1px solid var(--line)}
+.seg label:last-child{border-right:0}
+.seg input{display:none}
+.seg input:checked+span{color:#fff}
+.seg label:has(input:checked){background:var(--blue);color:#fff}
+
+/* ---------- file browser modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(8,18,35,.55);z-index:100;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-bg.on{display:flex}
+.modal{background:var(--card);border-radius:16px;width:min(960px,100%);height:min(640px,100%);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal .mh{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.modal .mh h3{margin:0;font-size:17px;flex:1}
+.modal .mb{flex:1;display:flex;min-height:0}
+.roots{width:220px;border-right:1px solid var(--line);padding:10px;overflow:auto;flex:none}
+.roots button{width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:9px;cursor:pointer;display:flex;gap:8px;align-items:center;font-size:14px}
+.roots button:hover{background:var(--sky-soft)}
+.roots button.on{background:var(--blue);color:#fff}
+.roots button small{display:block;opacity:.7;font-size:11px}
+.pane{flex:1;display:flex;flex-direction:column;min-width:0}
+.crumbs{padding:10px 14px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.crumbs .path{flex:1;min-width:120px;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.files{flex:1;overflow:auto}
+.frow{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+.frow:hover{background:var(--sky-soft)}
+.frow.sel{background:var(--blue);color:#fff}
+.frow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .dt{color:var(--muted);font-size:12px;width:130px;text-align:right}
+.frow.sel .dt{color:#dbe8f5}
+.frow svg{width:18px;height:18px;flex:none}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.modal .mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.modal .mf .sum{flex:1;font-size:13px;color:var(--muted);min-width:150px}
+@media (max-width:560px){#srv span:last-child{display:none}}
+@media (max-width:700px){.roots{width:130px}.frow .dt{display:none}header{padding:14px 16px}main{padding:18px 16px 50px}}
+.hidden{display:none!important}
+h2.section{margin:34px 0 4px;font-size:20px}
+.dstat[data-state=running]{color:var(--ok);background:var(--ok-soft)}
+.dstat[data-state=failed]{color:var(--err);background:var(--err-soft)}
+.dstat[data-state=starting]{color:var(--warn)}
+.toolhead .dstat{white-space:nowrap;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;background:var(--sky-soft)}
+.dashframe{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.dashframe iframe{display:block;width:100%;height:calc(100vh - 210px);min-height:640px;border:0;background:#fff}
+@media (max-width:700px){.toolhead{flex-wrap:wrap}}
+
+/* ---------- drop zones ---------- */
+.dz{display:flex;align-items:center;gap:14px;border:2px dashed var(--line);border-radius:12px;padding:14px 16px;background:var(--bg);cursor:pointer;transition:border-color .12s,background .12s}
+.dz:hover,.dz:focus-visible{border-color:var(--sky);outline:none}
+.dz.over{border-color:var(--sky);background:var(--sky-soft)}
+.dz.has{border-style:solid;border-color:var(--sky)}
+.dz.busy{opacity:.6;pointer-events:none}
+.dz .dzi{width:40px;height:40px;border-radius:10px;background:var(--sky-soft);color:var(--blue);display:grid;place-items:center;flex:none}
+.dz .dzi svg{width:22px;height:22px}
+.dz .dzt{display:flex;flex-direction:column;gap:2px;font-size:14px;min-width:0}
+.dz .dzt small{color:var(--muted);font-size:12px}
+.dz .dzt u{color:var(--sky);text-decoration:none;font-weight:600}
+.dzc{margin-top:8px}
+.chip small{color:var(--muted);font-size:11px}
+.dot.busy{background:#F5B942;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+h2.section{margin:34px 0 4px;font-size:20px}
+.dstat[data-state=running]{color:var(--ok)!important;background:var(--ok-soft)!important}
+.dstat[data-state=stopped]{color:var(--muted)!important}
+.toolhead .dstat{white-space:nowrap;font-size:12px;font-weight:600;padding:4px 10px;border-radius:99px;background:var(--sky-soft)}
+.dashframe{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.dashframe iframe{display:block;width:100%;height:calc(100vh - 210px);min-height:640px;border:0;background:#fff}
+code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-radius:5px}
+@media (max-width:700px){.toolhead{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Gaeltec Tools</h1>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports</p>
+  </div>
+  <div class="spacer"></div>
+  <span class="pill" id="srv"><span class="dot busy"></span><span>Starting Python…</span></span>
+</header>
+<main id="app"></main>
+
+<script type="text/plain" id="worker-src">
+/*__WORKER_JS__*/
+</script>
+<script>
+const PY_SOURCES = /*__PY_SOURCES__*/;
+const PYLIBS_B64 = "/*__PYLIBS_B64__*/";
+</script>
+<script>
+/* ======================================================================
+   Helpers
+   ====================================================================== */
+const Q = new URLSearchParams(location.search);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("gt_"+k); return v===null? d : JSON.parse(v);}catch(e){return d;} },
+  set(k, v){ try{ localStorage.setItem("gt_"+k, JSON.stringify(v)); }catch(e){} }
+};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $ = (sel, el=document) => el.querySelector(sel);
+const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const extOf = n => { const i = String(n).lastIndexOf("."); return i >= 0 ? n.slice(i).toLowerCase() : ""; };
+const fmtSize = b => b > 1e6 ? (b/1e6).toFixed(1) + " MB" : Math.max(1, Math.round(b/1e3)) + " KB";
+
+/* Where Python comes from. Pyodide 0.29.5 = Python 3.13 with pandas 2.3.3,
+   pyarrow, lxml and PyMuPDF - the same generation the scripts run on. */
+const PYODIDE_URL = (Q.get("pyodide") || "https://cdn.jsdelivr.net/pyodide/v0.29.5/full/").replace(/\/?$/, "/");
+const NETWORK_ROOT = "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.Planning\\1 - Outages Programme";
+
+/* ======================================================================
+   Python runtime (web worker)
+   ====================================================================== */
+const PY = (() => {
+  let worker = null, seq = 0, readyP = null, isReady = false, lastStatus = "";
+  const pend = new Map(), statusCbs = [];
+  const setStatus = (t, state) => { lastStatus = t; statusCbs.forEach(cb => cb(t, state)); };
+  function send(type, payload, onLog){
+    const id = ++seq;
+    return new Promise((res, rej) => { pend.set(id, {res, rej, onLog}); worker.postMessage({type, id, ...payload}); });
+  }
+  function start(){
+    if (worker) return readyP;
+    const src = document.getElementById("worker-src").textContent;
+    worker = new Worker(URL.createObjectURL(new Blob([src], {type: "text/javascript"})));
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === "status"){ if (m.ready){ isReady = true; setStatus("Python ready", "on"); } else setStatus(m.text, "busy"); return; }
+      const p = pend.get(m.id); if (!p) return;
+      if (m.type === "log") p.onLog && p.onLog(m.text);
+      else if (m.type === "done"){ pend.delete(m.id); p.res(m); }
+      else if (m.type === "error"){ pend.delete(m.id); p.rej(new Error(m.error)); }
+    };
+    worker.onerror = (e) => setStatus("Python failed to start: " + (e.message || "worker error"), "off");
+    readyP = send("init", {indexURL: PYODIDE_URL, sources: PY_SOURCES, libzip: PYLIBS_B64})
+      .catch(e => {
+        const msg = /fetch|network|importScripts|Failed to load/i.test(e.message)
+          ? "Couldn't download Python from cdn.jsdelivr.net – check the internet connection / that the site isn't blocked."
+          : e.message;
+        setStatus(msg, "off"); readyP = null; worker.terminate(); worker = null;
+        throw new Error(msg);
+      });
+    return readyP;
+  }
+  return {
+    start, onStatus(cb){ statusCbs.push(cb); if (lastStatus) cb(lastStatus, isReady ? "on" : "busy"); },
+    get ready(){ return isReady; },
+    async mount(items){ await start(); return (await send("mount", {items})).dir; },
+    async unmount(dir){ if (worker && dir) await send("unmount", {dir}).catch(() => {}); },
+    async call(fn, kwargs, opts = {}){
+      await start();
+      return send("call", {fn, kwargs: JSON.stringify(kwargs || {}), needs: opts.needs || []}, opts.onLog);
+    },
+  };
+})();
+const NEED_PARQUET = ["pyarrow"];
+const NEED_OUTPUTS = ["pyarrow", "pillow"];   // Pillow places the logos in the workbook
+const NEED_WI = ["pyarrow", "pymupdf", "lxml"];
+
+/* ======================================================================
+   Icons & small building blocks (same as before)
+   ====================================================================== */
+const I = {
+  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>',
+  db:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg>',
+  target:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 15h6"/><path d="m11 12 3 3-3 3"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 17v-5"/><path d="M12 17V8"/><path d="M16 17v-3"/></svg>',
+  map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18 9 12l6-6"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
+  filter:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8"/><rect x="7" y="13" width="10" height="8"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>',
+  grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  pound:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 6.5A4 4 0 0 0 9 8v12"/><path d="M6 13h8"/><path d="M6 20h12"/></svg>',
+  box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>',
+  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
+  word:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="m8 13 1.5 5 2.5-4 2.5 4 1.5-5"/></svg>',
+};
+
+
+I.drop = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+I.grid = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+I.pound = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 6.5A4 4 0 0 0 9 8v12"/><path d="M6 13h8"/><path d="M6 20h12"/></svg>';
+I.box3 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>';
+I.ext = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
+
+function box(n, title, hint){
+  const b = h(`<section class="box"><h4>${n ? `<span class="num">${n}</span>` : ""}${title}</h4>${hint ? `<p class="hint">${hint}</p>` : ""}</section>`);
+  return b;
+}
+
+
+
+/* ---------- reading dropped folders ---------- */
+async function entriesFromDataTransfer(dt){
+  // returns [{rel, file}] - rel keeps the folder structure ("Folder/sub/x.pdf")
+  const items = [...dt.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  const out = [];
+  async function walk(entry, prefix){
+    if (entry.isFile){
+      const file = await new Promise((res, rej) => entry.file(res, rej));
+      out.push({rel: prefix + file.name, file});
+    } else if (entry.isDirectory){
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const e of batch) await walk(e, prefix + entry.name + "/");
+      } while (batch.length);
+    }
+  }
+  if (items.length) { for (const e of items) await walk(e, ""); }
+  else [...dt.files].forEach(f => out.push({rel: f.name, file: f}));
+  return out;
+}
+
+/* Drop zone for files (kind 'file' / 'files').
+   types = [[label, ".a,.b"], ...] - same file-type filter as the old dialogs;
+   a type with "" means "All files". */
+function dropField({label, kind, types, onChange, hint}){
+  const multi = kind === "files";
+  const exts = (types || []).map(t => t[1]).filter(Boolean).join(",").split(",").filter(Boolean);
+  const anyType = !types || !types.length || types.some(t => !t[1]);
+  const accept = anyType ? "" : exts.join(",");
+  const typeText = anyType ? (exts.length ? exts.join(" ") + " or any file" : "any file") : exts.join(" ");
+  const state = {items: []};   // {name, path, dir, size}
+  const el = h(`<div class="field grow"><label>${esc(label)}</label>
+    <div class="dz" tabindex="0">
+      <div class="dzi">${I.drop}</div>
+      <div class="dzt"><span><b>Drop ${multi ? "files" : "a file"} here</b> or <u>click to choose</u></span><small>${esc(hint || typeText)}</small></div>
+      <input type="file" class="hidden"${multi ? " multiple" : ""}${accept ? ` accept="${esc(accept)}"` : ""}>
+    </div><div class="chips dzc"></div></div>`);
+  const dz = $(".dz", el), inp = $("input", el), chips = $(".dzc", el);
+  const render = () => {
+    chips.innerHTML = "";
+    state.items.forEach(it => {
+      const c = h(`<span class="chip" title="${esc(it.name)}"><span>${esc(it.name)}</span><small>${fmtSize(it.size)}</small><button title="Remove">×</button></span>`);
+      $("button", c).onclick = (e) => { e.stopPropagation(); PY.unmount(it.dir); state.items = state.items.filter(x => x !== it); render(); onChange && onChange(el.get()); };
+      chips.append(c);
+    });
+    if (multi && state.items.length > 1){
+      const c = h(`<button class="btn sm ghost">Clear all</button>`);
+      c.onclick = () => { state.items.forEach(it => PY.unmount(it.dir)); state.items = []; render(); onChange && onChange(el.get()); };
+      chips.append(c);
+    }
+    dz.classList.toggle("has", state.items.length > 0);
+  };
+  async function add(files){
+    let list = [...files];
+    const bad = anyType ? [] : list.filter(f => !exts.includes(extOf(f.name)));
+    list = list.filter(f => !bad.includes(f));
+    if (bad.length) alert(`Skipped ${bad.length} file(s) that aren't ${exts.join(" / ")}:\n` + bad.map(f => "  • " + f.name).join("\n"));
+    if (!list.length) return;
+    if (!multi) list = list.slice(0, 1);
+    dz.classList.add("busy");
+    try {
+      for (const f of list){
+        const dir = await PY.mount([{rel: f.name, file: f}]);
+        const it = {name: f.name, path: dir + "/" + f.name, dir, size: f.size};
+        if (multi){ state.items = state.items.filter(x => x.name !== f.name).concat(it); }
+        else { state.items.forEach(x => PY.unmount(x.dir)); state.items = [it]; }
+      }
+    } catch(e){ alert("Couldn't load the file: " + e.message); }
+    dz.classList.remove("busy");
+    render(); onChange && onChange(el.get());
+  }
+  dz.onclick = () => inp.click();
+  dz.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inp.click(); } };
+  inp.onchange = () => { add(inp.files); inp.value = ""; };
+  dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("over"); };
+  dz.ondragleave = () => dz.classList.remove("over");
+  dz.ondrop = async (e) => {
+    e.preventDefault(); dz.classList.remove("over");
+    const ents = await entriesFromDataTransfer(e.dataTransfer);   // also picks files out of dropped folders
+    add(ents.map(x => x.file));
+  };
+  render();
+  el.get = () => multi ? state.items.map(i => i.path) : (state.items[0] ? state.items[0].path : "");
+  el.names = () => state.items.map(i => i.name);
+  return el;
+}
+
+/* Drop zone for whole folders -> onFolders([{top, items:[{rel, file}]}]) */
+function folderDrop({label, hint, onFolders}){
+  const el = h(`<div class="field grow"><label>${esc(label)}</label>
+    <div class="dz" tabindex="0"><div class="dzi">${I.folder}</div>
+    <div class="dzt"><span><b>Drop folder(s) here</b> or <u>click to choose a folder</u></span><small>${esc(hint || "")}</small></div>
+    <input type="file" class="hidden" webkitdirectory multiple></div></div>`);
+  const dz = $(".dz", el), inp = $("input", el);
+  const group = (ents) => {
+    const by = new Map();
+    ents.forEach(x => { const top = x.rel.includes("/") ? x.rel.split("/")[0] : ""; if (!by.has(top)) by.set(top, []); by.get(top).push(x); });
+    return [...by].map(([top, items]) => ({top, items}));
+  };
+  const go = async (ents) => { if (!ents.length) return; dz.classList.add("busy"); try { await onFolders(group(ents)); } finally { dz.classList.remove("busy"); } };
+  dz.onclick = () => inp.click();
+  inp.onchange = () => { go([...inp.files].map(f => ({rel: f.webkitRelativePath || f.name, file: f}))); inp.value = ""; };
+  dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("over"); };
+  dz.ondragleave = () => dz.classList.remove("over");
+  dz.ondrop = async (e) => { e.preventDefault(); dz.classList.remove("over"); go(await entriesFromDataTransfer(e.dataTransfer)); };
+  return el;
+}
+
+function nameField(label, defName){
+  const el = h(`<div class="field" style="flex:0 1 340px"><label>${esc(label || "Output file name")}</label><input type="text" value="${esc(defName)}"></div>`);
+  el.get = () => $("input", el).value.trim();
+  return el;
+}
+
+/* ---------- saving outputs ---------- */
+function downloadBlob(name, data){
+  const url = URL.createObjectURL(new Blob([data]));
+  const a = document.createElement("a"); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function saveAllToFolder(files){
+  const dirH = await window.showDirectoryPicker({mode: "readwrite"});
+  for (const f of files){
+    let name = f.name;
+    try { await dirH.getFileHandle(name); if (!confirm(`'${name}' already exists in that folder. Replace it?`)) continue; } catch(e) {}
+    const fh = await dirH.getFileHandle(name, {create: true});
+    const w = await fh.createWritable(); await w.write(f.data); await w.close();
+  }
+  return dirH.name;
+}
+
+/* Run area: big button + progress + live log + output files */
+function runArea(label, icon){
+  const el = h(`<div>
+    <div class="runbar"><button class="btn primary big">${I[icon||"play"]} ${esc(label)}</button><div class="progress"><i></i></div><span class="status"></span></div>
+    <div class="errbox"></div><div class="outputs"></div><div class="log"></div></div>`);
+  const btn = $("button", el), prog = $(".progress", el), stat = $(".status", el), log = $(".log", el), err = $(".errbox", el), outs = $(".outputs", el);
+  el.button = btn;
+  el.reset = () => { err.classList.remove("on"); outs.innerHTML = ""; log.textContent = ""; log.classList.remove("on"); stat.textContent = ""; stat.className = "status"; };
+  el.fail = (m) => { err.textContent = m; err.classList.add("on"); prog.classList.remove("on"); btn.disabled = false; stat.textContent = ""; };
+  const addLog = (t) => { log.classList.add("on"); log.textContent += (log.textContent ? "\n" : "") + t; log.scrollTop = log.scrollHeight; stat.textContent = String(t).split("\n").pop().slice(0, 110); };
+  /* fn/kwargs -> bridge call; resolves with {result, files} */
+  el.run = async (fn, kwargs, opts = {}) => {
+    el.reset(); btn.disabled = true; prog.classList.add("on");
+    stat.textContent = PY.ready ? (opts.busy || "Working…") : "Starting Python (first time ~30 s)…";
+    let r;
+    try { r = await PY.call(fn, kwargs, {needs: opts.needs, onLog: addLog}); }
+    catch(e){ el.fail(e.message); stat.className = "status err"; return null; }
+    btn.disabled = false; prog.classList.remove("on"); stat.textContent = "✔ Finished"; stat.className = "status ok";
+    if (r.files && r.files.length){
+      r.files.forEach(f => {
+        const o = h(`<div class="out">${I.file.replace("<svg","<svg width=20 height=20")}<div class="txt"><b>${esc(f.name)}</b><small>${fmtSize(f.data.byteLength)}</small></div><button class="btn sm">${I.down} Download</button></div>`);
+        $("button", o).onclick = () => downloadBlob(f.name, f.data);
+        outs.append(o);
+      });
+      if (window.showDirectoryPicker){
+        const b = h(`<div class="row"><button class="btn sm">${I.save} Save ${r.files.length > 1 ? "all " : ""}to a folder…</button><span class="status"></span></div>`);
+        $("button", b).onclick = async () => { try { const n = await saveAllToFolder(r.files); $(".status", b).className = "status ok"; $(".status", b).textContent = "Saved to " + n; } catch(e){ if (e.name !== "AbortError") alert(e.message); } };
+        outs.append(b);
+      }
+      if (opts.autoDownload !== false) r.files.forEach(f => downloadBlob(f.name, f.data));
+    }
+    return r;
+  };
+  return el;
+}
+
+/* ---- Tkinter "MultiSelectFilter" (Work Instructions tab 1):
+        search box + click-to-toggle list + All (visible) / Clear + count ---- */
+function listFilter(label){
+  const st = {all: [], sel: new Set()};
+  const el = h(`<div class="lf"><div class="hd">${esc(label)} <span class="cnt">(0)</span></div><input type="text" placeholder="Search…"><ul></ul><div class="btns"><button class="btn sm">All</button><button class="btn sm">Clear</button></div></div>`);
+  const inp = $("input", el), ul = $("ul", el), cnt = $(".cnt", el);
+  const visible = () => { const t = inp.value.trim().toLowerCase(); return t ? st.all.filter(v => String(v).toLowerCase().includes(t)) : st.all; };
+  const render = () => {
+    ul.innerHTML = "";
+    const vis = visible(), frag = document.createDocumentFragment();
+    vis.slice(0, 3000).forEach(v => { const li = document.createElement("li"); li.textContent = v; li.title = v; if (st.sel.has(v)) li.className = "sel"; li.onclick = () => { st.sel.has(v) ? st.sel.delete(v) : st.sel.add(v); li.classList.toggle("sel"); cnt.textContent = `(${st.sel.size})`; }; frag.append(li); });
+    ul.append(frag);
+    if (vis.length > 3000) ul.append(h(`<li style="color:var(--muted);cursor:default">…${vis.length-3000} more – type to search</li>`));
+    cnt.textContent = `(${st.sel.size})`;
+  };
+  inp.oninput = render;
+  const [bAll, bClr] = el.querySelectorAll(".btns .btn");
+  bAll.onclick = () => { visible().forEach(v => st.sel.add(v)); render(); };
+  bClr.onclick = () => { st.sel = new Set(); render(); };
+  el.setValues = vals => { st.all = vals.slice(); st.sel = new Set(); render(); };
+  el.get = () => [...st.sel].sort();
+  el.clear = () => { st.sel = new Set(); inp.value = ""; render(); };
+  return el;
+}
+
+/* ---- Tkinter "MultiSelectCombobox" (Materials tool):
+        button shows All / value / "N selected"; pop-up tick list,
+        type-in custom value + Add, All / None / OK / Cancel ---- */
+let openPop = null;
+function comboFilter(label, width){
+  const st = {values: [], sel: []};
+  const el = h(`<div class="field msc"><label>${esc(label)}</label><button class="btn" type="button"><span class="v">All</span><span>▾</span></button></div>`);
+  const btn = $("button", el), v = $(".v", el);
+  const upd = () => { v.textContent = !st.sel.length ? "All" : st.sel.length === 1 ? st.sel[0] : `${st.sel.length} selected`; v.title = st.sel.join(", "); };
+  if (width) btn.style.minWidth = width + "px";
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    if (openPop) { openPop.remove(); const was = openPop._owner; openPop = null; if (was === el) return; }
+    const pop = h(`<div class="pop"><div class="list"></div><div class="add"><input type="text" placeholder="Type a custom value"><button class="btn sm">Add</button></div><div class="acts"><button class="btn sm">All</button><button class="btn sm">None</button><button class="btn sm primary">OK</button><button class="btn sm">Cancel</button></div></div>`);
+    pop._owner = el; pop.onclick = e => e.stopPropagation();
+    const list = $(".list", pop), checks = new Map();
+    const addRow = (val, on) => { const l = h(`<label><input type="checkbox"> <span></span></label>`); $("span", l).textContent = val; $("input", l).checked = on; list.append(l); checks.set(val, $("input", l)); };
+    [...new Set([...st.values, ...st.sel])].forEach(val => addRow(val, st.sel.includes(val)));
+    if (!checks.size) list.append(h(`<div class="empty" style="padding:12px">No values – load a file first</div>`));
+    const inp = $(".add input", pop);
+    const addCustom = () => { const val = inp.value.trim(); if (!val) return; if (checks.has(val)) checks.get(val).checked = true; else { const e0 = $(".empty", list); e0 && e0.remove(); addRow(val, true); } inp.value = ""; };
+    $(".add .btn", pop).onclick = addCustom; inp.onkeydown = e => { if (e.key === "Enter") addCustom(); };
+    const [bA, bN, bOk, bC] = pop.querySelectorAll(".acts .btn");
+    bA.onclick = () => checks.forEach(c => c.checked = true);
+    bN.onclick = () => checks.forEach(c => c.checked = false);
+    bOk.onclick = () => { st.sel = [...checks].filter(([, c]) => c.checked).map(([k]) => k); upd(); pop.remove(); openPop = null; el.onchange && el.onchange(); };
+    bC.onclick = () => { pop.remove(); openPop = null; };
+    el.append(pop); openPop = pop;
+  };
+  el.setValues = vals => { st.values = vals.slice(); };
+  el.setSelection = vals => { st.sel = vals.slice(); upd(); };
+  el.clear = () => { st.sel = []; upd(); };
+  el.get = () => st.sel.slice();
+  return el;
+}
+document.addEventListener("click", () => { if (openPop){ openPop.remove(); openPop = null; } });
+
+function tableEl(columns, rows){
+  const t = h(`<div class="tablewrap"><table><thead><tr>${columns.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody></tbody></table></div>`);
+  const tb = $("tbody", t);
+  tb.innerHTML = rows.map(r => `<tr>${r.map(c => `<td title="${esc(c)}">${esc(c)}</td>`).join("")}</tr>`).join("");
+  return t;
+}
+
+
+
+/* ======================================================================
+   Tools & dashboards
+   ====================================================================== */
+const TOOLS = [
+  {id:"tp", n:1, c:"c1", icon:"target", title:"Target Price → Control File",
+   desc:"Copy a Template_CF and fill Auxiliar, Block1 and PA CONTROL from a Target Price (.xlsm), reviewing similar line names first."},
+  {id:"aggregate", n:2, c:"c2", icon:"layers", title:"Aggregate Control Files",
+   desc:"Read Block1 + PA CONTROL from many Control Files and build CF_aggregated (.xlsx + two .parquet files)."},
+  {id:"master", n:3, c:"c3", icon:"db", title:"Build Master Parquet",
+   desc:"Join CF_aggregated with the Project Tracker (PID / PO) and the miscelaneous file (MD Poling, Man_day)."},
+  {id:"outputs", n:4, c:"c4", icon:"chart", title:"Outputs (CV Excel Report)",
+   desc:"The Outputs workbook: filter the master by district, project, circuit, category and dates, pick CV groups and export Summary, Combined, category and CV8 / CV31 sheets."},
+  {id:"wi", n:5, c:"c5", icon:"map", title:"Work Instructions & Map Check",
+   desc:"Generate the Work Instructions Word document and cross-check WorkPack maps (PDF) against the Control File."},
+];
+/* The Streamlit dashboards keep running from Jupyter / Anaconda as before;
+   the page shows them when they're up. Change a port here if yours differ. */
+const DASHES = [
+  {key:"tracker", port:8501, c:"c2", icon:"grid", title:"Network Job Tracker", file:"network_job_tracker.py",
+   desc:"Network jobs from the latest Master file, the outages programme calendar and job status."},
+  {key:"master", port:8502, c:"c1", icon:"pound", title:"Master Control", file:"master_control_dashboard.py",
+   desc:"Job costing: totals by date and team leader, PID breakdown and financial health."},
+  {key:"materials", port:8503, c:"c3", icon:"box3", title:"Materials Breakdown", file:"app.py (materials)",
+   desc:"Poles, Free Issue and GUK materials needed for the filtered Control File, with the maps check and Excel export."},
+];
+
+const app = $("#app");
+
+function home(){
+  app.innerHTML = "";
+  app.append(h(`<p class="intro">Pick a tool, then drag your files onto it. Everything runs here in your browser – files never leave your PC, and nothing needs installing.</p>`));
+  app.append(h(`<div class="flow">Usual order: ${TOOLS.map(t=>`<span class="step">${t.n}. ${esc(t.title)}</span>`).join(` ${I.arrow} `)}</div>`));
+  const g = h(`<div class="grid"></div>`);
+  TOOLS.forEach(t => {
+    const tile = h(`<button class="tile"><div class="ico ${t.c}">${I[t.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag">Step ${t.n}</span><h3>${esc(t.title)}</h3><p>${esc(t.desc)}</p><span class="go">Open ${I.arrow}</span></button>`);
+    tile.onclick = () => { location.hash = t.id; };
+    g.append(tile);
+  });
+  app.append(g);
+  app.append(h(`<h2 class="section">Dashboards</h2>`));
+  app.append(h(`<p class="intro">Your Streamlit dashboards. Start them from Jupyter as usual – they show up here while they're running.</p>`));
+  const dg = h(`<div class="grid"></div>`);
+  DASHES.forEach(d => {
+    const tile = h(`<button class="tile"><div class="ico ${d.c}">${I[d.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag dstat" data-state="">Checking…</span><h3>${esc(d.title)}</h3><p>${esc(d.desc)}</p><span class="go">Open dashboard ${I.arrow}</span></button>`);
+    tile.onclick = () => { location.hash = "dash/" + d.key; };
+    dg.append(tile);
+    dashUp(d.port).then(up => { const t = $(".dstat", tile); t.textContent = up ? "● Running" : "○ Not running"; t.dataset.state = up ? "running" : "stopped"; });
+  });
+  app.append(dg);
+}
+
+async function dashUp(port){
+  try { await fetch(`http://localhost:${port}/_stcore/health`, {mode: "no-cors", cache: "no-store"}); return true; }
+  catch(e){ return false; }
+}
+
+function toolHead(t, back = "All tools"){
+  const el = h(`<div class="toolhead"><button class="btn back">${I.back} ${esc(back)}</button><div class="ico ${t.c}">${I[t.icon].replace("<svg","<svg width=26 height=26")}</div><div style="flex:1"><h2>${esc(t.title)}</h2><p>${esc(t.desc)}</p></div></div>`);
+  $(".back", el).onclick = () => { location.hash = ""; };
+  return el;
+}
+
+let dashToken = 0;
+function pageDash(d){
+  const token = ++dashToken;
+  const head = toolHead(d);
+  head.append(h(`<span class="tag dstat">Checking…</span>`), h(`<a class="btn sm" target="_blank" rel="noopener" href="http://localhost:${d.port}/">${I.ext} Open in new tab</a>`));
+  const msg = h(`<section class="box"></section>`);
+  const frameBox = h(`<div class="dashframe hidden"><iframe title="${esc(d.title)}"></iframe></div>`);
+  app.append(head, msg, frameBox);
+  const tag = $(".dstat", head), frame = $("iframe", frameBox);
+  let shown = false;
+  async function tick(){
+    if (token !== dashToken) return;
+    const up = await dashUp(d.port);
+    tag.textContent = up ? "● Running" : "○ Not running"; tag.dataset.state = up ? "running" : "stopped";
+    if (up && !shown){ frame.src = `http://localhost:${d.port}/`; shown = true; msg.classList.add("hidden"); frameBox.classList.remove("hidden"); }
+    if (!up){
+      shown = false; frameBox.classList.add("hidden"); msg.classList.remove("hidden");
+      msg.innerHTML = `<h4><span class="num">!</span>${esc(d.title)} isn't running on this PC</h4>
+        <p class="hint">Start it the way you normally do – from Jupyter (<code>launch_dashboard("${d.key}")</code>) or an Anaconda Prompt:</p>
+        <div class="log on" style="max-height:none">streamlit run ${esc(d.file)} --server.port ${d.port}</div>
+        <p class="hint" style="margin-top:12px">This page checks every few seconds and shows it here as soon as it's up (port ${d.port}).</p>`;
+    }
+    setTimeout(tick, up ? 20000 : 4000);
+  }
+  tick();
+}
+
+/* ---------------- Tool 1: Target Price -> Control File ---------------- */
+function pageTP(t){
+  const b1 = box(1, "Drop the files", "Same two files the program used to ask for: the Template_CF, then the Target Price file.");
+  const ctrl = dropField({label: "Template_CF Excel (Control File)", kind: "file", types: [["Excel files", ".xlsx,.xlsm"]]});
+  const tp = dropField({label: "Target Price Excel (.xlsm)", kind: "file", types: [["Excel Macro-Enabled Workbook", ".xlsm"], ["All files", ""]], hint: ".xlsm (other files allowed)", onChange: () => { pairs = null; pairsBox.innerHTML = ""; }});
+  const r = h(`<div class="row"></div>`); r.append(ctrl, tp); b1.append(r);
+
+  const b2 = box(2, "Review similar line names", "Lines ≥ 90% alike in 'Pole Materials' are listed so you can keep line 1, line 2, or both (was the “Choose Line” pop-up).");
+  const pairsBox = h(`<div></div>`);
+  const check = runArea("Check for similar lines", "search");
+  b2.append(check, pairsBox);
+  let pairs = null;
+  check.button.onclick = async () => {
+    if (!tp.get()) { check.fail("Drop the Target Price file first."); return; }
+    pairsBox.innerHTML = ""; pairs = null;
+    const s = await check.run("tp_analyze", {tp: tp.get()}, {busy: "Reading the Target Price…"});
+    if (!s) return;
+    const res = s.result; pairs = res.pairs;
+    pairsBox.append(h(`<div class="row" style="margin:12px 0"><span class="chip">PM: <b>${esc(res.pm)}</b></span><span class="chip">Scheme: <b>${esc(res.scheme_title)}</b></span><span class="chip">PID: <b>${esc(res.pid||"—")}</b></span></div>`));
+    if (!pairs.length){ pairsBox.append(h(`<p class="status ok">✅ No similar lines detected – nothing to decide.</p>`)); return; }
+    pairs.forEach((p, i) => pairsBox.append(h(`<div class="pair"><div class="meta">Sheet: ${esc(p.sheet)} · Similarity: ${p.similarity}%</div>
+      <div class="ln"><b>1:</b> ${esc(p.s1)}</div><div class="ln"><b>2:</b> ${esc(p.s2)}</div><div class="diff">${esc(p.diff)}</div>
+      <div class="seg"><label><input type="radio" name="pc${i}" value="1" checked><span>Use line 1</span></label><label><input type="radio" name="pc${i}" value="2"><span>Use line 2</span></label><label><input type="radio" name="pc${i}" value="keep_both"><span>Keep both</span></label></div></div>`)));
+  };
+
+  const b3 = box(3, "Write into the Control File", "Creates “&lt;Control File&gt;_&lt;Scheme Title&gt;” with formulas and macros kept, and downloads it.");
+  const go = runArea("Write to Control File");
+  b3.append(go);
+  go.button.onclick = () => {
+    if (!ctrl.get() || !tp.get()) { go.fail("Drop both files in step 1."); return; }
+    if (pairs === null && !confirm("You haven't run “Check for similar lines”. Any similar lines will default to line 1. Continue?")) return;
+    const choices = (pairs || []).map((_, i) => (b2.querySelector(`input[name=pc${i}]:checked`) || {}).value || "1");
+    go.run("tp_run", {control: ctrl.get(), tp: tp.get(), choices}, {busy: "Writing…"});
+  };
+  app.append(b1, b2, b3);
+}
+
+/* ---------------- Tool 2: Aggregate Control Files ---------------- */
+function pageAggregate(t){
+  const b1 = box(1, "Drop the Control Files to aggregate", "Drop as many as you like, in one go or a few at a time. You can also drop a whole folder – the Excel files inside are picked up.");
+  const files = dropField({label: "Control Files", kind: "files", types: [["Excel files", ".xlsx,.xlsm,.xls,.xlsb"]]});
+  b1.append(files);
+  const b2 = box(2, "Output name", "Downloads the Excel file plus <i>name</i>_aggregated.parquet and <i>name</i>_resume.parquet.");
+  const nm = nameField("Aggregated Excel file name", "CF_aggregated.xlsx"); b2.append(nm);
+  const b3 = box(3, "Run");
+  const run = runArea("Aggregate Control Files");
+  b3.append(run);
+  run.button.onclick = () => {
+    if (!files.get().length) { run.fail("Drop at least one Control File."); return; }
+    run.run("aggregate", {files: files.get(), output_name: nm.get()}, {needs: NEED_PARQUET, busy: "Reading Control Files…"});
+  };
+  app.append(b1, b2, b3);
+}
+
+/* ---------------- Tool 3: Build Master ---------------- */
+function pageMaster(t){
+  const b1 = box(1, "Drop the three input files");
+  const pq = [["Parquet", ".parquet"]];
+  const agg = dropField({label: "CF_aggregated.parquet", kind: "file", types: pq});
+  const trk = dropField({label: "Project Tracker.parquet", kind: "file", types: pq});
+  const misc = dropField({label: "miscelaneous.parquet", kind: "file", types: pq});
+  const r = h(`<div class="row"></div>`); r.append(agg, trk, misc); b1.append(r);
+  const md = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" checked> Also add <b>Man_day</b> (from the miscelaneous file's “man_day” column)</label>`);
+  b1.append(md);
+  const b2 = box(2, "Output name", "An .xlsx copy with the same name is downloaded too.");
+  const nm = nameField("Master parquet file name", "Master_" + new Date().toLocaleDateString("en-GB").replace(/\//g, "-") + ".parquet"); b2.append(nm);
+  const b3 = box(3, "Run");
+  const run = runArea("Build Master");
+  b3.append(run);
+  run.button.onclick = () => {
+    if (!agg.get() || !trk.get() || !misc.get()) { run.fail("Drop all three input files."); return; }
+    run.run("master", {aggregated: agg.get(), tracker: trk.get(), misc: misc.get(), output_name: nm.get(), include_man_day: $("input", md).checked}, {needs: NEED_PARQUET, busy: "Building master…"});
+  };
+  app.append(b1, b2, b3);
+}
+
+/* ---------------- Tool 4: Outputs (CV Excel report) ---------------- */
+function logoField(label, key){
+  /* optional logo image, remembered in this browser so it's only dropped once */
+  const el = dropField({label, kind: "file", types: [["Images", ".png,.jpg,.jpeg"]], hint: "optional – remembered for next time",
+    onChange: async () => {
+      try {
+        const f = el._lastFile; if (!f) return;
+        const r = new FileReader(); r.onload = () => store.set(key, {name: f.name, data: r.result}); r.readAsDataURL(f);
+      } catch(e) {}
+    }});
+  const inp = $("input", el), dz = $(".dz", el);
+  const keep = (f) => { el._lastFile = f; };
+  inp.addEventListener("change", () => inp.files[0] && keep(inp.files[0]), true);
+  dz.addEventListener("drop", (e) => e.dataTransfer.files[0] && keep(e.dataTransfer.files[0]), true);
+  const saved = store.get(key, null);
+  if (saved && saved.data) {
+    fetch(saved.data).then(r => r.blob()).then(b => {
+      const f = new File([b], saved.name, {type: b.type});
+      const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files; inp.dispatchEvent(new Event("change"));
+    }).catch(() => {});
+  }
+  return el;
+}
+
+function pageOutputs(t){
+  let path = "";
+  const b1 = box(1, "Load CSV / Parquet");
+  const src = dropField({label: "Master file", kind: "file", types: [["Parquet", ".parquet"], ["CSV", ".csv"]],
+                         onChange: v => { path = v; if (v) load(); }});
+  const loadStat = h(`<p class="status" style="margin:10px 0 0"></p>`);
+  b1.append(src, loadStat);
+
+  const b2 = box(2, "Filters", "Leave a box on “All” for no restriction. Each box also lets you type in your own value.");
+  const cols = ["shire", "project", "circuit", "project_name", "cat"];
+  const labels = {cat: "Category"};
+  const boxes = {};
+  const fr = h(`<div class="mfilters"></div>`);
+  cols.forEach(c => { boxes[c] = comboFilter(labels[c] || c); fr.append(boxes[c]); });
+  b2.append(fr);
+  const dateRow = h(`<div class="row" style="margin-top:14px"></div>`);
+  const dateBox = comboFilter("Date Filter", 230);
+  const start = h(`<div class="field"><label>Start</label><input type="date"></div>`);
+  const end = h(`<div class="field"><label>End</label><input type="date"></div>`);
+  dateRow.append(dateBox, start, end);
+  b2.append(dateRow);
+  const cvRow = h(`<div class="row" style="margin-top:14px"></div>`);
+  const cvBox = comboFilter("CV Groups (All = every group)", 230);
+  cvRow.append(cvBox); b2.append(cvRow);
+  const applyRow = h(`<div class="runbar" style="margin-top:16px"><button class="btn">${I.filter} Apply Filters</button><span class="status"></span></div>`);
+  b2.append(applyRow);
+  const applyStat = $(".status", applyRow);
+
+  const payload = () => ({path, filters: Object.fromEntries(cols.map(c => [c, boxes[c].get()])), dates: dateBox.get(),
+                          start: $("input", start).value, end: $("input", end).value});
+  async function load(){
+    loadStat.className = "status"; loadStat.textContent = PY.ready ? "Loading the file…" : "Starting Python and loading the file (first time ~30 s)…";
+    try {
+      const o = (await PY.call("outputs_options", {path}, {needs: NEED_OUTPUTS})).result;
+      cols.forEach(c => { boxes[c].setValues(o.options[c] || []); boxes[c].clear(); });
+      dateBox.setValues(o.date_options); dateBox.setSelection(o.date_default);
+      cvBox.setValues(o.cv_groups); cvBox.clear();
+      loadStat.className = "status ok"; loadStat.textContent = `Loaded ${o.rows} rows`;
+      applyStat.textContent = "";
+    } catch(e){ loadStat.className = "status err"; loadStat.textContent = e.message; }
+  }
+  $(".btn", applyRow).onclick = async () => {
+    if (!path) { applyStat.className = "status err"; applyStat.textContent = "Load a file first."; return; }
+    applyStat.className = "status"; applyStat.textContent = "Filtering…";
+    try { const r = (await PY.call("outputs_apply", payload(), {needs: NEED_OUTPUTS})).result; applyStat.className = "status ok"; applyStat.textContent = `Filtered rows: ${r.rows}`; }
+    catch(e){ applyStat.className = "status err"; applyStat.textContent = e.message; }
+  };
+
+  const b3 = box(3, "Export Excel", "Summary, Combined, one sheet per category and the CV8 / CV31 resumes. Drop the two logos once to have them in the top corner, as before.");
+  const lr = h(`<div class="row"></div>`);
+  const logoL = logoField("Gaeltec logo (GaeltecImage.png)", "logo_left");
+  const logoR = logoField("SPEN logo (SPEN.png)", "logo_right");
+  lr.append(logoL, logoR);
+  const nm = nameField("Output file name", "Outputs_Report.xlsx");
+  const run = runArea("Export Excel", "save");
+  b3.append(lr, h(`<div style="height:12px"></div>`), nm, h(`<div style="height:12px"></div>`), run);
+  run.button.onclick = () => {
+    if (!path) { run.fail("Load a file first (step 1)."); return; }
+    run.run("outputs_export", {...payload(), cv_groups: cvBox.get(), output_name: nm.get(), logo_left: logoL.get(), logo_right: logoR.get()}, {needs: NEED_OUTPUTS, busy: "Generating the Excel file…"});
+  };
+  app.append(b1, b2, b3);
+}
+
+/* ---------------- Tool 5: Work Instructions & Map check ---------------- */
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function outageLayout(top, items){
+  /* Put a dropped folder where it belongs in the Outages Programme layout
+     (<YYYY>/<MM - Month>/<outage>) so the SAME network-scan code can run on
+     it, and its maps can be linked back to the real share. */
+  const subs = new Set(items.map(x => x.rel.split("/")[1]).filter(Boolean));
+  if ([...subs].some(s => /^\d{4}$/.test(s))) return {prefix: "", rootSuffix: "/" + top, kind: "programme"};   // the whole Outages Programme folder
+  if (/^\d{4}$/.test(top)) return {prefix: "", rootSuffix: "", kind: "year"};
+  if (/^\d{2}\s*-\s*.+$/.test(top)){
+    const m = items.map(x => x.rel.match(/(\d{2})-(\d{2})-(\d{4})/)).find(Boolean);
+    if (m) return {prefix: m[3] + "/", rootSuffix: "", kind: "month"};
+    return null;
+  }
+  const d = top.match(/^(\d{2})(?:_\d{2})?-(\d{2})-(\d{4})/);
+  if (d) return {prefix: `${d[3]}/${d[2]} - ${MONTHS[+d[2]-1]}/`, rootSuffix: "", kind: "outage"};
+  return null;
+}
+
+function pageWI(t){
+  let path = "";
+  let pdfEntries = [];
+  const scanRoots = [];
+  const tabs = h(`<div class="tabs"><button class="tab on"><span class="num">1</span>Load &amp; Filter</button><button class="tab"><span class="num">2</span>Generate Work Instructions</button><button class="tab"><span class="num">3</span>Check WorkPacks vs Control Files</button></div>`);
+  const panes = [h(`<div></div>`), h(`<div class="hidden"></div>`), h(`<div class="hidden"></div>`)];
+  [...tabs.children].forEach((b, i) => b.onclick = () => { [...tabs.children].forEach((x, j) => x.classList.toggle("on", i === j)); panes.forEach((p, j) => p.classList.toggle("hidden", i !== j)); });
+  app.append(tabs, ...panes);
+
+  /* --- Tab 1 --- */
+  const a1 = box(null, `${I.db.replace("<svg","<svg width=18 height=18")} Master parquet file`);
+  const src = dropField({label: "Master parquet file", kind: "file", types: [["Parquet files", ".parquet"]],
+                         onChange: v => { path = v; if (v) load(); }});
+  const loadStat = h(`<p class="status" style="margin:10px 0 0">No file loaded</p>`);
+  a1.append(src, loadStat);
+  const a2 = box(null, `${I.filter.replace("<svg","<svg width=18 height=18")} Filters`, "Search to narrow a list, click items to toggle, leave a filter empty = no restriction on that field.");
+  const dr = h(`<div class="row" style="margin-bottom:12px"></div>`);
+  const dFrom = h(`<div class="field"><label>Date from</label><input type="date"></div>`);
+  const dTo = h(`<div class="field"><label>Date to</label><input type="date"></div>`);
+  dr.append(dFrom, dTo, h(`<span class="status">(this range also drives the map scan on tab 3)</span>`));
+  a2.append(dr);
+  const fdefs = [["shires","District"],["projects","Project"],["circuits","Circuit"],["sourcefiles","Sourcefile"],["poles","Pole"]];
+  const lf = {}; const grid = h(`<div class="lfilters"></div>`);
+  fdefs.forEach(([k, l]) => { lf[k] = listFilter(l); grid.append(lf[k]); });
+  a2.append(grid);
+  const ar = h(`<div class="runbar" style="margin-top:14px"><button class="btn primary">${I.filter} Apply filters</button><button class="btn">Clear all filters</button><span class="status"></span></div>`);
+  a2.append(ar);
+  const fStat = $(".status", ar);
+  const a3 = box(null, "Preview (filtered rows, first 500)");
+  const prevWrap = h(`<div><p class="status">Load a file to see a preview.</p></div>`);
+  a3.append(prevWrap);
+  panes[0].append(a1, a2, a3);
+
+  const filters = () => ({...Object.fromEntries(fdefs.map(([k]) => [k, lf[k].get()])), date_from: $("input", dFrom).value, date_to: $("input", dTo).value});
+  async function preview(){
+    fStat.className = "status"; fStat.textContent = "Filtering…";
+    try {
+      const r = (await PY.call("wi_preview", {path, filters: filters()}, {needs: NEED_WI})).result;
+      fStat.className = "status ok"; fStat.textContent = `${r.count} rows match the filters`;
+      prevWrap.innerHTML = ""; prevWrap.append(tableEl(r.columns, r.rows));
+    } catch(e){ fStat.className = "status err"; fStat.textContent = e.message; }
+  }
+  async function load(){
+    loadStat.className = "status"; loadStat.textContent = PY.ready ? "Loading…" : "Starting Python and loading the file (first time ~30–60 s)…";
+    try {
+      const o = (await PY.call("wi_options", {path}, {needs: NEED_WI})).result;
+      o.fields.forEach(f => lf[f.key].setValues(f.values));
+      loadStat.className = "status ok"; loadStat.textContent = `${src.names()[0]}  (${o.rows} rows)`;
+      preview();
+    } catch(e){ loadStat.className = "status err"; loadStat.textContent = e.message; }
+  }
+  const [bApply, bClear] = ar.querySelectorAll(".btn");
+  bApply.onclick = () => { if (!path) { fStat.className = "status err"; fStat.textContent = "Please load a parquet file first."; return; } preview(); };
+  bClear.onclick = () => { fdefs.forEach(([k]) => lf[k].clear()); $("input", dFrom).value = ""; $("input", dTo).value = ""; if (path) preview(); };
+
+  /* shared "maps selected" label (tabs 2 and 3) */
+  const mapLabels = [];
+  const mapLabel = () => { const el = h(`<span class="chip"></span>`); mapLabels.push(el); refreshMaps(); return el; };
+  function refreshMaps(){
+    const n = pdfEntries.length, nf = new Set(pdfEntries.map(e => e.folder).filter(Boolean)).size;
+    const txt = !n ? "No PDFs selected" : nf ? `${n} PDF(s) selected (${nf} folder(s))` : `${n} PDF(s) selected`;
+    mapLabels.forEach(l => l.textContent = "🗺 " + txt);
+  }
+  function addEntries(list){
+    // _key = where the map sits in the Outages layout, so dropping overlapping
+    // folders (e.g. a month, then its year) doesn't add the same map twice
+    const have = new Set(pdfEntries.map(e => e._key || e.path));
+    list.forEach(e => { const k = e._key || e.path; if (!have.has(k)) { pdfEntries.push(e); have.add(k); } });
+    refreshMaps();
+  }
+
+  /* --- Tab 2 --- */
+  const w1 = box(1, `Work Instructions document`, "Built from the CURRENTLY FILTERED rows (tab 1): one header block per date + sourcefile, poles bulleted with their MD Poling instructions in workflow order, Times New Roman 12pt double-spaced. Joint items show red/underlined; a quantity of 1 is never shown.");
+  const useMap = h(`<label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" checked> Order poles per the map sequence (uses the maps added on tab 3, if any)</label>`);
+  const mapRow = h(`<div class="row" style="margin-bottom:12px"></div>`); mapRow.append(mapLabel());
+  const nmW = nameField("Output file name", "Work_Instructions.docx");
+  const runW = runArea("Generate Work Instructions", "word");
+  w1.append(useMap, mapRow, nmW, h(`<div style="height:12px"></div>`), runW);
+  panes[1].append(w1);
+  runW.button.onclick = () => {
+    if (!path) { runW.fail("Load a parquet file and apply filters first (tab 1)."); return; }
+    runW.run("wi_word", {path, filters: filters(), pdf_entries: pdfEntries, use_map_order: $("input", useMap).checked, output_name: nmW.get()}, {needs: NEED_WI, busy: "Generating document…"});
+  };
+
+  /* --- Tab 3 --- */
+  const p1 = box(1, "Scan an Outages Programme folder for Workpack zones",
+    "Drop year or month folders from “1 - Outages Programme” (e.g. <b>2026</b> or <b>09 - September</b>), or single outage folders. The same scan as before runs on them using the date range from tab 1 – every outage folder in range is searched for “Workpack zones” folders (or its deepest folders with PDFs).");
+  const scanStat = runArea("", "search"); $(".runbar .btn", scanStat).classList.add("hidden");
+  const scanDrop = folderDrop({label: "Outages folder(s)", hint: "tip: drop the month folder – dropping the whole programme works too but reads more",
+    onFolders: async (groups) => {
+      const dfv = $("input", dFrom).value, dtv = $("input", dTo).value;
+      if (!dfv && !dtv && !confirm("No date range is set on tab 1. This will scan EVERY outage folder in what you dropped, which may find a very large number of maps.\n\nContinue anyway?")) return;
+      for (const g of groups){
+        const lay = outageLayout(g.top, g.items);
+        if (!lay){ alert(`“${g.top || "(files)"}” doesn't look like a year, month or dated outage folder from the Outages Programme.\nUse “Add maps manually” below for other folders.`); continue; }
+        const dir = await PY.mount(g.items.map(x => ({rel: lay.prefix + x.rel, file: x.file})));
+        const root = dir + lay.rootSuffix;
+        scanRoots.push(root);
+        const s = await scanStat.run("wi_scan", {root, date_from: dfv, date_to: dtv}, {needs: NEED_WI, busy: `Scanning ${g.top}…`, autoDownload: false});
+        if (!s) continue;
+        const r = s.result;
+        r.entries.forEach(e => { e._key = "outages:" + e.path.slice(root.length); });
+        addEntries(r.entries);
+        if (r.no_zone_outages.length) {
+          const list = r.no_zone_outages.slice(0,25).map(o => "  • " + o).join("\n") + (r.no_zone_outages.length > 25 ? `\n  (+${r.no_zone_outages.length-25} more)` : "");
+          alert(r.entries.length
+            ? `These ${r.no_zone_outages.length} outage folder(s) were in range and scanned, but had no 'Workpack zones' folder inside them - they legitimately contribute no maps:\n${list}`
+            : `No PDF maps were found inside 'Workpack zones' folders for the selected date range.\n\n${r.no_zone_outages.length} outage folder(s) in this date range had no 'Workpack zones' folder at all:\n${list}`);
+        } else if (!r.entries.length) alert("No PDF maps were found inside 'Workpack zones' folders for the selected date range.");
+      }
+    }});
+  p1.append(scanDrop, scanStat);
+
+  const p2 = box(2, "Or add maps manually");
+  const r2 = h(`<div class="row"></div>`);
+  const manFolder = folderDrop({label: "A folder of PDF drawings", hint: "every PDF inside is added",
+    onFolders: async (groups) => {
+      for (const g of groups){
+        const dir = await PY.mount(g.items.map(x => ({rel: x.rel, file: x.file})));
+        try { const r = (await PY.call("wi_add_folder", {folder: g.top ? dir + "/" + g.top : dir}, {needs: NEED_WI})).result; addEntries(r.entries); manStat.className = "status ok"; manStat.textContent = `Added ${r.entries.length} PDF(s) from ${g.top || "the dropped files"}`; }
+        catch(e){ manStat.className = "status err"; manStat.textContent = e.message; }
+      }
+    }});
+  const manFiles = dropField({label: "Individual PDF files", kind: "files", types: [["PDF files", ".pdf"]],
+    onChange: async (paths) => {
+      try { const r = (await PY.call("wi_add_files", {files: paths}, {needs: NEED_WI})).result; addEntries(r.entries); } catch(e){ manStat.className = "status err"; manStat.textContent = e.message; }
+    }});
+  r2.append(manFolder, manFiles);
+  const r2b = h(`<div class="row" style="margin-top:10px"><button class="btn">Clear selection</button></div>`); r2b.append(mapLabel());
+  const manStat = h(`<p class="status" style="margin:8px 0 0"></p>`);
+  p2.append(r2, r2b, manStat);
+  $(".btn", r2b).onclick = () => { pdfEntries = []; refreshMaps(); manStat.textContent = ""; };
+
+  const p3 = box(3, "Cross-reference report", "Excel workbook with 4 sheets: Control File Vs maps · Pole Summary · Poles not found in maps · Poles without dates on CF. Map names from the scan are hyperlinked to the real PDFs on the share.");
+  const thr = h(`<div class="field"><label>Similarity threshold (%)</label><input type="number" min="0" max="100" value="85" style="width:110px"></div>`);
+  const realRoot = h(`<div class="field grow"><label>Real location of the Outages Programme (for the map links)</label><input type="text"></div>`);
+  $("input", realRoot).value = store.get("wi_real_root", NETWORK_ROOT);
+  $("input", realRoot).onchange = e => store.set("wi_real_root", e.target.value);
+  const drive = h(`<div class="field"><label>Mapped drive (optional, e.g. Z:)</label><input type="text" style="width:110px"></div>`);
+  const r3 = h(`<div class="row" style="margin-bottom:12px"></div>`); r3.append(thr, realRoot, drive);
+  const nmR = nameField("Output file name", "Pole_PDF_CrossReference_Report.xlsx");
+  const runR = runArea("Generate cross-reference report", "chart");
+  p3.append(r3, nmR, h(`<div style="height:12px"></div>`), runR);
+  runR.button.onclick = () => {
+    if (!path) { runR.fail("Load a parquet file and apply filters first."); return; }
+    if (!pdfEntries.length) { runR.fail("Add at least one map first – drop an Outages folder above, or add maps manually."); return; }
+    if (isNaN(parseFloat($("input", thr).value))) { runR.fail("Threshold must be a number, e.g. 85"); return; }
+    runR.run("wi_report", {path, filters: filters(), pdf_entries: pdfEntries, threshold: parseFloat($("input", thr).value),
+      scan_roots: scanRoots, real_root: $("input", realRoot).value, drive_letter: $("input", drive).value, output_name: nmR.get()}, {needs: NEED_WI, busy: "Reading PDFs…"});
+  };
+  panes[2].append(p1, p2, p3);
+}
+
+/* ---------------- router ---------------- */
+const PAGES = {tp: pageTP, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
+function route(){
+  const id = location.hash.replace("#", "");
+  window.scrollTo(0, 0);
+  dashToken++;
+  app.innerHTML = "";
+  if (id.startsWith("dash/")){ const d = DASHES.find(x => x.key === id.slice(5)); if (d) return pageDash(d); }
+  const t = TOOLS.find(x => x.id === id);
+  if (!t) return home();
+  app.append(toolHead(t)); PAGES[id](t);
+}
+window.addEventListener("hashchange", route);
+/* stop the browser opening a file that's dropped outside a drop zone */
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+
+/* ---------------- start ---------------- */
+(function(){
+  const pill = $("#srv");
+  PY.onStatus((text, state) => {
+    pill.innerHTML = `<span class="dot ${state === "on" ? "on" : state === "off" ? "off" : "busy"}"></span><span>${esc(text)}</span>`;
+    pill.title = text;
+  });
+  route();
+  PY.start().catch(() => {});   // start loading Python straight away, in the background
+})();
+
+</script>
+</body>
+</html>
