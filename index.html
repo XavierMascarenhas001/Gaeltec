@@ -524,7 +524,7 @@ details.dmap[open] summary{margin-bottom:10px}
 <header>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports</p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 25-Sep-2026 (dashboards built in)</b></p>
   </div>
   <div class="spacer"></div>
   <span class="pill pystat" id="srv"><span class="dot busy"></span><span>Starting Python…</span></span>
@@ -1521,7 +1521,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 25-Sep-2026</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
