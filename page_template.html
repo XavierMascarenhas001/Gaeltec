@@ -13,9 +13,11 @@
   --shadow:0 1px 2px rgba(16,33,58,.06),0 4px 16px rgba(16,33,58,.06);
   --radius:14px;
 }
+:root[data-theme=dark]{--bg:#0D1524;--card:#152036;--ink:#E6ECF5;--muted:#9AA9BF;--line:#26344F;
+        --sky-soft:#0F3346;--ok-soft:#10301F;--err-soft:#3A1717;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);color-scheme:dark}
 @media (prefers-color-scheme: dark){
-  :root{--bg:#0D1524;--card:#152036;--ink:#E6ECF5;--muted:#9AA9BF;--line:#26344F;
-        --sky-soft:#0F3346;--ok-soft:#10301F;--err-soft:#3A1717;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);}
+  :root:not([data-theme=light]){--bg:#0D1524;--card:#152036;--ink:#E6ECF5;--muted:#9AA9BF;--line:#26344F;
+        --sky-soft:#0F3346;--ok-soft:#10301F;--err-soft:#3A1717;--shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);color-scheme:dark}
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -46,7 +48,8 @@ main{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
 .tile h3{margin:4px 0 0;font-size:18px}
 .tile p{margin:0;color:var(--muted);font-size:14px;flex:1}
 .tile .tag{align-self:flex-start;font-size:12px;font-weight:600;color:var(--blue);background:var(--sky-soft);padding:3px 10px;border-radius:99px}
-@media (prefers-color-scheme: dark){.tile .tag{color:#7FD3F0}}
+:root[data-theme=dark] .tile .tag{color:#7FD3F0}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]) .tile .tag{color:#7FD3F0}}
 .tile .go{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--sky)}
 .c1{background:linear-gradient(135deg,#1F4E78,#2E86C1)}.c2{background:linear-gradient(135deg,#0E7C86,#1ABC9C)}
 .c3{background:linear-gradient(135deg,#6C3FB5,#9B59B6)}.c4{background:linear-gradient(135deg,#C0762B,#E6A23C)}
@@ -214,6 +217,7 @@ h2.section{margin:34px 0 4px;font-size:20px}
 .dashframe iframe{display:block;width:100%;height:calc(100vh - 210px);min-height:640px;border:0;background:#fff}
 code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-radius:5px}
 @media (max-width:700px){.toolhead{flex-wrap:wrap}}
+/*__DASH_CSS__*/
 </style>
 </head>
 <body>
@@ -223,7 +227,7 @@ code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-
     <p>SPEN Planning · OHLT UK — control files, master data and reports</p>
   </div>
   <div class="spacer"></div>
-  <span class="pill" id="srv"><span class="dot busy"></span><span>Starting Python…</span></span>
+  <span class="pill pystat" id="srv"><span class="dot busy"></span><span>Starting Python…</span></span>
 </header>
 <main id="app"></main>
 
@@ -583,6 +587,8 @@ function tableEl(columns, rows){
 
 
 
+/*__DASH_JS__*/
+
 /* ======================================================================
    Tools & dashboards
    ====================================================================== */
@@ -598,17 +604,6 @@ const TOOLS = [
   {id:"wi", n:5, c:"c5", icon:"map", title:"Work Instructions & Map Check",
    desc:"Generate the Work Instructions Word document and cross-check WorkPack maps (PDF) against the Control File."},
 ];
-/* The Streamlit dashboards keep running from Jupyter / Anaconda as before;
-   the page shows them when they're up. Change a port here if yours differ. */
-const DASHES = [
-  {key:"tracker", port:8501, c:"c2", icon:"grid", title:"Network Job Tracker", file:"network_job_tracker.py",
-   desc:"Network jobs from the latest Master file, the outages programme calendar and job status."},
-  {key:"master", port:8502, c:"c1", icon:"pound", title:"Master Control", file:"master_control_dashboard.py",
-   desc:"Job costing: totals by date and team leader, PID breakdown and financial health."},
-  {key:"materials", port:8503, c:"c3", icon:"box3", title:"Materials Breakdown", file:"app.py (materials)",
-   desc:"Poles, Free Issue and GUK materials needed for the filtered Control File, with the maps check and Excel export."},
-];
-
 const app = $("#app");
 
 function home(){
@@ -623,20 +618,14 @@ function home(){
   });
   app.append(g);
   app.append(h(`<h2 class="section">Dashboards</h2>`));
-  app.append(h(`<p class="intro">Your Streamlit dashboards. Start them from Jupyter as usual – they show up here while they're running.</p>`));
+  app.append(h(`<p class="intro">Built into this page now – no Streamlit needed. Open one and drop your files; each dashboard has its own space, filters and tabs.</p>`));
   const dg = h(`<div class="grid"></div>`);
   DASHES.forEach(d => {
-    const tile = h(`<button class="tile"><div class="ico ${d.c}">${I[d.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag dstat" data-state="">Checking…</span><h3>${esc(d.title)}</h3><p>${esc(d.desc)}</p><span class="go">Open dashboard ${I.arrow}</span></button>`);
+    const tile = h(`<button class="tile"><div class="ico ${d.c}">${I[d.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag">Dashboard</span><h3>${esc(d.title)}</h3><p>${esc(d.desc)}</p><span class="go">Open dashboard ${I.arrow}</span></button>`);
     tile.onclick = () => { location.hash = "dash/" + d.key; };
     dg.append(tile);
-    dashUp(d.port).then(up => { const t = $(".dstat", tile); t.textContent = up ? "● Running" : "○ Not running"; t.dataset.state = up ? "running" : "stopped"; });
   });
   app.append(dg);
-}
-
-async function dashUp(port){
-  try { await fetch(`http://localhost:${port}/_stcore/health`, {mode: "no-cors", cache: "no-store"}); return true; }
-  catch(e){ return false; }
 }
 
 function toolHead(t, back = "All tools"){
@@ -646,31 +635,6 @@ function toolHead(t, back = "All tools"){
 }
 
 let dashToken = 0;
-function pageDash(d){
-  const token = ++dashToken;
-  const head = toolHead(d);
-  head.append(h(`<span class="tag dstat">Checking…</span>`), h(`<a class="btn sm" target="_blank" rel="noopener" href="http://localhost:${d.port}/">${I.ext} Open in new tab</a>`));
-  const msg = h(`<section class="box"></section>`);
-  const frameBox = h(`<div class="dashframe hidden"><iframe title="${esc(d.title)}"></iframe></div>`);
-  app.append(head, msg, frameBox);
-  const tag = $(".dstat", head), frame = $("iframe", frameBox);
-  let shown = false;
-  async function tick(){
-    if (token !== dashToken) return;
-    const up = await dashUp(d.port);
-    tag.textContent = up ? "● Running" : "○ Not running"; tag.dataset.state = up ? "running" : "stopped";
-    if (up && !shown){ frame.src = `http://localhost:${d.port}/`; shown = true; msg.classList.add("hidden"); frameBox.classList.remove("hidden"); }
-    if (!up){
-      shown = false; frameBox.classList.add("hidden"); msg.classList.remove("hidden");
-      msg.innerHTML = `<h4><span class="num">!</span>${esc(d.title)} isn't running on this PC</h4>
-        <p class="hint">Start it the way you normally do – from Jupyter (<code>launch_dashboard("${d.key}")</code>) or an Anaconda Prompt:</p>
-        <div class="log on" style="max-height:none">streamlit run ${esc(d.file)} --server.port ${d.port}</div>
-        <p class="hint" style="margin-top:12px">This page checks every few seconds and shows it here as soon as it's up (port ${d.port}).</p>`;
-    }
-    setTimeout(tick, up ? 20000 : 4000);
-  }
-  tick();
-}
 
 /* ---------------- Tool 1: Target Price -> Control File ---------------- */
 function pageTP(t){
@@ -1013,8 +977,10 @@ function route(){
   const id = location.hash.replace("#", "");
   window.scrollTo(0, 0);
   dashToken++;
+  Tip.hide(); if (openMs) openMs.close();
   app.innerHTML = "";
-  if (id.startsWith("dash/")){ const d = DASHES.find(x => x.key === id.slice(5)); if (d) return pageDash(d); }
+  document.body.classList.remove("dashmode"); delete document.body.dataset.dash;
+  if (id.startsWith("dash/") && DASHDEF[id.slice(5)]) return pageDashboard(id.slice(5));
   const t = TOOLS.find(x => x.id === id);
   if (!t) return home();
   app.append(toolHead(t)); PAGES[id](t);
@@ -1028,8 +994,11 @@ window.addEventListener("drop", e => e.preventDefault());
 (function(){
   const pill = $("#srv");
   PY.onStatus((text, state) => {
-    pill.innerHTML = `<span class="dot ${state === "on" ? "on" : state === "off" ? "off" : "busy"}"></span><span>${esc(text)}</span>`;
-    pill.title = text;
+    PYSTAT = [text, state];
+    document.querySelectorAll(".pystat").forEach(p => {
+      p.innerHTML = `<span class="dot ${state === "on" ? "on" : state === "off" ? "off" : "busy"}"></span><span>${esc(text)}</span>`;
+      p.title = text;
+    });
   });
   route();
   PY.start().catch(() => {});   // start loading Python straight away, in the background

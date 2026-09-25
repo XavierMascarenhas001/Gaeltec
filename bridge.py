@@ -275,3 +275,80 @@ def wi_report(path, filters=None, pdf_entries=None, threshold=85, scan_roots=Non
     # a mapped drive letter (e.g. Z:) stands for the real Outages folder, same as before
     _fix_links(out, scan_roots, (drive_letter or "").strip() or (real_root or "").strip())
     return res
+
+
+# ---------------------------------------------------------------------------
+# Dashboards (Master Control, Materials Breakdown, Network Job Tracker)
+# ---------------------------------------------------------------------------
+def _dash(fn, *a, **k):
+    try:
+        return fn(*a, **k)
+    except (ValueError, KeyError, FileNotFoundError) as e:
+        raise UserError(str(e).strip("'\""))
+
+
+def mc_load(path, log=print):
+    import dash_master as D
+    return _dash(D.load, _need(path, "Master parquet"))
+
+
+def mc_view(path, log=print, **filters):
+    import dash_master as D
+    return _dash(D.view, _need(path, "Master parquet"), **filters)
+
+
+def mb_load(master_path, control_path, log=print):
+    import dash_materials as D
+    return _dash(D.load, _need(master_path, "materials master (materials_all.parquet)"), _need(control_path, "Master parquet"))
+
+
+def mb_view(master_path, control_path, log=print, **kw):
+    import dash_materials as D
+    return _dash(D.view, master_path, control_path, **kw)
+
+
+def mb_maps(master_path, control_path, filters=None, pdf_entries=None, log=print):
+    import dash_materials as D
+    return _dash(D.maps, master_path, control_path, filters=filters, pdf_entries=pdf_entries, log=log)
+
+
+def mb_folders(folders, log=print):
+    import dash_materials as D
+    return _dash(D.collect_folders, folders, log=log)
+
+
+def mb_scan(root, date_from="", date_to="", log=print):
+    import dash_materials as D
+    return _dash(D.scan, root, date_from or None, date_to or None, log=log)
+
+
+def mb_export(master_path, control_path, filters=None, scope="All poles matching filters", pdf_entries=None, log=print):
+    import dash_materials as D
+    out = os.path.join(_outdir(), f"Materials_Breakdown_{datetime.now():%Y%m%d_%H%M}.xlsx")
+    return _dash(D.export, master_path, control_path, out, filters=filters, scope=scope, pdf_entries=pdf_entries, log=log)
+
+
+def nt_load(path, cols=None, log=print):
+    import dash_tracker as D
+    return _dash(D.load, _need(path, "Master parquet"), cols)
+
+
+def nt_view(path, cols=None, filters=None, granularity="Month", detail=None, log=print):
+    import dash_tracker as D
+    return _dash(D.view, _need(path, "Master parquet"), cols, filters, granularity, detail)
+
+
+def nt_outages(outage_path, master_path=None, cols=None, filters=None, log=print, **kw):
+    import dash_tracker as D
+    mp = master_path if master_path and os.path.exists(master_path) else None
+    return _dash(D.outages, _need(outage_path, "Outages Programme workbook"), mp, cols, filters, **kw)
+
+
+def nt_ics(ics_path, log=print):
+    import dash_tracker as D
+    return _dash(D.ics, _need(ics_path, "calendar (.ics) file"))
+
+
+def nt_forecast(path, log=print, **kw):
+    import dash_tracker as D
+    return _dash(D.forecast, _need(path, "Service Partner Workbank"), **kw)

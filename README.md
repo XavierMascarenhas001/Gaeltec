@@ -52,23 +52,41 @@ server to start.
 
 ## Dashboards
 
-The three Streamlit dashboards can't run inside a web page on their own.
-Start them from Jupyter as usual (Network Job Tracker 8501, Master Control
-8502, Materials Breakdown 8503) and the **Dashboards** section shows them
-while they're running.
+The three dashboards are now built into the page, so Streamlit is no longer
+needed. Open one from the **Dashboards** section and drop your files on it.
+The switcher at the top moves between them, and each keeps its filters and tab
+while you're away.
+
+| Dashboard | Files to drop | Python file |
+|-----------|---------------|-------------|
+| Network Job Tracker | Master file (.parquet or .csv); optionally High-level_planning_2026.xlsx, the Service Partner Workbank and the outage calendar .ics | `dash_tracker.py` |
+| Master Control | Master file | `dash_master.py` |
+| Materials Breakdown | materials_all.parquet + the Master file (maps optional, on the Maps tab) | `dash_materials.py` + `engine.py` |
+
+* A Master file dropped once is shared by all three dashboards.
+* All the filters sit in one bar above the charts, with the same options as
+  the sidebar before (date field, quick range, District, Project, PID, and so
+  on). Circuit and Pole still narrow to what the other filters allow.
+* Every chart has a **Table** view, and every table has **CSV** download and
+  search. **◐ Auto / ☀ Light / ☾ Dark** in the top bar sets the theme.
+* Materials **Export** downloads the same `Materials_Breakdown_<date>.xlsx`
+  workbook as before.
+* The numbers were checked against the original Streamlit apps on the same
+  data. Every KPI, card, total and row count matched.
 
 `network_job_tracker.py` here has one extra line that keeps the outage
 programme's PID column as text. It stops the repeated "Could not convert
-'Not delivered' … column PID" warnings in its log. Copy it over yours if you
-want that.
+'Not delivered' … column PID" warnings in its log. It's only needed if you
+still run the Streamlit version.
 
 ## Changing a tool
 
-Edit the `tool_*.py` file, then run `python build_page.py` to rebuild
+Edit the `tool_*.py` / `dash_*.py` file, then run `python build_page.py` to rebuild
 `index.html`. The rest of the files are the parts `index.html` is built
 from:
 
 * `page_template.html` – the page layout
+* `dashboards.css`, `dash_core.js`, `dash_pages.js` – the dashboards (layout, filters, charts)
 * `worker.js` – runs Python in the browser
 * `bridge.py` – connects the page to the tools
 * `py_boot.py` – swaps in the no-threads and pure-rapidfuzz versions
@@ -78,5 +96,6 @@ from:
 
 * **"Couldn't download Python from cdn.jsdelivr.net"**: the PC is offline or
   the site is blocked. Ask IT to allow `cdn.jsdelivr.net`.
-* **A dashboard shows "Not running"**: start it from Jupyter. The page checks
-  every few seconds and shows it once it's up.
+* **A dashboard shows a red message after dropping a file**: it's the same
+  error the Streamlit app would have given, for example a missing column. On
+  the Network Job Tracker, open **⚙ Column mapping** and pick the right column.
