@@ -1421,6 +1421,138 @@ def load_forecast_workbook(file_bytes: bytes, sheet_name: str):
         return None, str(e)
 
 
+# ---- Pole Position: status colours, column letters, hyperlinks, Gantt rows ----
+# Status colours from the workbook's Status column (matched ignoring case).
+FC_STATUS_COLOURS = [
+    ("complete", "#00B050", "Complete"),
+    ("planned", "#8ED973", "Planned"),
+    ("awaiting outage plan", "#C00000", "Awaiting Outage Plan"),
+    ("land access", "#C00000", "Land Access Issues"),
+    ("still to be handed over", "#000000", "Still to be handed over"),
+    ("to be priced", "#0070C0", "To be priced"),
+]
+FC_STATUS_OTHER = "#9AA3AF"
+
+# (key, label, header guesses, fallback column letter)
+FC_FIELDS = [
+    ("district", "District", ("District",), None),
+    ("pid", "Project ID", ("Project ID", "PID"), None),
+    ("project", "Project (column C)", ("Project", "Project Name"), "C"),
+    ("circuit", "Circuit", ("Circuit",), None),
+    ("voltage", "Voltage", ("Voltage",), None),
+    ("forecast", "Forecasted Total poles", ("Forecasted Total poles", "Forecasted Total Poles", "Forecast Total Poles"), None),
+    ("disposed", "Poles Disposed", ("Poles Disposed", "Poles disposed"), None),
+    ("status", "Status", ("Status", "Job Status", "Project Status", "Stage"), None),
+    ("start_date", "Start Date (column I)", ("Start Date", "StartDate", "Start"), "I"),
+    ("finish_date", "Finish Date (column J)", ("Finish Date", "End Date", "Finish", "Completion Date", "FinishDate"), "J"),
+    ("comment", "Comment (column L)", ("Comment", "Comments", "Notes"), "L"),
+    ("control_file", "Control File (column O)", ("Control File", "Control file", "Control Files", "CF"), "O"),
+]
+FC_REQUIRED = ["project", "circuit", "pid", "forecast", "disposed"]
+_HYPERLINK_FORMULA = re.compile(r'^=\s*HYPERLINK\(\s*"([^"]*)"\s*(?:[,;]\s*"([^"]*)")?', re.IGNORECASE)
+
+
+def forecast_status_colour(status):
+    s = "" if status is None or (isinstance(status, float) and pd.isna(status)) else str(status).strip().lower()
+    for key, colour, _label in FC_STATUS_COLOURS:
+        if key in s:
+            return colour
+    return FC_STATUS_OTHER
+
+
+def forecast_guess_columns(fdf):
+    """Header-name guess first, then the column letter the workbook uses (C, I, J, L, O)."""
+    lower_map = {c.lower(): c for c in fdf.columns}
+    cols = list(fdf.columns)
+    out = {}
+    for key, _label, guesses, letter in FC_FIELDS:
+        found = next((lower_map[g.lower()] for g in guesses if g.lower() in lower_map), None)
+        if found is None and letter:
+            i = ord(letter) - ord("A")
+            found = cols[i] if i < len(cols) else None
+        out[key] = found
+    return out
+
+
+def read_forecast_links(file_bytes, sheet_name, fdf, col_names):
+    """Hyperlinks (cell links or =HYPERLINK formulas) for the given columns.
+    Returns {column: {row_index: (url, friendly_text)}} - header is row 1,
+    so dataframe row i is worksheet row i + 2."""
+    import openpyxl
+    out = {c: {} for c in col_names if c}
+    if not out:
+        return out
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=False)
+        ws = wb[sheet_name]
+    except Exception:
+        return out
+    positions = {c: list(fdf.columns).index(c) + 1 for c in out}
+    for c, col_i in positions.items():
+        for i in range(len(fdf)):
+            cell = ws.cell(row=i + 2, column=col_i)
+            url, text = None, None
+            if cell.hyperlink is not None and cell.hyperlink.target:
+                url = cell.hyperlink.target
+            elif isinstance(cell.value, str):
+                m = _HYPERLINK_FORMULA.match(cell.value.strip())
+                if m:
+                    url, text = m.group(1), m.group(2)
+            if url:
+                out[c][i] = (url, text)
+    return out
+
+
+def build_forecast_rows(fdf, f_cols, links):
+    """One row per job with everything the Gantt and the job panel need,
+    ordered District -> Voltage -> Project -> Circuit -> PID."""
+    def col(key):
+        return fdf[f_cols[key]] if f_cols.get(key) else pd.Series([None] * len(fdf), index=fdf.index)
+
+    def txt(v):
+        return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v).strip()
+
+    proj_links = links.get(f_cols.get("project"), {}) if f_cols.get("project") else {}
+    cf_links = links.get(f_cols.get("control_file"), {}) if f_cols.get("control_file") else {}
+    project = col("project").copy()
+    for i, (_url, text) in proj_links.items():      # formula links: take the friendly name if the cell has no value
+        if text and i < len(project) and txt(project.iloc[i]) == "":
+            project.iloc[i] = text
+    df = pd.DataFrame({
+        "District": col("district").map(txt),
+        "Voltage": col("voltage").map(txt),
+        "Project": project.map(txt),
+        "Circuit": col("circuit").map(txt),
+        "PID": col("pid").map(txt),
+        "Status": col("status").map(txt),
+        "Forecast": pd.to_numeric(col("forecast"), errors="coerce").fillna(0),
+        "Disposed": pd.to_numeric(col("disposed"), errors="coerce").fillna(0),
+        "Start Date": pd.to_datetime(col("start_date"), errors="coerce"),
+        "Finish Date": pd.to_datetime(col("finish_date"), errors="coerce"),
+        "Comment": col("comment").map(txt),
+        "Control File": col("control_file").map(txt),
+    })
+    df["_row"] = range(len(df))
+    df["Project link"] = [proj_links.get(i, (None, None))[0] for i in df["_row"]]
+    df["Control File link"] = [cf_links.get(i, (None, None))[0] for i in df["_row"]]
+    df.loc[df["Control File"].eq("") & df["Control File link"].notna(), "Control File"] = df["Control File link"]
+    df = df[df["Project"] != ""]
+    df["Disposed"] = df[["Disposed", "Forecast"]].min(axis=1)
+    df["Remaining"] = (df["Forecast"] - df["Disposed"]).clip(lower=0)
+    df["Year"] = df["Start Date"].dt.year
+    df["Colour"] = df["Status"].map(forecast_status_colour)
+    for k in ("District", "Voltage", "Project", "Circuit", "PID"):
+        df[k + "_sort"] = df[k].str.lower().replace("", "~")
+    df = df.sort_values(["District_sort", "Voltage_sort", "Project_sort", "Circuit_sort", "PID_sort", "Start Date"], kind="stable")
+    return df.drop(columns=[c for c in df.columns if c.endswith("_sort")])
+
+
+@st.cache_data(show_spinner="Reading links from the workbook...", max_entries=4, ttl=1800)
+def cached_forecast_links(file_bytes: bytes, sheet_name: str, project_col, control_col):
+    fdf, _err = load_forecast_workbook(file_bytes, sheet_name)
+    return read_forecast_links(file_bytes, sheet_name, fdf, [project_col, control_col])
+
+
 with tab_forecast:
     st.subheader("Pole Position")
 
@@ -1463,14 +1595,8 @@ with tab_forecast:
                 with st.expander("Detected columns (click to view)"):
                     st.write(list(fdf.columns))
 
-                def fguess(*candidates):
-                    lower_map = {c.lower(): c for c in fdf.columns}
-                    for cand in candidates:
-                        if cand.lower() in lower_map:
-                            return lower_map[cand.lower()]
-                    return None
-
                 fcol_options = ["(none)"] + list(fdf.columns)
+                _fc_guess = forecast_guess_columns(fdf)
 
                 with st.expander("⚙️ Column mapping", expanded=False):
                     def fpick(label, default_col, key):
@@ -1480,118 +1606,181 @@ with tab_forecast:
                         val = st.selectbox(label, fcol_options, index=idx, key=key)
                         return None if val == "(none)" else val
 
-                    f_cols = {
-                        "district": fpick("District", fguess("District"), "fc_district"),
-                        "pid": fpick("Project ID", fguess("Project ID", "PID"), "fc_pid"),
-                        "project": fpick("Project", fguess("Project", "Project Name"), "fc_project"),
-                        "circuit": fpick("Circuit", fguess("Circuit"), "fc_circuit"),
-                        "voltage": fpick("Voltage", fguess("Voltage"), "fc_voltage"),
-                        "forecast": fpick(
-                            "Forecasted Total poles",
-                            fguess("Forecasted Total poles", "Forecasted Total Poles", "Forecast Total Poles"),
-                            "fc_forecast",
-                        ),
-                        "disposed": fpick("Poles Disposed", fguess("Poles Disposed", "Poles disposed"), "fc_disposed"),
-                        "start_date": fpick("Start Date", fguess("Start Date", "StartDate", "Start"), "fc_start_date"),
-                    }
+                    f_cols = {key: fpick(label, _fc_guess[key], f"fc_{key}") for key, label, _g, _l in FC_FIELDS}
 
-                required = ["project", "circuit", "pid", "forecast", "disposed"]
-                missing = [k for k in required if f_cols[k] is None]
+                missing = [k for k in FC_REQUIRED if f_cols[k] is None]
                 if missing:
                     st.error(f"Please map these columns in 'Column mapping' above: {missing}")
                 else:
-                    plot_df = pd.DataFrame({
-                        "District": fdf[f_cols["district"]] if f_cols["district"] else "",
-                        "PID": fdf[f_cols["pid"]],
-                        "Project": fdf[f_cols["project"]],
-                        "Circuit": fdf[f_cols["circuit"]],
-                        "Voltage": fdf[f_cols["voltage"]] if f_cols["voltage"] else "",
-                        "Forecast": pd.to_numeric(fdf[f_cols["forecast"]], errors="coerce").fillna(0),
-                        "Disposed": pd.to_numeric(fdf[f_cols["disposed"]], errors="coerce").fillna(0),
-                    })
-                    if f_cols["start_date"]:
-                        plot_df["Start Date"] = pd.to_datetime(fdf[f_cols["start_date"]], errors="coerce")
-                        plot_df["Year"] = plot_df["Start Date"].dt.year
-                    plot_df = plot_df.dropna(subset=["Project"])
-                    plot_df["Disposed"] = plot_df[["Disposed", "Forecast"]].min(axis=1)
-                    plot_df["Remaining"] = (plot_df["Forecast"] - plot_df["Disposed"]).clip(lower=0)
-                    plot_df["Label"] = (
-                        plot_df["Project"].astype(str) + " — "
-                        + plot_df["Circuit"].astype(str) + " — PID "
-                        + plot_df["PID"].astype(str)
-                    )
+                    fc_links = cached_forecast_links(forecast_bytes, sheet_choice, f_cols["project"], f_cols["control_file"])
+                    jobs = build_forecast_rows(fdf, f_cols, fc_links)
 
-                    fc1, fc2, fc3 = st.columns(3)
+                    fc1, fc2, fc3, fc4 = st.columns(4)
                     with fc1:
                         forecast_districts = (
-                            st.multiselect("District", sorted(plot_df["District"].dropna().unique()), key="forecast_district")
+                            st.multiselect("District", sorted({v for v in jobs["District"] if v}), key="forecast_district")
                             if f_cols["district"] else []
                         )
                     with fc2:
                         forecast_voltages = (
-                            st.multiselect("Voltage", sorted(plot_df["Voltage"].dropna().unique()), key="forecast_voltage")
+                            st.multiselect("Voltage", sorted({v for v in jobs["Voltage"] if v}), key="forecast_voltage")
                             if f_cols["voltage"] else []
                         )
                     with fc3:
-                        forecast_years = (
-                            st.multiselect(
-                                "Start year",
-                                sorted(plot_df["Year"].dropna().unique().astype(int)),
-                                key="forecast_year",
-                            )
-                            if "Year" in plot_df.columns else []
+                        forecast_statuses = (
+                            st.multiselect("Status", sorted({v for v in jobs["Status"] if v}), key="forecast_status")
+                            if f_cols["status"] else []
+                        )
+                    with fc4:
+                        forecast_years = st.multiselect(
+                            "Start year", sorted(jobs["Year"].dropna().unique().astype(int)), key="forecast_year",
                         )
 
                     if forecast_districts:
-                        plot_df = plot_df[plot_df["District"].isin(forecast_districts)]
+                        jobs = jobs[jobs["District"].isin(forecast_districts)]
                     if forecast_voltages:
-                        plot_df = plot_df[plot_df["Voltage"].isin(forecast_voltages)]
+                        jobs = jobs[jobs["Voltage"].isin(forecast_voltages)]
+                    if forecast_statuses:
+                        jobs = jobs[jobs["Status"].isin(forecast_statuses)]
                     if forecast_years:
-                        plot_df = plot_df[plot_df["Year"].isin(forecast_years)]
+                        jobs = jobs[jobs["Year"].isin(forecast_years)]
 
-                    total_forecast = plot_df["Forecast"].sum()
-                    total_disposed = plot_df["Disposed"].sum()
+                    total_forecast = jobs["Forecast"].sum()
+                    total_disposed = jobs["Disposed"].sum()
                     show_total_banner(
                         "Poles disposed vs forecasted",
                         f"{total_disposed:,.0f} / {total_forecast:,.0f}"
                         + (f"  ({total_disposed / total_forecast:.0%})" if total_forecast else ""),
                     )
+                    not_found = [label for key, label, _g, _l in FC_FIELDS
+                                 if key in ("status", "start_date", "finish_date", "comment", "control_file") and not f_cols[key]]
+                    if not_found:
+                        st.caption("⚠️ Not found in this sheet: " + ", ".join(not_found) + " - pick them under Column mapping if they're there under another name.")
 
-                    if plot_df.empty:
+                    if jobs.empty:
                         st.caption("No rows to chart for the current filters.")
                     else:
-                        plot_df = plot_df.sort_values("Forecast", ascending=True)
+                        # ---- legend: the workbook's status colours ----
+                        present = jobs["Status"].map(lambda s: next((lab for k, _c, lab in FC_STATUS_COLOURS if k in s.lower()), "Other / blank")).value_counts()
+                        chips = [(lab, c) for _k, c, lab in FC_STATUS_COLOURS] + [("Other / blank", FC_STATUS_OTHER)]
+                        st.markdown(" ".join(
+                            f"<span style='display:inline-flex;align-items:center;gap:6px;margin:0 14px 6px 0;font-size:13px;'>"
+                            f"<span style='width:12px;height:12px;border-radius:3px;background:{c};display:inline-block;'></span>{lab} ({present[lab]})</span>"
+                            for lab, c in chips if lab in present.index), unsafe_allow_html=True)
 
-                        fig = go.Figure()
-                        fig.add_trace(go.Bar(
-                            y=plot_df["Label"], x=plot_df["Disposed"], orientation="h",
-                            name="Disposed", marker_color="#16a34a",
-                            hovertemplate="%{y}<br>Disposed: %{x:,.0f}<extra></extra>",
-                        ))
-                        fig.add_trace(go.Bar(
-                            y=plot_df["Label"], x=plot_df["Remaining"], orientation="h",
-                            name="Remaining", marker_color="#dc2626",
-                            hovertemplate="%{y}<br>Remaining: %{x:,.0f}<extra></extra>",
-                        ))
-                        fig.add_trace(go.Scatter(
-                            y=plot_df["Label"], x=plot_df["Forecast"],
-                            mode="text",
-                            text=[f"{v:,.0f}" for v in plot_df["Forecast"]],
-                            textposition="middle right",
-                            textfont=dict(size=12, color="#1e293b"),
-                            showlegend=False,
-                            hoverinfo="skip",
-                        ))
-                        max_forecast = plot_df["Forecast"].max()
-                        fig.update_layout(
-                            barmode="stack",
-                            height=max(420, 34 * len(plot_df)),
-                            margin=dict(l=10, r=60, t=10, b=10),
-                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                            xaxis=dict(title="Poles", range=[0, max_forecast * 1.15 if max_forecast else 1]),
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                        st.caption(f"{len(plot_df):,} project/circuit rows shown")
+                        dated = jobs.dropna(subset=["Start Date"])
+                        t0 = t1 = today = None
+                        if dated.empty:
+                            st.caption("No Start Dates in these rows - map the Start Date column under Column mapping.")
+                        else:
+                            ends = dated["Finish Date"].where(dated["Finish Date"] >= dated["Start Date"])
+                            t0 = dated["Start Date"].min().replace(day=1)
+                            t1 = (pd.concat([ends.dropna(), dated["Start Date"]]).max() + pd.offsets.MonthBegin(1)).normalize()
+                            today = pd.Timestamp.today().normalize()
+
+                        def _ink(hex_colour):
+                            h_ = hex_colour.lstrip("#")
+                            r_, g_, b_ = int(h_[0:2], 16), int(h_[2:4], 16), int(h_[4:6], 16)
+                            return "#0b0b0b" if (0.2126 * r_ + 0.7152 * g_ + 0.0722 * b_) / 255 > 0.55 else "#ffffff"
+
+                        # ---- Gantt: one chart per District / Voltage, rows = Project - Circuit - PID ----
+                        picked_row = st.session_state.get("fc_pick")
+                        for g_i, ((g_district, g_voltage), grp) in enumerate(jobs.groupby(["District", "Voltage"], sort=False)):
+                            st.markdown(
+                                f"<div style='background:#0E6E78;color:#fff;padding:7px 12px;border-radius:6px;font-weight:700;"
+                                f"letter-spacing:.04em;text-transform:uppercase;display:flex;justify-content:space-between;margin-top:12px;'>"
+                                f"<span>{g_district or '(blank)'} · {g_voltage or '(blank)'}</span>"
+                                f"<span>{grp['Disposed'].sum():,.0f} / {grp['Forecast'].sum():,.0f} poles</span></div>",
+                                unsafe_allow_html=True)
+                            gd = grp.dropna(subset=["Start Date"])
+                            no_date = grp[grp["Start Date"].isna()]
+                            if not no_date.empty:
+                                st.caption("No Start Date: " + ", ".join(f"{p_} — {c_} — PID {pid_}" for p_, c_, pid_ in zip(no_date["Project"], no_date["Circuit"], no_date["PID"])))
+                            if gd.empty or t0 is None:
+                                continue
+                            finish = gd["Finish Date"].where(gd["Finish Date"] >= gd["Start Date"])
+                            end = (finish + pd.Timedelta(days=1)).fillna(gd["Start Date"] + pd.Timedelta(days=21))
+                            labels = (gd["Project"] + " — " + gd["Circuit"] + " — PID " + gd["PID"]).tolist()
+                            fig = go.Figure(go.Bar(
+                                y=labels, base=gd["Start Date"], x=(end - gd["Start Date"]).dt.total_seconds() * 1000,
+                                orientation="h", marker_color=gd["Colour"], marker_line=dict(color="rgba(0,0,0,.25)", width=0.5),
+                                text=[f"Disposed {d:,.0f} · Forecast {f_:,.0f}" for d, f_ in zip(gd["Disposed"], gd["Forecast"])],
+                                textposition="auto", insidetextanchor="start",
+                                textfont=dict(color=[_ink(c) for c in gd["Colour"]], size=12),
+                                outsidetextfont=dict(color="#1e293b", size=12),
+                                customdata=gd[["_row"]].values,
+                                hovertemplate=[
+                                    f"<b>{lab}</b><br>Status: {st_ or '—'}<br>{sd:%d %b %Y} → "
+                                    + (f"{fd:%d %b %Y}" if pd.notna(fd) else "no finish date")
+                                    + f"<br>Disposed {dp:,.0f} / Forecast {fo:,.0f}<extra>click for details</extra>"
+                                    for lab, st_, sd, fd, dp, fo in zip(labels, gd["Status"], gd["Start Date"], gd["Finish Date"], gd["Disposed"], gd["Forecast"])],
+                            ))
+                            if t0 <= today <= t1:
+                                fig.add_shape(type="line", x0=today, x1=today, y0=0, y1=1, yref="paper", line=dict(width=1.5, color="#475569"), opacity=0.6)
+                            fig.update_layout(
+                                height=max(140, 36 * len(gd) + 60), margin=dict(l=330, r=10, t=10, b=10), showlegend=False,
+                                xaxis=dict(type="date", range=[t0, t1], gridcolor="#E2E7ED", side="top"),
+                                yaxis=dict(categoryorder="array", categoryarray=labels[::-1], autorange=True, automargin=False,
+                                           tickvals=labels, ticktext=[l if len(l) <= 52 else l[:51] + "…" for l in labels]),
+                                bargap=0.3, plot_bgcolor="#FFFFFF",
+                            )
+                            try:
+                                ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", selection_mode="points", key=f"fc_gantt_{g_i}")
+                                try:
+                                    pts = ev["selection"]["points"] if ev else []
+                                except (KeyError, TypeError, AttributeError):
+                                    pts = []
+                                if pts:
+                                    cd = pts[0].get("customdata")
+                                    picked_row = int(cd[0] if isinstance(cd, (list, tuple)) else cd)
+                                    st.session_state["fc_pick"] = picked_row
+                            except TypeError:       # older Streamlit without chart selections
+                                st.plotly_chart(fig, use_container_width=True)
+                        st.caption(f"{len(jobs):,} project/circuit rows shown · bars run from Start Date to Finish Date (open-ended when there's no Finish Date)")
+
+                        # ---- job details: comment (L), control file (O), project link (C) ----
+                        st.markdown("#### Job details")
+                        job_labels = {int(rw): f"{d_} · {v_} · {p_} — {c_} — PID {pid_}" for rw, d_, v_, p_, c_, pid_
+                                      in zip(jobs["_row"], jobs["District"], jobs["Voltage"], jobs["Project"], jobs["Circuit"], jobs["PID"])}
+                        keys = list(job_labels)
+                        default_i = keys.index(picked_row) if picked_row in keys else 0
+                        sel_row = st.selectbox("Click a bar above, or pick a job", keys, index=default_i, format_func=lambda k: job_labels[k], key=f"fc_job_{picked_row}")
+                        j = jobs[jobs["_row"] == sel_row].iloc[0]
+                        with st.container(border=True):
+                            title = f"[{j['Project']} ↗]({j['Project link']})" if j["Project link"] else j["Project"]
+                            st.markdown(f"### {title}")
+                            st.markdown(
+                                f"<span style='display:inline-flex;align-items:center;gap:7px;border:1px solid #DCE3EC;border-radius:99px;padding:3px 10px;font-weight:600;'>"
+                                f"<span style='width:13px;height:13px;border-radius:4px;background:{j['Colour']};display:inline-block;'></span>{j['Status'] or 'No status'}</span>",
+                                unsafe_allow_html=True)
+                            d1, d2, d3, d4 = st.columns(4)
+                            d1.metric("Forecasted Total poles", f"{j['Forecast']:,.0f}")
+                            d2.metric("Poles Disposed", f"{j['Disposed']:,.0f}")
+                            d3.metric("Start Date", j["Start Date"].strftime("%d %b %Y") if pd.notna(j["Start Date"]) else "—")
+                            d4.metric("Finish Date", j["Finish Date"].strftime("%d %b %Y") if pd.notna(j["Finish Date"]) else "—")
+                            st.markdown(f"**District:** {j['District'] or '—'} · **Voltage:** {j['Voltage'] or '—'} · **Circuit:** {j['Circuit'] or '—'} · **PID:** {j['PID'] or '—'} · workbook row {int(j['_row']) + 2}")
+                            st.markdown("**Comment**")
+                            st.write(j["Comment"] or "No comment in column L for this job.")
+                            st.markdown("**Control File**")
+                            cf_target = j["Control File link"] or j["Control File"]
+                            if not cf_target:
+                                st.write("No control file in column O.")
+                            else:
+                                if j["Control File link"]:
+                                    st.markdown(f"[{j['Control File'] or cf_target}]({j['Control File link']})")
+                                st.code(cf_target, language=None)   # copy button on the right
+                            if j["Project link"]:
+                                st.link_button("Open project link", j["Project link"])
+
+                        with st.expander("All jobs as a table"):
+                            st.dataframe(
+                                jobs[["District", "Voltage", "Project", "Circuit", "PID", "Status", "Start Date", "Finish Date",
+                                      "Forecast", "Disposed", "Remaining", "Comment", "Control File", "Project link"]],
+                                use_container_width=True, hide_index=True,
+                                column_config={"Project link": st.column_config.LinkColumn("Project link"),
+                                               "Start Date": st.column_config.DateColumn(format="DD MMM YYYY"),
+                                               "Finish Date": st.column_config.DateColumn(format="DD MMM YYYY")},
+                            )
 
 
 with tab_totals:

@@ -1069,19 +1069,134 @@ def ics(ics_path):
 
 
 # ---- Pole Position (forecast workbook) ----
-FC_FIELDS = [
-    ("district", "District", ("District",)),
-    ("pid", "Project ID", ("Project ID", "PID")),
-    ("project", "Project", ("Project", "Project Name")),
-    ("circuit", "Circuit", ("Circuit",)),
-    ("voltage", "Voltage", ("Voltage",)),
-    ("forecast", "Forecasted Total poles", ("Forecasted Total poles", "Forecasted Total Poles", "Forecast Total Poles")),
-    ("disposed", "Poles Disposed", ("Poles Disposed", "Poles disposed")),
-    ("start_date", "Start Date", ("Start Date", "StartDate", "Start")),
+_FC_LINKS = {}
+# ---- Pole Position: status colours, column letters, hyperlinks, Gantt rows ----
+# Status colours from the workbook's Status column (matched ignoring case).
+FC_STATUS_COLOURS = [
+    ("complete", "#00B050", "Complete"),
+    ("planned", "#8ED973", "Planned"),
+    ("awaiting outage plan", "#C00000", "Awaiting Outage Plan"),
+    ("land access", "#C00000", "Land Access Issues"),
+    ("still to be handed over", "#000000", "Still to be handed over"),
+    ("to be priced", "#0070C0", "To be priced"),
 ]
+FC_STATUS_OTHER = "#9AA3AF"
+
+# (key, label, header guesses, fallback column letter)
+FC_FIELDS = [
+    ("district", "District", ("District",), None),
+    ("pid", "Project ID", ("Project ID", "PID"), None),
+    ("project", "Project (column C)", ("Project", "Project Name"), "C"),
+    ("circuit", "Circuit", ("Circuit",), None),
+    ("voltage", "Voltage", ("Voltage",), None),
+    ("forecast", "Forecasted Total poles", ("Forecasted Total poles", "Forecasted Total Poles", "Forecast Total Poles"), None),
+    ("disposed", "Poles Disposed", ("Poles Disposed", "Poles disposed"), None),
+    ("status", "Status", ("Status", "Job Status", "Project Status", "Stage"), None),
+    ("start_date", "Start Date (column I)", ("Start Date", "StartDate", "Start"), "I"),
+    ("finish_date", "Finish Date (column J)", ("Finish Date", "End Date", "Finish", "Completion Date", "FinishDate"), "J"),
+    ("comment", "Comment (column L)", ("Comment", "Comments", "Notes"), "L"),
+    ("control_file", "Control File (column O)", ("Control File", "Control file", "Control Files", "CF"), "O"),
+]
+FC_REQUIRED = ["project", "circuit", "pid", "forecast", "disposed"]
+_HYPERLINK_FORMULA = re.compile(r'^=\s*HYPERLINK\(\s*"([^"]*)"\s*(?:[,;]\s*"([^"]*)")?', re.IGNORECASE)
 
 
-def forecast(path, sheet=None, f_cols=None, districts=None, voltages=None, years=None):
+def forecast_status_colour(status):
+    s = "" if status is None or (isinstance(status, float) and pd.isna(status)) else str(status).strip().lower()
+    for key, colour, _label in FC_STATUS_COLOURS:
+        if key in s:
+            return colour
+    return FC_STATUS_OTHER
+
+
+def forecast_guess_columns(fdf):
+    """Header-name guess first, then the column letter the workbook uses (C, I, J, L, O)."""
+    lower_map = {c.lower(): c for c in fdf.columns}
+    cols = list(fdf.columns)
+    out = {}
+    for key, _label, guesses, letter in FC_FIELDS:
+        found = next((lower_map[g.lower()] for g in guesses if g.lower() in lower_map), None)
+        if found is None and letter:
+            i = ord(letter) - ord("A")
+            found = cols[i] if i < len(cols) else None
+        out[key] = found
+    return out
+
+
+def read_forecast_links(file_bytes, sheet_name, fdf, col_names):
+    """Hyperlinks (cell links or =HYPERLINK formulas) for the given columns.
+    Returns {column: {row_index: (url, friendly_text)}} - header is row 1,
+    so dataframe row i is worksheet row i + 2."""
+    import openpyxl
+    out = {c: {} for c in col_names if c}
+    if not out:
+        return out
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=False)
+        ws = wb[sheet_name]
+    except Exception:
+        return out
+    positions = {c: list(fdf.columns).index(c) + 1 for c in out}
+    for c, col_i in positions.items():
+        for i in range(len(fdf)):
+            cell = ws.cell(row=i + 2, column=col_i)
+            url, text = None, None
+            if cell.hyperlink is not None and cell.hyperlink.target:
+                url = cell.hyperlink.target
+            elif isinstance(cell.value, str):
+                m = _HYPERLINK_FORMULA.match(cell.value.strip())
+                if m:
+                    url, text = m.group(1), m.group(2)
+            if url:
+                out[c][i] = (url, text)
+    return out
+
+
+def build_forecast_rows(fdf, f_cols, links):
+    """One row per job with everything the Gantt and the job panel need,
+    ordered District -> Voltage -> Project -> Circuit -> PID."""
+    def col(key):
+        return fdf[f_cols[key]] if f_cols.get(key) else pd.Series([None] * len(fdf), index=fdf.index)
+
+    def txt(v):
+        return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v).strip()
+
+    proj_links = links.get(f_cols.get("project"), {}) if f_cols.get("project") else {}
+    cf_links = links.get(f_cols.get("control_file"), {}) if f_cols.get("control_file") else {}
+    project = col("project").copy()
+    for i, (_url, text) in proj_links.items():      # formula links: take the friendly name if the cell has no value
+        if text and i < len(project) and txt(project.iloc[i]) == "":
+            project.iloc[i] = text
+    df = pd.DataFrame({
+        "District": col("district").map(txt),
+        "Voltage": col("voltage").map(txt),
+        "Project": project.map(txt),
+        "Circuit": col("circuit").map(txt),
+        "PID": col("pid").map(txt),
+        "Status": col("status").map(txt),
+        "Forecast": pd.to_numeric(col("forecast"), errors="coerce").fillna(0),
+        "Disposed": pd.to_numeric(col("disposed"), errors="coerce").fillna(0),
+        "Start Date": pd.to_datetime(col("start_date"), errors="coerce"),
+        "Finish Date": pd.to_datetime(col("finish_date"), errors="coerce"),
+        "Comment": col("comment").map(txt),
+        "Control File": col("control_file").map(txt),
+    })
+    df["_row"] = range(len(df))
+    df["Project link"] = [proj_links.get(i, (None, None))[0] for i in df["_row"]]
+    df["Control File link"] = [cf_links.get(i, (None, None))[0] for i in df["_row"]]
+    df.loc[df["Control File"].eq("") & df["Control File link"].notna(), "Control File"] = df["Control File link"]
+    df = df[df["Project"] != ""]
+    df["Disposed"] = df[["Disposed", "Forecast"]].min(axis=1)
+    df["Remaining"] = (df["Forecast"] - df["Disposed"]).clip(lower=0)
+    df["Year"] = df["Start Date"].dt.year
+    df["Colour"] = df["Status"].map(forecast_status_colour)
+    for k in ("District", "Voltage", "Project", "Circuit", "PID"):
+        df[k + "_sort"] = df[k].str.lower().replace("", "~")
+    df = df.sort_values(["District_sort", "Voltage_sort", "Project_sort", "Circuit_sort", "PID_sort", "Start Date"], kind="stable")
+    return df.drop(columns=[c for c in df.columns if c.endswith("_sort")])
+
+
+def forecast(path, sheet=None, f_cols=None, districts=None, voltages=None, years=None, statuses=None):
     fb = _bytes(path)
     sheet_names, sheet_err = list_forecast_sheets(fb)
     if sheet_err:
@@ -1092,57 +1207,46 @@ def forecast(path, sheet=None, f_cols=None, districts=None, voltages=None, years
     fdf, fdf_err = load_forecast_workbook(fb, sheet_choice)
     if fdf_err:
         raise ValueError(f"Couldn't read sheet '{sheet_choice}'.\n\nDetails: {fdf_err}")
-
-    def fguess(*candidates):
-        lower_map = {c.lower(): c for c in fdf.columns}
-        for cand in candidates:
-            if cand.lower() in lower_map:
-                return lower_map[cand.lower()]
-        return None
+    guessed = forecast_guess_columns(fdf)
     chosen = dict(f_cols or {})
     fc = {}
-    for key, _label, guesses in FC_FIELDS:
+    for key, _label, _g, _l in FC_FIELDS:
         v = chosen.get(key, "__guess__")
-        fc[key] = fguess(*guesses) if v == "__guess__" else (v if v in fdf.columns else None)
+        fc[key] = guessed[key] if v == "__guess__" else (v if v in fdf.columns else None)
     res = {"sheets": sheet_names, "sheet": sheet_choice, "columns": list(fdf.columns), "f_cols": fc,
-           "fields": [{"key": k, "label": l} for k, l, _g in FC_FIELDS]}
-    required = ["project", "circuit", "pid", "forecast", "disposed"]
-    res["missing"] = [k for k in required if fc[k] is None]
+           "fields": [{"key": k, "label": l} for k, l, _g, _l in FC_FIELDS],
+           "statuses": [{"label": lab, "colour": c} for _k, c, lab in FC_STATUS_COLOURS] + [{"label": "Other / blank", "colour": FC_STATUS_OTHER}]}
+    res["missing"] = [k for k in FC_REQUIRED if fc[k] is None]
     if res["missing"]:
         return res
-    f_cols = fc
-    plot_df = pd.DataFrame({
-        "District": fdf[f_cols["district"]] if f_cols["district"] else "",
-        "PID": fdf[f_cols["pid"]],
-        "Project": fdf[f_cols["project"]],
-        "Circuit": fdf[f_cols["circuit"]],
-        "Voltage": fdf[f_cols["voltage"]] if f_cols["voltage"] else "",
-        "Forecast": pd.to_numeric(fdf[f_cols["forecast"]], errors="coerce").fillna(0),
-        "Disposed": pd.to_numeric(fdf[f_cols["disposed"]], errors="coerce").fillna(0),
-    })
-    if f_cols["start_date"]:
-        plot_df["Start Date"] = pd.to_datetime(fdf[f_cols["start_date"]], errors="coerce")
-        plot_df["Year"] = plot_df["Start Date"].dt.year
-    plot_df = plot_df.dropna(subset=["Project"])
-    plot_df["Disposed"] = plot_df[["Disposed", "Forecast"]].min(axis=1)
-    plot_df["Remaining"] = (plot_df["Forecast"] - plot_df["Disposed"]).clip(lower=0)
-    plot_df["Label"] = (plot_df["Project"].astype(str) + " — " + plot_df["Circuit"].astype(str) + " — PID " + plot_df["PID"].astype(str))
+    key = (path, os.path.getmtime(path), sheet_choice, fc["project"], fc["control_file"])
+    if key not in _FC_LINKS:
+        _FC_LINKS.clear()
+        _FC_LINKS[key] = read_forecast_links(fb, sheet_choice, fdf, [fc["project"], fc["control_file"]])
+    rows = build_forecast_rows(fdf, fc, _FC_LINKS[key])
     res["options"] = {
-        "district": sorted(str(v) for v in plot_df["District"].dropna().unique()) if f_cols["district"] else [],
-        "voltage": sorted(str(v) for v in plot_df["Voltage"].dropna().unique()) if f_cols["voltage"] else [],
-        "year": sorted(int(v) for v in plot_df["Year"].dropna().unique()) if "Year" in plot_df.columns else [],
+        "district": sorted({v for v in rows["District"] if v}) if fc["district"] else [],
+        "voltage": sorted({v for v in rows["Voltage"] if v}) if fc["voltage"] else [],
+        "year": sorted(int(v) for v in rows["Year"].dropna().unique()),
+        "status": sorted({v for v in rows["Status"] if v}) if fc["status"] else [],
     }
     if districts:
-        plot_df = plot_df[plot_df["District"].astype(str).isin(districts)]
+        rows = rows[rows["District"].isin(districts)]
     if voltages:
-        plot_df = plot_df[plot_df["Voltage"].astype(str).isin(voltages)]
+        rows = rows[rows["Voltage"].isin(voltages)]
     if years:
-        plot_df = plot_df[plot_df["Year"].isin([int(y) for y in years])]
-    total_forecast = plot_df["Forecast"].sum()
-    total_disposed = plot_df["Disposed"].sum()
+        rows = rows[rows["Year"].isin([int(y) for y in years])]
+    if statuses:
+        rows = rows[rows["Status"].isin(statuses)]
+    total_forecast, total_disposed = rows["Forecast"].sum(), rows["Disposed"].sum()
     res["banner"] = {"disposed": _n(total_disposed), "forecast": _n(total_forecast),
                      "pct": (float(total_disposed / total_forecast) if total_forecast else None)}
-    plot_df = plot_df.sort_values("Forecast", ascending=True)
-    res["bars"] = [{"label": r.Label, "disposed": _n(r.Disposed), "remaining": _n(r.Remaining), "forecast": _n(r.Forecast)}
-                   for r in plot_df.itertuples(index=False)]
+    res["jobs"] = [{
+        "district": r["District"], "voltage": r["Voltage"], "project": r["Project"], "circuit": r["Circuit"], "pid": r["PID"],
+        "status": r["Status"], "colour": r["Colour"], "start": _s(r["Start Date"]) if pd.notna(r["Start Date"]) else "",
+        "finish": _s(r["Finish Date"]) if pd.notna(r["Finish Date"]) else "",
+        "forecast": _n(r["Forecast"]), "disposed": _n(r["Disposed"]), "remaining": _n(r["Remaining"]),
+        "comment": r["Comment"], "control_file": r["Control File"], "control_link": r["Control File link"] or "",
+        "project_link": r["Project link"] or "", "row": int(r["_row"]) + 2,
+    } for _i, r in rows.iterrows()]
     return res

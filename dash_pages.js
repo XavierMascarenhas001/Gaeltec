@@ -576,24 +576,25 @@ function poleTaskTable(t){
   $("tbody", el).innerHTML = out.join("");
   return el;
 }
-/* ---- Pole Position (Service Partner Workbank) ---- */
+/* ---- Pole Position (Service Partner Workbank): Gantt by District → Voltage → Project → Circuit / PID ---- */
 function ntForecast(P, panel){
   if (!FILES.forecast){ const c = dcard("Pole Position", "Poles disposed vs. forecasted, from the Service Partner Workbank", 12); c.body.append(slotZone("forecast", false, "Drop the Service Partner Workbank (.xlsx)")); panel.append(c); return; }
   const fc = P.st.fc;
   panel.append(spinner("Reading the workbook…"));
-  P.tabCall("nt_forecast", {path: FILES.forecast.path, sheet: fc.sheet || null, f_cols: fc.f_cols || null, districts: fc.districts || [], voltages: fc.voltages || [], years: fc.years || []}, NEED_NT)
+  P.tabCall("nt_forecast", {path: FILES.forecast.path, sheet: fc.sheet || null, f_cols: fc.f_cols || null, districts: fc.districts || [], voltages: fc.voltages || [], years: fc.years || [], statuses: fc.statuses || []}, NEED_NT)
   .then(r => {
     panel.querySelectorAll(".dspin").forEach(n => n.remove());
     const redo = () => P.renderTab();
     fc.sheet = r.sheet;
     const bar = h(`<div class="fr" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px"><span class="lbl" style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase">Sheet</span></div>`);
     const ss = h(`<select></select>`); r.sheets.forEach(s => { const o = document.createElement("option"); o.textContent = s; ss.append(o); }); ss.value = r.sheet;
-    ss.onchange = () => { fc.sheet = ss.value; fc.f_cols = null; fc.districts = fc.voltages = fc.years = []; redo(); };
+    ss.onchange = () => { fc.sheet = ss.value; fc.f_cols = null; fc.districts = fc.voltages = fc.years = fc.statuses = []; fc.pick = null; redo(); };
     bar.append(ss);
     if (r.options){
       if (r.options.district.length) bar.append(msel({label: "District", options: r.options.district, value: fc.districts || [], onChange: v => { fc.districts = v; redo(); }}));
       if (r.options.voltage.length) bar.append(msel({label: "Voltage", options: r.options.voltage, value: fc.voltages || [], onChange: v => { fc.voltages = v; redo(); }}));
-      if (r.options.year.length) bar.append(msel({label: "Year", options: r.options.year.map(String), value: (fc.years || []).map(String), onChange: v => { fc.years = v.map(Number); redo(); }}));
+      if (r.options.status.length) bar.append(msel({label: "Status", options: r.options.status, value: fc.statuses || [], onChange: v => { fc.statuses = v; redo(); }}));
+      if (r.options.year.length) bar.append(msel({label: "Start year", options: r.options.year.map(String), value: (fc.years || []).map(String), onChange: v => { fc.years = v.map(Number); redo(); }}));
     }
     panel.append(bar);
     const d = h(`<details class="dmap"><summary>⚙ Column mapping</summary><div class="frm"></div></details>`);
@@ -603,22 +604,118 @@ function ntForecast(P, panel){
       sel.value = r.f_cols[fl.key] || ""; sel.onchange = () => { fc.f_cols = {...r.f_cols, [fl.key]: sel.value || null}; redo(); }; $(".frm", d).append(fe); });
     panel.append(d);
     if (r.missing.length){ panel.append(note(`Couldn't guess a column for: ${r.missing.map(k => (r.fields.find(x => x.key === k) || {}).label).join(", ")} – pick them under Column mapping.`, "warn", "warn")); return; }
-    const b = r.banner;
+    const b = r.banner, jobs = r.jobs;
     const k = kpis([{label: "Poles disposed vs forecasted", value: `${intf(b.disposed)} / ${intf(b.forecast)}`, hero: true, note: b.pct != null ? `${Math.round(b.pct * 100)}% disposed` : ""},
-                    {label: "Remaining to dispose", value: intf(Math.max(0, b.forecast - b.disposed)), swatch: "var(--neutral)"}, {label: "Project / circuit rows", value: intf(r.bars.length)}]);
+                    {label: "Remaining to dispose", value: intf(Math.max(0, b.forecast - b.disposed))}, {label: "Jobs (project / circuit rows)", value: intf(jobs.length)}]);
     if (b.pct != null){ const m = h(`<div class="meter" style="margin-top:6px"><i></i></div>`); $("i", m).style.width = Math.min(100, b.pct * 100) + "%"; $(".kpi.hero", k).append(m); }
     panel.append(k);
-    if (!r.bars.length){ panel.append(note("No rows to chart for the current filters.")); return; }
-    const bars = r.bars.slice().reverse();   // biggest forecast first
-    panel.append(vizCard({title: "Poles disposed vs. forecasted", sub: `${intf(bars.length)} project/circuit rows · largest forecast first`,
-      legend: [{name: "Disposed", color: "var(--s1)"}, {name: "Remaining", color: "var(--neutral)"}],
-      draw: host => { const sc = h(`<div class="scrollv" style="max-height:640px"></div>`); host.append(sc);
-        Viz.bars(sc, {labels: bars.map(x => x.label), labelMax: 380, rowH: 28, fmt: intf, valueLabel: i => `${intf(bars[i].disposed)} / ${intf(bars[i].forecast)}`,
-          series: [{name: "Disposed", values: bars.map(x => x.disposed), color: "var(--s1)"}, {name: "Remaining", values: bars.map(x => x.remaining), color: "var(--neutral)"}],
-          tip: i => ({title: bars[i].label, rows: [{color: "var(--s1)", name: "Disposed", value: intf(bars[i].disposed)}, {color: "var(--neutral)", name: "Remaining", value: intf(bars[i].remaining)}], total: {name: "Forecast", value: intf(bars[i].forecast)}})}); },
-      table: () => ({name: "Pole position", columns: ["Project — Circuit — PID", "Disposed", "Remaining", "Forecast"], rows: bars.map(x => [x.label, x.disposed, x.remaining, x.forecast])})}));
+    const missingCols = ["status", "start_date", "finish_date", "comment", "control_file"].filter(x => !r.f_cols[x]);
+    if (missingCols.length) panel.append(note(`Not found in this sheet: ${missingCols.map(x => (r.fields.find(f => f.key === x) || {}).label).join(", ")}. Pick them under Column mapping if they're there under another name.`, "warn", "warn"));
+    if (!jobs.length){ panel.append(note("No rows to chart for the current filters.")); return; }
+    const g = h(`<div class="dgrid"></div>`); panel.append(g);
+    const main = dcard("Poles disposed vs. forecasted", "District → Voltage → Project → Circuit / PID · each bar runs from Start Date to Finish Date, coloured by Status · click a job for its details", 8);
+    const side = h(`<section class="dcard span4 jobpanel"></section>`);
+    g.append(main, side);
+    let mode = "gantt"; const holder = h(`<div></div>`);
+    main.acts.append(segc([["gantt", "Gantt"], ["table", "Table"]], mode, m => { mode = m; draw(); }));
+    main.body.append(holder);
+    if (fc.pick == null || !jobs.some(j => j.row === fc.pick)) fc.pick = jobs[0].row;
+    const pick = row => { fc.pick = row; holder.querySelectorAll(".gjob").forEach(x => x.classList.toggle("on", +x.dataset.row === row)); jobPanel(side, jobs.find(j => j.row === row)); };
+    function draw(){
+      holder.textContent = "";
+      if (mode === "table"){ holder.append(dtable({name: "Pole position", columns: ["District", "Voltage", "Project", "Circuit", "PID", "Status", "Start Date", "Finish Date", "Forecast", "Disposed", "Remaining", "Comment", "Control File", "Project link"],
+        rows: jobs.map(j => [j.district, j.voltage, j.project, j.circuit, j.pid, j.status, j.start, j.finish, j.forecast, j.disposed, j.remaining, j.comment, j.control_file, j.project_link])})); return; }
+      const counts = new Map(); jobs.forEach(j => { const key = statusKey(r.statuses, j); counts.set(key.label, (counts.get(key.label) || 0) + 1); });
+      holder.append(legendEl(r.statuses.filter(s => counts.has(s.label)).map(s => ({name: `${s.label} (${counts.get(s.label)})`, color: s.colour}))));
+      holder.append(ganttEl(jobs, fc.pick, pick));
+    }
+    draw(); jobPanel(side, jobs.find(j => j.row === fc.pick));
   })
   .catch(e => { if (!e.stale){ panel.querySelectorAll(".dspin").forEach(n => n.remove()); panel.append(errNote(e)); } });
+}
+function statusKey(statuses, j){ const s = (j.status || "").toLowerCase();
+  const map = [["complete", 0], ["planned", 1], ["awaiting outage plan", 2], ["land access", 3], ["still to be handed over", 4], ["to be priced", 5]];
+  const hit = map.find(([k]) => s.includes(k)); return statuses[hit ? hit[1] : statuses.length - 1]; }
+const inkOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return "#fff"; const n = parseInt(m[1], 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55 ? "#0b0b0b" : "#ffffff"; };
+const dayMs = 864e5, toDay = s => s ? Date.parse(s.slice(0, 10) + "T00:00:00Z") : NaN;
+function ganttEl(jobs, picked, onPick){
+  const starts = jobs.map(j => toDay(j.start)).filter(isFinite), ends = jobs.map(j => toDay(j.finish || j.start)).filter(isFinite);
+  const el = h(`<div class="gantt"><div class="gh"><div class="glab"></div><div class="gaxis"></div></div><div class="gbody"></div></div>`);
+  if (!starts.length){ el.querySelector(".gbody").append(emptyMsg("No Start Dates in these rows – map the Start Date column under Column mapping.")); return el; }
+  let t0 = new Date(Math.min(...starts)), t1 = new Date(Math.max(...ends, ...starts));
+  t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), 1); const e1 = new Date(t1); t1 = Date.UTC(e1.getUTCFullYear(), e1.getUTCMonth() + 1, 1);
+  const pct = t => ((t - t0) / (t1 - t0) * 100);
+  const months = []; for (let d = new Date(t0); d.getTime() < t1; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) months.push(d.getTime());
+  const step = months.length > 24 ? 3 : months.length > 14 ? 2 : 1;
+  const axis = $(".gaxis", el), grid = months.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join("");
+  months.forEach((m, i) => { if (i % step) return; const d = new Date(m), s = h(`<span></span>`); s.style.left = pct(m) + "%"; s.textContent = `${MONTHS3[d.getUTCMonth()]}${d.getUTCMonth() === 0 || i === 0 ? " " + d.getUTCFullYear() : ""}`; axis.append(s); });
+  const now = Date.now(), todayX = now >= t0 && now <= t1 ? `<b class="gtoday" style="left:${pct(now).toFixed(3)}%"></b>` : "";
+  if (todayX){ const s = h(`<span class="today">Today</span>`); s.style.left = pct(now) + "%"; axis.append(s); }
+  const sum = (arr, k) => arr.reduce((a, j) => a + (j[k] || 0), 0);
+  const tot = arr => `${intf(sum(arr, "disposed"))} / ${intf(sum(arr, "forecast"))} poles`;
+  const body = $(".gbody", el), parts = [];
+  const lab = x => x || "(blank)";
+  const groupBy = (arr, key) => { const m = new Map(); arr.forEach(j => { const k = lab(j[key]); if (!m.has(k)) m.set(k, []); m.get(k).push(j); }); return [...m]; };
+  groupBy(jobs, "district").forEach(([dn, dj]) => {
+    parts.push(`<div class="g1"><span>${esc(dn)}</span><span>${esc(tot(dj))}</span></div>`);
+    groupBy(dj, "voltage").forEach(([vn, vj]) => {
+      parts.push(`<div class="g2"><span>${esc(vn)}</span><span>${esc(tot(vj))}</span></div>`);
+      groupBy(vj, "project").forEach(([pn, pj]) => {
+        const link = pj.find(j => j.project_link);
+        parts.push(`<div class="g3"><span>${link ? `<a href="${esc(link.project_link)}" target="_blank" rel="noopener" title="${esc(link.project_link)}">${esc(pn)} ${I.ext.replace("<svg", "<svg width=13 height=13")}</a>` : esc(pn)}</span><span>${esc(tot(pj))}</span></div>`);
+        pj.forEach(j => {
+          const s = toDay(j.start), f = toDay(j.finish);
+          let barH = "";
+          if (isFinite(s)){
+            const e = isFinite(f) && f >= s ? f + dayMs : s + 21 * dayMs;   // finish day included; no finish date -> short open-ended bar
+            const left = pct(s), w = Math.max(0.6, pct(e) - left), ink = inkOn(j.colour), prog = j.forecast ? Math.min(100, j.disposed / j.forecast * 100) : 0;
+            barH = `<div class="gbar${isFinite(f) ? "" : " open"}" title="${isFinite(f) ? "" : "No Finish Date in the workbook"}" style="left:${left.toFixed(3)}%;width:${w.toFixed(3)}%;background:${j.colour};color:${ink}"><em style="width:${prog.toFixed(1)}%;background:${ink}"></em><span data-long="Disposed ${intf(j.disposed)} · Forecast ${intf(j.forecast)}" data-short="${intf(j.disposed)} / ${intf(j.forecast)}">Disposed ${intf(j.disposed)} · Forecast ${intf(j.forecast)}</span></div>`;
+          } else barH = `<div class="gnodate">No Start Date · ${intf(j.disposed)} / ${intf(j.forecast)} poles</div>`;
+          parts.push(`<div class="gjob${j.row === picked ? " on" : ""}" data-row="${j.row}"><div class="glab"><b>${esc(j.circuit || "—")}</b><small>${esc(j.pid ? "PID " + j.pid : "")}</small></div><div class="gtrack">${grid}${todayX}${barH}</div></div>`);
+        });
+      });
+    });
+  });
+  body.innerHTML = parts.join("");
+  const fit = () => body.querySelectorAll(".gbar").forEach(bar => { const sp = $("span", bar); sp.textContent = sp.dataset.long; bar.classList.remove("outside");
+    if (sp.scrollWidth > bar.clientWidth - 10){ sp.textContent = sp.dataset.short; if (sp.scrollWidth > bar.clientWidth - 10) bar.classList.add("outside"); } });
+  new ResizeObserver(() => requestAnimationFrame(fit)).observe(body);
+  body.addEventListener("click", e => { if (e.target.closest("a")) return; const r = e.target.closest(".gjob"); if (r) onPick(+r.dataset.row); });
+  body.addEventListener("mousemove", e => { const r = e.target.closest(".gjob"); if (!r){ Tip.hide(); return; } const j = jobs.find(x => x.row === +r.dataset.row);
+    Tip.show(e, {title: `${j.project} — ${j.circuit}`, rows: [{color: j.colour, name: "Status", value: j.status || "—"}, {name: "Start → Finish", value: `${fmtDate(j.start) || "—"} → ${fmtDate(j.finish) || "—"}`},
+      {name: "Disposed / Forecast", value: `${intf(j.disposed)} / ${intf(j.forecast)}`}], note: "Click for the comment, control file and link"}); });
+  body.addEventListener("mouseleave", () => Tip.hide());
+  return el;
+}
+function linkish(v){ return /^(https?:|mailto:|file:)/i.test(v || "") ? v : /^\\\\/.test(v || "") ? "file:" + v.replace(/\\/g, "/") : ""; }
+function jobPanel(side, j){
+  side.textContent = "";
+  if (!j){ side.append(emptyMsg("Click a job to see its details.")); return; }
+  const w = h(`<div class="jp"><div class="jph"><small>Job details</small><h3></h3><div class="jst"><i></i><span></span></div></div><dl></dl><div class="jpc"><h4>Comment</h4><p></p></div><div class="jpc jcf"><h4>Control File</h4><div></div></div></div>`);
+  const hh = $("h3", w);
+  if (j.project_link){ const a = h(`<a target="_blank" rel="noopener"></a>`); a.href = j.project_link; a.title = j.project_link; a.textContent = j.project + " ↗"; hh.append(a); } else hh.textContent = j.project;
+  $(".jst i", w).style.background = j.colour; $(".jst span", w).textContent = j.status || "No status";
+  const dl = $("dl", w);
+  [["District", j.district], ["Voltage", j.voltage], ["Circuit", j.circuit], ["PID", j.pid], ["Start Date", fmtDate(j.start) || "—"], ["Finish Date", fmtDate(j.finish) || "—"],
+   ["Forecasted Total poles", intf(j.forecast)], ["Poles Disposed", intf(j.disposed)], ["Remaining", intf(j.remaining)], ["Workbook row", String(j.row)]].forEach(([k, v]) => {
+    const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v || "—"; dl.append(dt, dd); });
+  const pm = h(`<div class="meter" style="margin:4px 0 12px"><i></i></div>`); $("i", pm).style.width = (j.forecast ? Math.min(100, j.disposed / j.forecast * 100) : 0) + "%"; dl.after(pm);
+  $(".jpc p", w).textContent = j.comment || "No comment in column L for this job.";
+  const cf = $(".jcf div", w);
+  if (!j.control_file && !j.control_link) cf.textContent = "No control file in column O.";
+  else {
+    const target = j.control_link || j.control_file, href = linkish(target);
+    const line = h(`<div class="jcfl"></div>`);
+    if (href){ const a = h(`<a target="_blank" rel="noopener"></a>`); a.href = href; a.textContent = j.control_file || target; a.title = target; line.append(a); }
+    else { const s = h(`<span></span>`); s.textContent = j.control_file; line.append(s); }
+    const cp = h(`<button class="btn sm" title="Copy to the clipboard">Copy</button>`);
+    cp.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(target).then(() => { cp.textContent = "Copied ✔"; setTimeout(() => cp.textContent = "Copy", 1500); }); };
+    line.append(cp); cf.append(line);
+    if (/^\\\\/.test(target)) cf.append(h(`<p class="muted" style="font-size:12px;margin:6px 0 0">Network paths may not open straight from the browser – use Copy and paste it into File Explorer.</p>`));
+  }
+  if (j.project_link){ const b = h(`<a class="btn sm" target="_blank" rel="noopener" style="margin-top:12px">${I.ext} Open project link</a>`); b.href = j.project_link; w.append(b); }
+  side.append(w);
 }
 
 /* ======================================================================
