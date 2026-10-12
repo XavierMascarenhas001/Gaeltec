@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 25-Sep-2026</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 12-Oct-2026</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -70,12 +70,11 @@ function pageDashboard(key){
     if (def.pre) { const x = def.pre(P); if (x) P.body.append(x); }
     if (def.ready && !def.ready(P)) return;
     P.fbar = filterBar(P, def.filters(P));
-    P.body.append(P.fbar);
     const tabs = h(`<div class="dtabs" role="tablist"></div>`);
     def.tabs.forEach(t => { const b = tabBtn(t.icon, t.label); b.classList.toggle("on", t.id === st.tab);
       b.onclick = () => { st.tab = t.id; tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); P.renderTab(); }; tabs.append(b); });
     P.panel = h(`<div class="dpanel"></div>`);
-    P.body.append(tabs, P.panel);
+    P.body.append(tabs, P.fbar, P.panel);
     P.refresh();
   };
   P.refresh = async () => {
@@ -425,27 +424,33 @@ function ntOverview(P, panel){
     {label: "Rows after filters", value: intf(P.v.rows), note: `of ${intf(P.v.rows_total)}`}]));
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
   const gsel = segc(["Day", "Week", "Month"], P.st.gran, x => { P.st.gran = x; P.refresh(); });
-  if (!o.trend){ const c = dcard("CV7_recover — count over time", "", 7); c.acts.append(gsel); c.body.append(emptyMsg("No CV7_recover records (with a date) for the current filters.")); g.append(c); }
-  else { const labs = o.trend.x.map(x => periodLabel(x, P.st.gran));
-    g.append(vizCard({title: "CV7_recover — count over time", sub: `Grouped by ${P.st.gran.toLowerCase()}`, span: 7, extra: gsel,
-      draw: host => Viz.line(host, {labels: labs, values: o.trend.y, name: "CV7_recover", height: 300}),
+  if (!o.trend){ const c = dcard("CV7_recover — count over time", "", 12); c.acts.append(gsel); c.body.append(emptyMsg("No CV7_recover records (with a date) for the current filters.")); g.append(c); }
+  else { const labs = o.trend.x.map(x => periodLabel(x, P.st.gran)), ys = o.trend.y, mx = Math.max(...ys);
+    g.append(vizCard({title: "CV7_recover — count over time", sub: `Grouped by ${P.st.gran.toLowerCase()} · hover a bar for its count`, span: 12, extra: gsel,
+      draw: host => Viz.columns(host, {labels: labs, height: 340, axis: compact, fmt: intf, valueLabels: ys.length <= 40,
+        series: [{name: "CV7_recover", values: ys, color: "var(--s1)"}],
+        tip: i => ({title: labs[i], rows: [{color: "var(--s1)", name: "CV7_recover", value: intf(ys[i])}], note: ys[i] === mx ? "Highest period" : ""})}),
       table: () => ({name: "CV7_recover over time", columns: ["Date", "Count"], rows: o.trend.x.map((x, i) => [x, o.trend.y[i]])})})); }
-  if (!o.poles.length){ const c = dcard("All pole categories (erect only)", "", 5); c.body.append(emptyMsg("No pole records for the current filters.")); g.append(c); }
-  else g.append(vizCard({title: "All pole categories (erect only)", sub: "Count by pole type", span: 5,
+  if (!o.poles.length){ const c = dcard("All pole categories (erect only)", "", 12); c.body.append(emptyMsg("No pole records for the current filters.")); g.append(c); }
+  else g.append(vizCard({title: "All pole categories (erect only)", sub: "Count by pole type", span: 12,
     draw: host => Viz.bars(host, {labels: o.poles.map(p => p.type), series: [{name: "Count", values: o.poles.map(p => p.count), color: "var(--s1)"}], fmt: intf, labelMax: 200}),
     table: () => ({name: "Pole categories", columns: ["Pole type", "Count"], rows: o.poles.map(p => [p.type, p.count])})}));
 }
 const GROUP_ICON = {"Poles": "pole", "Transformers": "tx", "Conductor": "cable", "Switch gear": "switch"};
+const GROUP_IMAGE = {"Poles": "Poles", "Transformers": "Transformer", "Conductor": "Cable", "Switch gear": "Switchgear"};
+const ITEM_IMAGE = {"Fuses": "Fuses"};
 function ntItems(P, panel){
   const it = P.v.items;
   if (!it.detail_names.length){ panel.append(note("No mapped items for the current filters.")); return; }
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
   const chosen = it.detail && it.detail.chosen;
   const cardEl = c => { const b = h(`<button class="icard${c.name === chosen ? " on" : ""}"><small></small><b></b></button>`); $("small", b).textContent = c.label; $("b", b).textContent = c.value;
+    if (ITEM_IMAGE[c.name]){ b.classList.add("withimg"); b.prepend(imageEl(ITEM_IMAGE[c.name], "", "iimg")); }
     b.title = "Show the rows behind " + c.label; b.onclick = () => { P.st.detail = c.name; P.refresh(); }; return b; };
   it.groups.forEach(gr => {
     const c = dcard(gr.title, "", 6); c.querySelector(".ch").remove();
-    const w = h(`<div class="igrp"><div class="ih"><div class="ico">${ICON2[GROUP_ICON[gr.title]] || I.box3}</div><div><h3></h3><p></p></div></div><div class="icards"></div></div>`);
+    const w = h(`<div class="igrp"><div class="ih"><div><h3></h3><p></p></div></div><div class="icards"></div></div>`);
+    $(".ih", w).prepend(imageEl(GROUP_IMAGE[gr.title], `<div class="ico">${ICON2[GROUP_ICON[gr.title]] || I.box3}</div>`, "gimg"));
     $("h3", w).textContent = gr.title; $("p", w).textContent = gr.cards.length ? `${gr.cards.length} item type(s)` : "No records for this group under the current filters.";
     gr.cards.forEach(x => $(".icards", w).append(cardEl(x)));
     c.body.append(w); g.append(c);
@@ -463,7 +468,7 @@ function ntTotals(P, panel){
   if (t.total == null){ panel.append(note("The mapped Total column isn't in the file – pick it under Column mapping.", "warn", "warn")); return; }
   const items = [{label: "Total value", value: money(t.total), hero: true}];
   if (t.orig != null){ const d = t.total - t.orig; items.push({label: "Difference vs original", value: signed(d), tone: d >= 0 ? "up" : "down", note: d >= 0 ? "▲ above the original" : "▼ below the original"}, {label: "Original value", value: money(t.orig)}); }
-  panel.append(kpis(items));
+  const kk = kpis(items); $(".kpi.hero", kk).append(imageEl("Pound", "", "heroimg")); panel.append(kk);
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
   if (t.by_project){ const r = t.by_project.rows;
     g.append(vizCard({title: "Total value by project", sub: `${r.length} project(s) under the current filters`, span: 6,
@@ -613,21 +618,25 @@ function ntForecast(P, panel){
     if (missingCols.length) panel.append(note(`Not found in this sheet: ${missingCols.map(x => (r.fields.find(f => f.key === x) || {}).label).join(", ")}. Pick them under Column mapping if they're there under another name.`, "warn", "warn"));
     if (!jobs.length){ panel.append(note("No rows to chart for the current filters.")); return; }
     const g = h(`<div class="dgrid"></div>`); panel.append(g);
-    const main = dcard("Poles disposed vs. forecasted", "District → Voltage → Project → Circuit / PID · each bar runs from Start Date to Finish Date, coloured by Status · click a job for its details", 8);
-    const side = h(`<section class="dcard span4 jobpanel"></section>`);
+    const main = dcard("Poles disposed vs. forecasted", "District → Voltage → Project → Circuit / PID · each bar runs from Start Date to Finish Date, coloured by Status · scroll sideways for more dates · click a job for its details below", 12);
+    const side = h(`<section class="dcard span12 jobpanel"></section>`);
     g.append(main, side);
     let mode = "gantt"; const holder = h(`<div></div>`);
-    main.acts.append(segc([["gantt", "Gantt"], ["table", "Table"]], mode, m => { mode = m; draw(); }));
+    fc.zoom = fc.zoom || "month";
+    const zoomSel = segc([["fit", "Fit"], ["quarter", "Quarter"], ["month", "Month"], ["week", "Week"]], fc.zoom, z => { fc.zoom = z; draw(); });
+    zoomSel.title = "Zoom the timeline";
+    main.acts.append(zoomSel, segc([["gantt", "Gantt"], ["table", "Table"]], mode, m => { mode = m; zoomSel.style.display = m === "gantt" ? "" : "none"; draw(); }));
     main.body.append(holder);
     if (fc.pick == null || !jobs.some(j => j.row === fc.pick)) fc.pick = jobs[0].row;
-    const pick = row => { fc.pick = row; holder.querySelectorAll(".gjob").forEach(x => x.classList.toggle("on", +x.dataset.row === row)); jobPanel(side, jobs.find(j => j.row === row)); };
+    const pick = row => { fc.pick = row; holder.querySelectorAll(".gjob").forEach(x => x.classList.toggle("on", +x.dataset.row === row)); jobPanel(side, jobs.find(j => j.row === row));
+      const r = side.getBoundingClientRect(); if (r.top > innerHeight - 120) side.scrollIntoView({behavior: "smooth", block: "nearest"}); };
     function draw(){
       holder.textContent = "";
       if (mode === "table"){ holder.append(dtable({name: "Pole position", columns: ["District", "Voltage", "Project", "Circuit", "PID", "Status", "Start Date", "Finish Date", "Forecast", "Disposed", "Remaining", "Comment", "Control File", "Project link"],
         rows: jobs.map(j => [j.district, j.voltage, j.project, j.circuit, j.pid, j.status, j.start, j.finish, j.forecast, j.disposed, j.remaining, j.comment, j.control_file, j.project_link])})); return; }
       const counts = new Map(); jobs.forEach(j => { const key = statusKey(r.statuses, j); counts.set(key.label, (counts.get(key.label) || 0) + 1); });
       holder.append(legendEl(r.statuses.filter(s => counts.has(s.label)).map(s => ({name: `${s.label} (${counts.get(s.label)})`, color: s.colour}))));
-      holder.append(ganttEl(jobs, fc.pick, pick));
+      holder.append(ganttEl(jobs, fc.pick, pick, fc.zoom));
     }
     draw(); jobPanel(side, jobs.find(j => j.row === fc.pick));
   })
@@ -639,68 +648,102 @@ function statusKey(statuses, j){ const s = (j.status || "").toLowerCase();
 const inkOn = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return "#fff"; const n = parseInt(m[1], 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55 ? "#0b0b0b" : "#ffffff"; };
 const dayMs = 864e5, toDay = s => s ? Date.parse(s.slice(0, 10) + "T00:00:00Z") : NaN;
-function ganttEl(jobs, picked, onPick){
+function ganttEl(jobs, picked, onPick, zoom){
   const starts = jobs.map(j => toDay(j.start)).filter(isFinite), ends = jobs.map(j => toDay(j.finish || j.start)).filter(isFinite);
-  const el = h(`<div class="gantt"><div class="gh"><div class="glab"></div><div class="gaxis"></div></div><div class="gbody"></div></div>`);
-  if (!starts.length){ el.querySelector(".gbody").append(emptyMsg("No Start Dates in these rows – map the Start Date column under Column mapping.")); return el; }
-  let t0 = new Date(Math.min(...starts)), t1 = new Date(Math.max(...ends, ...starts));
-  t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), 1); const e1 = new Date(t1); t1 = Date.UTC(e1.getUTCFullYear(), e1.getUTCMonth() + 1, 1);
-  const pct = t => ((t - t0) / (t1 - t0) * 100);
-  const months = []; for (let d = new Date(t0); d.getTime() < t1; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) months.push(d.getTime());
-  const step = months.length > 24 ? 3 : months.length > 14 ? 2 : 1;
-  const axis = $(".gaxis", el), grid = months.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join("");
-  months.forEach((m, i) => { if (i % step) return; const d = new Date(m), s = h(`<span></span>`); s.style.left = pct(m) + "%"; s.textContent = `${MONTHS3[d.getUTCMonth()]}${d.getUTCMonth() === 0 || i === 0 ? " " + d.getUTCFullYear() : ""}`; axis.append(s); });
-  const now = Date.now(), todayX = now >= t0 && now <= t1 ? `<b class="gtoday" style="left:${pct(now).toFixed(3)}%"></b>` : "";
-  if (todayX){ const s = h(`<span class="today">Today</span>`); s.style.left = pct(now) + "%"; axis.append(s); }
+  const el = h(`<div class="gantt"><div class="gscroll"><div class="gin"><div class="gh"><div class="glab">Circuit · PID</div><div class="gaxis"></div></div><div class="gbody"></div></div></div></div>`);
+  if (!starts.length){ $(".gbody", el).append(emptyMsg("No Start Dates in these rows – map the Start Date column under Column mapping.")); return el; }
+  let t0 = new Date(Math.min(...starts)), t1 = new Date(Math.max(...ends, ...starts) + 21 * dayMs);
+  t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), 1); t1 = Date.UTC(t1.getUTCFullYear(), t1.getUTCMonth() + 1, 1);
+  const days = (t1 - t0) / dayMs, LAB = 200;
+  const PPD = {quarter: 1.6, month: 4, week: 12};
+  const scroller = $(".gscroll", el), inner = $(".gin", el), axis = $(".gaxis", el), body = $(".gbody", el);
+  let ppd = 4, built = false;
+  const now = Date.now();
   const sum = (arr, k) => arr.reduce((a, j) => a + (j[k] || 0), 0);
   const tot = arr => `${intf(sum(arr, "disposed"))} / ${intf(sum(arr, "forecast"))} poles`;
-  const body = $(".gbody", el), parts = [];
   const lab = x => x || "(blank)";
   const groupBy = (arr, key) => { const m = new Map(); arr.forEach(j => { const k = lab(j[key]); if (!m.has(k)) m.set(k, []); m.get(k).push(j); }); return [...m]; };
-  groupBy(jobs, "district").forEach(([dn, dj]) => {
-    parts.push(`<div class="g1"><span>${esc(dn)}</span><span>${esc(tot(dj))}</span></div>`);
-    groupBy(dj, "voltage").forEach(([vn, vj]) => {
-      parts.push(`<div class="g2"><span>${esc(vn)}</span><span>${esc(tot(vj))}</span></div>`);
-      groupBy(vj, "project").forEach(([pn, pj]) => {
-        const link = pj.find(j => j.project_link);
-        parts.push(`<div class="g3"><span>${link ? `<a href="${esc(link.project_link)}" target="_blank" rel="noopener" title="${esc(link.project_link)}">${esc(pn)} ${I.ext.replace("<svg", "<svg width=13 height=13")}</a>` : esc(pn)}</span><span>${esc(tot(pj))}</span></div>`);
-        pj.forEach(j => {
-          const s = toDay(j.start), f = toDay(j.finish);
-          let barH = "";
-          if (isFinite(s)){
-            const e = isFinite(f) && f >= s ? f + dayMs : s + 21 * dayMs;   // finish day included; no finish date -> short open-ended bar
-            const left = pct(s), w = Math.max(0.6, pct(e) - left), ink = inkOn(j.colour), prog = j.forecast ? Math.min(100, j.disposed / j.forecast * 100) : 0;
-            barH = `<div class="gbar${isFinite(f) ? "" : " open"}" title="${isFinite(f) ? "" : "No Finish Date in the workbook"}" style="left:${left.toFixed(3)}%;width:${w.toFixed(3)}%;background:${j.colour};color:${ink}"><em style="width:${prog.toFixed(1)}%;background:${ink}"></em><span data-long="Disposed ${intf(j.disposed)} · Forecast ${intf(j.forecast)}" data-short="${intf(j.disposed)} / ${intf(j.forecast)}">Disposed ${intf(j.disposed)} · Forecast ${intf(j.forecast)}</span></div>`;
-          } else barH = `<div class="gnodate">No Start Date · ${intf(j.disposed)} / ${intf(j.forecast)} poles</div>`;
-          parts.push(`<div class="gjob${j.row === picked ? " on" : ""}" data-row="${j.row}"><div class="glab"><b>${esc(j.circuit || "—")}</b><small>${esc(j.pid ? "PID " + j.pid : "")}</small></div><div class="gtrack">${grid}${todayX}${barH}</div></div>`);
+  function build(){
+    ppd = zoom === "fit" ? Math.max(0.5, (scroller.clientWidth - LAB - 2) / days) : PPD[zoom] || 4;
+    const W = Math.round(days * ppd), X = t => ((t - t0) / dayMs * ppd);
+    inner.style.width = (LAB + W) + "px";
+    el.style.setProperty("--glab", LAB + "px");
+    const months = []; for (let d = new Date(t0); d.getTime() < t1; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) months.push(d.getTime());
+    const monthPx = 30.4 * ppd, step = monthPx < 34 ? 3 : monthPx < 60 ? 2 : 1;
+    axis.textContent = ""; axis.style.width = W + "px";
+    months.forEach((m, i) => { const d = new Date(m);
+      if (i % step === 0){ const sp = h(`<span></span>`); sp.style.left = X(m) + "px"; sp.textContent = `${MONTHS3[d.getUTCMonth()]}${d.getUTCMonth() === 0 || i === 0 ? " " + d.getUTCFullYear() : monthPx > 90 ? " " + String(d.getUTCFullYear()).slice(2) : ""}`; axis.append(sp); }
+      if (d.getUTCMonth() === 0 && i){ const y = h(`<em></em>`); y.style.left = X(m) + "px"; axis.append(y); } });
+    let weekLines = "";
+    if (ppd >= 8){ const first = new Date(t0); const off = (8 - first.getUTCDay()) % 7; for (let t = t0 + off * dayMs; t < t1; t += 7 * dayMs){ weekLines += `<i class="wk" style="left:${X(t).toFixed(1)}px"></i>`;
+      const sp = h(`<span class="wkl"></span>`); sp.style.left = X(t) + "px"; sp.textContent = new Date(t).getUTCDate(); axis.append(sp); } }
+    const grid = months.map(m => `<i class="${new Date(m).getUTCMonth() === 0 ? "yr" : ""}" style="left:${X(m).toFixed(1)}px"></i>`).join("") + weekLines;
+    const todayX = now >= t0 && now <= t1 ? `<b class="gtoday" style="left:${X(now).toFixed(1)}px"></b>` : "";
+    if (todayX){ const sp = h(`<span class="today">Today</span>`); sp.style.left = X(now) + "px"; axis.append(sp); }
+    const parts = [];
+    groupBy(jobs, "district").forEach(([dn, dj]) => {
+      parts.push(`<div class="g1"><span class="gst"><span>${esc(dn)}</span><span>${esc(tot(dj))}</span></span></div>`);
+      groupBy(dj, "voltage").forEach(([vn, vj]) => {
+        parts.push(`<div class="g2"><span class="gst"><span>${esc(vn)}</span><span>${esc(tot(vj))}</span></span></div>`);
+        groupBy(vj, "project").forEach(([pn, pj]) => {
+          const link = pj.find(j => j.project_link);
+          parts.push(`<div class="g3"><span class="gst"><span>${link ? `<a href="${esc(link.project_link)}" target="_blank" rel="noopener" title="${esc(link.project_link)}">${esc(pn)} ${I.ext.replace("<svg", "<svg width=13 height=13")}</a>` : esc(pn)}</span><span>${esc(tot(pj))}</span></span></div>`);
+          pj.forEach(j => {
+            const s0 = toDay(j.start), f = toDay(j.finish);
+            let barH = "";
+            if (isFinite(s0)){
+              const e = isFinite(f) && f >= s0 ? f + dayMs : s0 + 21 * dayMs;
+              const left = X(s0), w = Math.max(4, X(e) - left), ink = inkOn(j.colour), prog = j.forecast ? Math.min(100, j.disposed / j.forecast * 100) : 0;
+              barH = `<div class="gbar${isFinite(f) ? "" : " open"}" title="${isFinite(f) ? "" : "No Finish Date in the workbook"}" style="left:${left.toFixed(1)}px;width:${w.toFixed(1)}px;background:${j.colour};color:${ink}"><em style="width:${prog.toFixed(1)}%;background:${ink}"></em><span data-long="Disposed ${intf(j.disposed)} · Forecast ${intf(j.forecast)}" data-short="${intf(j.disposed)} / ${intf(j.forecast)}">Disposed ${intf(j.disposed)} · Forecast ${intf(j.forecast)}</span></div>`;
+            } else barH = `<div class="gnodate">No Start Date · ${intf(j.disposed)} / ${intf(j.forecast)} poles</div>`;
+            parts.push(`<div class="gjob${j.row === picked ? " on" : ""}" data-row="${j.row}"><div class="glab"><b>${esc(j.circuit || "—")}</b><small>${esc(j.pid ? "PID " + j.pid : "")}</small></div><div class="gtrack" style="width:${W}px">${grid}${todayX}${barH}</div></div>`);
+          });
         });
       });
     });
-  });
-  body.innerHTML = parts.join("");
-  const fit = () => body.querySelectorAll(".gbar").forEach(bar => { const sp = $("span", bar); sp.textContent = sp.dataset.long; bar.classList.remove("outside");
-    if (sp.scrollWidth > bar.clientWidth - 10){ sp.textContent = sp.dataset.short; if (sp.scrollWidth > bar.clientWidth - 10) bar.classList.add("outside"); } });
-  new ResizeObserver(() => requestAnimationFrame(fit)).observe(body);
+    body.innerHTML = parts.join("");
+    body.querySelectorAll(".gbar").forEach(bar => { const sp = $("span", bar);
+      if (sp.scrollWidth > bar.clientWidth - 10){ sp.textContent = sp.dataset.short; if (sp.scrollWidth > bar.clientWidth - 10) bar.classList.add("outside"); } });
+    if (!built && zoom !== "fit"){   // open on today (or the first job) instead of the far left
+      const focus = now >= t0 && now <= t1 ? X(now) - scroller.clientWidth * 0.35 : 0;
+      scroller.scrollLeft = Math.max(0, focus);
+    }
+    built = true;
+  }
+  let w0 = 0;
+  new ResizeObserver(() => { const w = scroller.clientWidth; if (!w) return; el.style.setProperty("--vis", w + "px");
+    if (built && (zoom !== "fit" || w === w0)) return; w0 = w; requestAnimationFrame(build); }).observe(scroller);
   body.addEventListener("click", e => { if (e.target.closest("a")) return; const r = e.target.closest(".gjob"); if (r) onPick(+r.dataset.row); });
   body.addEventListener("mousemove", e => { const r = e.target.closest(".gjob"); if (!r){ Tip.hide(); return; } const j = jobs.find(x => x.row === +r.dataset.row);
     Tip.show(e, {title: `${j.project} — ${j.circuit}`, rows: [{color: j.colour, name: "Status", value: j.status || "—"}, {name: "Start → Finish", value: `${fmtDate(j.start) || "—"} → ${fmtDate(j.finish) || "—"}`},
       {name: "Disposed / Forecast", value: `${intf(j.disposed)} / ${intf(j.forecast)}`}], note: "Click for the comment, control file and link"}); });
   body.addEventListener("mouseleave", () => Tip.hide());
+  /* drag sideways with the mouse, as well as the scrollbar / shift+wheel */
+  let drag = null;
+  scroller.addEventListener("mousedown", e => { if (e.button !== 0 || e.target.closest("a,.glab")) return; drag = {x: e.clientX, l: scroller.scrollLeft, moved: false}; });
+  addEventListener("mousemove", e => { if (!drag) return; const dx = e.clientX - drag.x; if (Math.abs(dx) > 4) drag.moved = true; if (drag.moved){ scroller.scrollLeft = drag.l - dx; scroller.classList.add("dragging"); } });
+  addEventListener("mouseup", () => { if (drag && drag.moved) setTimeout(() => scroller.classList.remove("dragging"), 0); drag = null; });
+  scroller.addEventListener("click", e => { if (scroller.classList.contains("dragging")) e.stopPropagation(); }, true);
   return el;
 }
 function linkish(v){ return /^(https?:|mailto:|file:)/i.test(v || "") ? v : /^\\\\/.test(v || "") ? "file:" + v.replace(/\\/g, "/") : ""; }
 function jobPanel(side, j){
   side.textContent = "";
-  if (!j){ side.append(emptyMsg("Click a job to see its details.")); return; }
-  const w = h(`<div class="jp"><div class="jph"><small>Job details</small><h3></h3><div class="jst"><i></i><span></span></div></div><dl></dl><div class="jpc"><h4>Comment</h4><p></p></div><div class="jpc jcf"><h4>Control File</h4><div></div></div></div>`);
+  if (!j){ side.append(emptyMsg("Click a job in the chart to see its details here.")); return; }
+  const w = h(`<div class="jp"><div class="jph"><small>Job details · click another bar to switch</small><h3></h3><div class="jst"><i></i><span></span></div></div>
+    <div class="jleft"><dl></dl><div class="jmeter"></div></div>
+    <div class="jside"><div class="jpc"><h4>Comment (column L)</h4><p></p></div><div class="jpc jcf"><h4>Control File (column O)</h4><div></div></div></div></div>`);
   const hh = $("h3", w);
   if (j.project_link){ const a = h(`<a target="_blank" rel="noopener"></a>`); a.href = j.project_link; a.title = j.project_link; a.textContent = j.project + " ↗"; hh.append(a); } else hh.textContent = j.project;
   $(".jst i", w).style.background = j.colour; $(".jst span", w).textContent = j.status || "No status";
+  if (j.project_link){ const b = h(`<a class="btn sm" target="_blank" rel="noopener">${I.ext} Open project link</a>`); b.href = j.project_link; $(".jph", w).append(b); }
   const dl = $("dl", w);
   [["District", j.district], ["Voltage", j.voltage], ["Circuit", j.circuit], ["PID", j.pid], ["Start Date", fmtDate(j.start) || "—"], ["Finish Date", fmtDate(j.finish) || "—"],
    ["Forecasted Total poles", intf(j.forecast)], ["Poles Disposed", intf(j.disposed)], ["Remaining", intf(j.remaining)], ["Workbook row", String(j.row)]].forEach(([k, v]) => {
-    const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v || "—"; dl.append(dt, dd); });
-  const pm = h(`<div class="meter" style="margin:4px 0 12px"><i></i></div>`); $("i", pm).style.width = (j.forecast ? Math.min(100, j.disposed / j.forecast * 100) : 0) + "%"; dl.after(pm);
+    const d = document.createElement("div"), dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v || "—"; d.append(dt, dd); dl.append(d); });
+  const pct = j.forecast ? Math.min(100, j.disposed / j.forecast * 100) : 0;
+  const pm = h(`<div style="margin-top:14px"><div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:4px"><span>Poles disposed</span><b class="tnum" style="color:var(--ink)"></b></div><div class="meter"><i></i></div></div>`);
+  $("b", pm).textContent = `${Math.round(pct)}%`; $("i", pm).style.width = pct + "%"; $(".jmeter", w).append(pm);
   $(".jpc p", w).textContent = j.comment || "No comment in column L for this job.";
   const cf = $(".jcf div", w);
   if (!j.control_file && !j.control_link) cf.textContent = "No control file in column O.";
@@ -708,13 +751,12 @@ function jobPanel(side, j){
     const target = j.control_link || j.control_file, href = linkish(target);
     const line = h(`<div class="jcfl"></div>`);
     if (href){ const a = h(`<a target="_blank" rel="noopener"></a>`); a.href = href; a.textContent = j.control_file || target; a.title = target; line.append(a); }
-    else { const s = h(`<span></span>`); s.textContent = j.control_file; line.append(s); }
+    else { const sp = h(`<span></span>`); sp.textContent = j.control_file; line.append(sp); }
     const cp = h(`<button class="btn sm" title="Copy to the clipboard">Copy</button>`);
     cp.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(target).then(() => { cp.textContent = "Copied ✔"; setTimeout(() => cp.textContent = "Copy", 1500); }); };
     line.append(cp); cf.append(line);
     if (/^\\\\/.test(target)) cf.append(h(`<p class="muted" style="font-size:12px;margin:6px 0 0">Network paths may not open straight from the browser – use Copy and paste it into File Explorer.</p>`));
   }
-  if (j.project_link){ const b = h(`<a class="btn sm" target="_blank" rel="noopener" style="margin-top:12px">${I.ext} Open project link</a>`); b.href = j.project_link; w.append(b); }
   side.append(w);
 }
 

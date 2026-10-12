@@ -82,6 +82,39 @@ def master(aggregated, tracker, misc, output_name="", include_man_day=True, log=
 
 
 # ---------------------------------------------------------------------------
+# Tools 2 + 3 in one go - Control Files -> Master parquet + xlsx
+# (exactly the same two functions as the separate tools, chained)
+# ---------------------------------------------------------------------------
+def build_master_direct(files, tracker, misc, output_name="", include_man_day=True, keep_aggregated=False, log=print):
+    import tool_aggregate_cf
+    import tool_build_master
+    if not files:
+        raise UserError("Drop at least one Control File.")
+    for f in files:
+        _need(f, "Control File")
+    _need(tracker, "Project Tracker.parquet")
+    _need(misc, "miscelaneous.parquet")
+    out_dir = _outdir()
+    log("━━━━━━━━ Step 1 of 2 · Aggregating the Control Files ━━━━━━━━")
+    agg_outputs = tool_aggregate_cf.run(file_paths=files, output_file=os.path.join(out_dir, "CF_aggregated.xlsx"), log=log)
+    agg_parquet = next((p for p in agg_outputs if p.endswith("_aggregated.parquet")), None)
+    if not agg_parquet:
+        raise UserError("No data was aggregated from those Control Files - see the log above.")
+    log("━━━━━━━━ Step 2 of 2 · Building the Master ━━━━━━━━")
+    default = "Master_" + datetime.now().strftime("%d-%m-%Y") + ".parquet"
+    out = os.path.join(out_dir, _name(output_name, ".parquet", default))
+    master_outputs = tool_build_master.run(agg_parquet, tracker, misc, out, include_man_day=bool(include_man_day), log=log)
+    if keep_aggregated:
+        return master_outputs + agg_outputs
+    for p in agg_outputs:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    return master_outputs
+
+
+# ---------------------------------------------------------------------------
 # Tool 4 - Outputs (CV Excel report)
 # ---------------------------------------------------------------------------
 _DF_CACHE = {}

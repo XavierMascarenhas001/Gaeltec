@@ -28,6 +28,8 @@ a{color:var(--sky)}
 /* ---------- header ---------- */
 header{background:linear-gradient(120deg,var(--navy),var(--blue));color:#fff;padding:18px 28px;display:flex;align-items:center;gap:16px}
 header img{height:46px;background:#fff;border-radius:8px;padding:4px 8px}
+.hlogo:not(.has){display:none}
+.hlogo img{display:block}
 header .brand h1{margin:0;font-size:22px;letter-spacing:.3px}
 header .brand p{margin:0;opacity:.8;font-size:13px}
 header .spacer{flex:1}
@@ -217,16 +219,31 @@ h2.section{margin:34px 0 4px;font-size:20px}
 .dashframe iframe{display:block;width:100%;height:calc(100vh - 210px);min-height:640px;border:0;background:#fff}
 code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-radius:5px}
 @media (max-width:700px){.toolhead{flex-wrap:wrap}}
+.lgroups{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.lgroup{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px}
+.lgroup h3{margin:0 0 12px;font-size:15px;display:flex;align-items:center;gap:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.lgroup h3 svg{width:18px;height:18px}
+.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.lcard{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-decoration:none;color:var(--ink);background:var(--bg);transition:border-color .12s,transform .12s}
+.lcard:hover{border-color:var(--sky);transform:translateY(-2px)}
+.lcard .li{width:38px;height:38px;border-radius:10px;background:var(--sky-soft);color:var(--blue);display:grid;place-items:center;flex:none}
+.lcard .li svg{width:20px;height:20px}
+.lcard .lt{flex:1;min-width:0;display:flex;flex-direction:column}
+.lcard .lt b{font-size:14.5px}
+.lcard .lt small{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lcard > svg{width:16px;height:16px;color:var(--muted);flex:none}
 /*__DASH_CSS__*/
 </style>
 </head>
 <body>
 <header>
+  <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 25-Sep-2026 (dashboards built in)</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 12-Oct-2026</b></p>
   </div>
   <div class="spacer"></div>
+  <span class="hlogo" data-img="SPEN"></span>
   <span class="pill pystat" id="srv"><span class="dot busy"></span><span>Starting Python…</span></span>
 </header>
 <main id="app"></main>
@@ -334,6 +351,9 @@ const I = {
 };
 
 
+I.cal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>';
+I.clock = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+I.pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>';
 I.drop = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
 I.grid = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
 I.pound = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 6.5A4 4 0 0 0 9 8v12"/><path d="M6 13h8"/><path d="M6 20h12"/></svg>';
@@ -595,13 +615,11 @@ function tableEl(columns, rows){
 const TOOLS = [
   {id:"tp", n:1, c:"c1", icon:"target", title:"Target Price → Control File",
    desc:"Copy a Template_CF and fill Auxiliar, Block1 and PA CONTROL from a Target Price (.xlsm), reviewing similar line names first."},
-  {id:"aggregate", n:2, c:"c2", icon:"layers", title:"Aggregate Control Files",
-   desc:"Read Block1 + PA CONTROL from many Control Files and build CF_aggregated (.xlsx + two .parquet files)."},
-  {id:"master", n:3, c:"c3", icon:"db", title:"Build Master Parquet",
-   desc:"Join CF_aggregated with the Project Tracker (PID / PO) and the miscelaneous file (MD Poling, Man_day)."},
-  {id:"outputs", n:4, c:"c4", icon:"chart", title:"Outputs (CV Excel Report)",
+  {id:"build", n:2, c:"c2", icon:"db", title:"Build Master File",
+   desc:"Control Files → Master in one go: aggregates Block1 + PA CONTROL, then joins the Project Tracker (PID / PO) and the miscelaneous file (MD Poling, Man_day). Downloads Master_DD-MM-YYYY .parquet + .xlsx."},
+  {id:"outputs", n:3, c:"c4", icon:"chart", title:"Outputs (CV Excel Report)",
    desc:"The Outputs workbook: filter the master by district, project, circuit, category and dates, pick CV groups and export Summary, Combined, category and CV8 / CV31 sheets."},
-  {id:"wi", n:5, c:"c5", icon:"map", title:"Work Instructions & Map Check",
+  {id:"wi", n:4, c:"c5", icon:"map", title:"Work Instructions & Map Check",
    desc:"Generate the Work Instructions Word document and cross-check WorkPack maps (PDF) against the Control File."},
 ];
 const app = $("#app");
@@ -626,7 +644,32 @@ function home(){
     dg.append(tile);
   });
   app.append(dg);
+  app.append(h(`<h2 class="section">Useful links</h2>`));
+  app.append(h(`<p class="intro">The websites used day to day in the workflow – they open in a new tab.</p>`));
+  const lg = h(`<div class="lgroups"></div>`);
+  LINKS.forEach(g => {
+    const box = h(`<section class="lgroup"><h3>${I[g.icon]}<span></span></h3><div class="lgrid"></div></section>`);
+    $("h3 span", box).textContent = g.group;
+    g.items.forEach(l => {
+      const a = h(`<a class="lcard" target="_blank" rel="noopener"><span class="li">${I[l.icon]}</span><span class="lt"><b></b><small></small></span>${I.ext}</a>`);
+      a.href = l.url; a.title = l.url; $("b", a).textContent = l.name; $("small", a).textContent = new URL(l.url).hostname;
+      $(".lgrid", box).append(a);
+    });
+    lg.append(box);
+  });
+  app.append(lg);
 }
+const LINKS = [
+  {group: "Team", icon: "cal", items: [
+    {name: "Teams Vacations", icon: "cal", url: "https://dev-nexus.telcabo.co/backoffice/calendar/index.php"},
+    {name: "Telclock", icon: "clock", url: "https://telclock.telcabo.co/gaeltecuk/index.php?company=gaeltecuk&lang=pt&msg=error_not_logged"},
+  ]},
+  {group: "Maps", icon: "map", items: [
+    {name: "UMV", icon: "map", url: "https://gisportal.scottishpower.com/contractor_umv_poweron/?marker=216698.92675781,687390,27700,NAME:%20GLENSHAMROCK%20AUCHINLECK,,&scale=1000"},
+    {name: "What3words", icon: "pin", url: "https://gridreferencefinder.com/"},
+    {name: "Google maps", icon: "pin", url: "https://www.google.com/maps/@55.5941564,-4.636672,4681m/data=!3m1!1e3?entry=ttu&g_ep=EgoyMDI2MTAwNy4wIKXMDSoASAFQAw%3D%3D"},
+  ]},
+];
 
 function toolHead(t, back = "All tools"){
   const el = h(`<div class="toolhead"><button class="btn back">${I.back} ${esc(back)}</button><div class="ico ${t.c}">${I[t.icon].replace("<svg","<svg width=26 height=26")}</div><div style="flex:1"><h2>${esc(t.title)}</h2><p>${esc(t.desc)}</p></div></div>`);
@@ -690,6 +733,35 @@ function pageAggregate(t){
   app.append(b1, b2, b3);
 }
 
+/* ---------------- Steps 2 + 3 together: Control Files -> Master ---------------- */
+function pageBuild(t){
+  const b1 = box(1, "Drop the Control Files", "As many as you like, in one go or a few at a time. Dropping a whole folder picks up the Excel files inside.");
+  const files = dropField({label: "Control Files", kind: "files", types: [["Excel files", ".xlsx,.xlsm,.xls,.xlsb"]]});
+  b1.append(files);
+  const b2 = box(2, "Drop the Project Tracker and the miscelaneous file", "Same two files Build Master used: PID / PO come from the Project Tracker, MD Poling and Man_day from the miscelaneous file.");
+  const pq = [["Parquet", ".parquet"]];
+  const trk = dropField({label: "Project Tracker.parquet", kind: "file", types: pq});
+  const misc = dropField({label: "miscelaneous.parquet", kind: "file", types: pq});
+  const r = h(`<div class="row"></div>`); r.append(trk, misc); b2.append(r);
+  const md = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" checked> Also add <b>Man_day</b> (from the miscelaneous file's “man_day” column)</label>`);
+  b2.append(md);
+  const b3 = box(3, "Output", "Downloads <b>Master_DD-MM-YYYY.parquet</b> and the matching <b>.xlsx</b>, with the same columns and order as before.");
+  const nm = nameField("Master parquet file name", "Master_" + new Date().toLocaleDateString("en-GB").replace(/\//g, "-") + ".parquet");
+  const keep = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox"> Also download the intermediate CF_aggregated files (.xlsx, _aggregated.parquet, _resume.parquet)</label>`);
+  b3.append(nm, keep);
+  const b4 = box(4, "Run");
+  const run = runArea("Build Master File");
+  b4.append(run);
+  run.button.onclick = () => {
+    if (!files.get().length) { run.fail("Drop at least one Control File."); return; }
+    if (!trk.get() || !misc.get()) { run.fail("Drop the Project Tracker and the miscelaneous file."); return; }
+    run.run("build_master_direct", {files: files.get(), tracker: trk.get(), misc: misc.get(), output_name: nm.get(),
+      include_man_day: $("input", md).checked, keep_aggregated: $("input", keep).checked}, {needs: NEED_PARQUET, busy: "Aggregating Control Files, then building the Master…"});
+  };
+  const alt = h(`<p class="hint" style="margin:6px 0 0">Need just one of the steps? <a href="#aggregate">Aggregate Control Files only</a> · <a href="#master">Build Master from an existing CF_aggregated.parquet</a></p>`);
+  app.append(b1, b2, b3, b4, alt);
+}
+
 /* ---------------- Tool 3: Build Master ---------------- */
 function pageMaster(t){
   const b1 = box(1, "Drop the three input files");
@@ -713,7 +785,7 @@ function pageMaster(t){
 }
 
 /* ---------------- Tool 4: Outputs (CV Excel report) ---------------- */
-function logoField(label, key){
+function logoField(label, key, imgName){
   /* optional logo image, remembered in this browser so it's only dropped once */
   const el = dropField({label, kind: "file", types: [["Images", ".png,.jpg,.jpeg"]], hint: "optional – remembered for next time",
     onChange: async () => {
@@ -727,6 +799,10 @@ function logoField(label, key){
   inp.addEventListener("change", () => inp.files[0] && keep(inp.files[0]), true);
   dz.addEventListener("drop", (e) => e.dataTransfer.files[0] && keep(e.dataTransfer.files[0]), true);
   const saved = store.get(key, null);
+  const useBlob = (b, name) => { const f = new File([b], name, {type: b.type}); const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files; inp.dispatchEvent(new Event("change")); };
+  if ((!saved || !saved.data) && imgName && location.protocol.startsWith("http")) {
+    fetch("Images/" + imgName, {cache: "no-cache"}).then(r => r.ok ? r.blob() : Promise.reject()).then(b => useBlob(b, imgName)).catch(() => {});
+  }
   if (saved && saved.data) {
     fetch(saved.data).then(r => r.blob()).then(b => {
       const f = new File([b], saved.name, {type: b.type});
@@ -786,8 +862,8 @@ function pageOutputs(t){
 
   const b3 = box(3, "Export Excel", "Summary, Combined, one sheet per category and the CV8 / CV31 resumes. Drop the two logos once to have them in the top corner, as before.");
   const lr = h(`<div class="row"></div>`);
-  const logoL = logoField("Gaeltec logo (GaeltecImage.png)", "logo_left");
-  const logoR = logoField("SPEN logo (SPEN.png)", "logo_right");
+  const logoL = logoField("Gaeltec logo (GaeltecImage.png)", "logo_left", "GaeltecImage.png");
+  const logoR = logoField("SPEN logo (SPEN.png)", "logo_right", "SPEN.png");
   lr.append(logoL, logoR);
   const nm = nameField("Output file name", "Outputs_Report.xlsx");
   const run = runArea("Export Excel", "save");
@@ -972,7 +1048,11 @@ function pageWI(t){
 }
 
 /* ---------------- router ---------------- */
-const PAGES = {tp: pageTP, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
+const PAGES = {tp: pageTP, build: pageBuild, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
+const EXTRA_PAGES = {
+  aggregate: {id:"aggregate", c:"c2", icon:"layers", title:"Aggregate Control Files", desc:"Step 1 on its own: build CF_aggregated (.xlsx + two .parquet files)."},
+  master: {id:"master", c:"c3", icon:"db", title:"Build Master Parquet", desc:"Step 2 on its own: join an existing CF_aggregated with the Project Tracker and the miscelaneous file."},
+};
 function route(){
   const id = location.hash.replace("#", "");
   window.scrollTo(0, 0);
@@ -981,7 +1061,7 @@ function route(){
   app.innerHTML = "";
   document.body.classList.remove("dashmode"); delete document.body.dataset.dash;
   if (id.startsWith("dash/") && DASHDEF[id.slice(5)]) return pageDashboard(id.slice(5));
-  const t = TOOLS.find(x => x.id === id);
+  const t = TOOLS.find(x => x.id === id) || EXTRA_PAGES[id];
   if (!t) return home();
   app.append(toolHead(t)); PAGES[id](t);
 }
@@ -1000,6 +1080,7 @@ window.addEventListener("drop", e => e.preventDefault());
       p.title = text;
     });
   });
+  document.querySelectorAll(".hlogo[data-img]").forEach(el => el.replaceWith(imageEl(el.dataset.img, "", "hlogo")));
   route();
   PY.start().catch(() => {});   // start loading Python straight away, in the background
 })();

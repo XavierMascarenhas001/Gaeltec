@@ -8,10 +8,22 @@ server to start.
 | # | Tile | Python file |
 |---|------|-------------|
 | 1 | Target Price → Control File | `tool_tp_to_cf.py` |
-| 2 | Aggregate Control Files | `tool_aggregate_cf.py` |
-| 3 | Build Master Parquet | `tool_build_master.py` |
-| 4 | Outputs (CV Excel Report) | `tool_materials_report.py` |
-| 5 | Work Instructions & Map Check | `tool_work_instructions.py` |
+| 2 | Build Master File (Control Files → Master .parquet + .xlsx in one go) | `tool_aggregate_cf.py` then `tool_build_master.py` |
+| 3 | Outputs (CV Excel Report) | `tool_materials_report.py` |
+| 4 | Work Instructions & Map Check | `tool_work_instructions.py` |
+
+The two halves of step 2 can still be run on their own from links at the
+bottom of its page. The home page also has a **Useful links** section
+(Teams Vacations, Telclock, UMV, What3words, Google maps).
+
+## Images
+
+Put an `Images` folder next to `index.html` in the GitHub repo, with these
+file names (`.png`, or `.jpg`): `Poles`, `Transformer`, `Cable`,
+`Switchgear`, `Fuses`, `GaeltecImage`, `SPEN`, `Pound`. They're used for the
+Mapped Items groups, the page header, the Totals tab and as the default
+Outputs logos. Names are case-sensitive on GitHub. Any image that's missing
+is simply left out.
 
 ## Using it
 

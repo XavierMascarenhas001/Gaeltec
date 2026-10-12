@@ -154,6 +154,21 @@ const Tip = (() => {
   return {show, move: place, hide(){ el.classList.remove("on"); }};
 })();
 
+/* ---------- images from the "Images" folder next to index.html (GitHub) ---------- */
+const IMG_EXTS = [".png", ".jpg"];
+const IMG_FOUND = new Map(), IMG_MISS = new Set();   // remembered per page load, so redraws don't re-request
+function imageEl(name, fallbackHTML, cls){
+  const wrap = h(`<span class="${cls || "dimg"}"></span>`);
+  wrap.innerHTML = fallbackHTML || "";
+  if (!name || IMG_MISS.has(name)) { wrap.classList.add("none"); return wrap; }
+  const img = new Image(); let k = IMG_FOUND.has(name) ? IMG_EXTS.indexOf(IMG_FOUND.get(name)) : 0;
+  img.alt = name; img.decoding = "async";
+  img.onload = () => { IMG_FOUND.set(name, IMG_EXTS[k]); wrap.textContent = ""; wrap.append(img); wrap.classList.add("has"); };
+  img.onerror = () => { if (!IMG_FOUND.has(name) && ++k < IMG_EXTS.length) img.src = "Images/" + name + IMG_EXTS[k]; else { IMG_MISS.add(name); wrap.classList.add("none"); } };
+  img.src = "Images/" + name + IMG_EXTS[k];
+  return wrap;
+}
+
 /* ---------- small UI pieces ---------- */
 function segc(options, value, onChange){
   const el = h(`<div class="segc" role="group"></div>`);
@@ -369,7 +384,7 @@ const Viz = (() => {
       const sums = o.labels.map((_, i) => o.series.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0));
       const sc = nice(Math.max(...sums, 0) || 1, 5);
       const axis = o.axis || compact;
-      const L = Math.max(...sc.ticks.map(t => tw(axis(t)))) + 12, R = 6, T = 10;
+      const L = Math.max(...sc.ticks.map(t => tw(axis(t)))) + 12, R = 6, T = o.valueLabels ? 22 : 10;
       const pw = W - L - R, band = pw / Math.max(n, 1);
       const maxLab = Math.max(...o.labels.map(l => tw(l)));
       const rotate = !o.fill && maxLab + 10 > band && n > 1;
@@ -399,6 +414,8 @@ const Viz = (() => {
                       : `<text x="${o.fill ? L + band * i : cx}" y="${T + ph + 16}" text-anchor="${o.fill ? "start" : "middle"}">${lab}</text>`;
         }
       }
+      if (o.valueLabels && band >= 22){ for (let i = 0; i < n; i++){ if (!sums[i]) continue; const cx = L + band * i + band / 2;
+        s += `<text class="lbl tnum" x="${cx}" y="${y(sums[i]) - 6}" text-anchor="middle">${esc((o.fmt || qty)(sums[i]))}</text>`; } }
       if (o.marker){ const mx = L + band * o.marker.x; s += `<line x1="${mx}" x2="${mx}" y1="${T}" y2="${T + ph}" style="stroke:var(--ink);stroke-width:1.5"/><text class="lbl" x="${mx + 5}" y="${T + 11}">${esc(o.marker.label)}</text>`; }
       s += `<line class="base" x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}"/></svg>`;
       host.innerHTML = s;

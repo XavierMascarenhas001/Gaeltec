@@ -81,7 +81,7 @@ body.dashmode main{max-width:1560px;padding:0 22px 70px}
 @media (max-width:900px){.dland{grid-template-columns:1fr;padding:22px}}
 
 /* filter bar - one bar above everything it filters */
-.fbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);padding:10px 0 8px;margin-bottom:6px;border-bottom:1px solid var(--line)}
+.fbar{background:transparent;padding:4px 0 10px;margin-bottom:8px;border-bottom:1px solid var(--line)}
 .fbar .fr{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .fbar .fr + .fr{margin-top:8px}
 .fbar .lbl{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-right:2px}
@@ -122,12 +122,6 @@ body.dashmode main{max-width:1560px;padding:0 22px 70px}
 .mspop .note{font-size:12px;color:var(--muted);margin:0}
 
 /* tabs inside a dashboard */
-.dtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:14px 0 18px;overflow-x:auto}
-.dtabs button{border:0;background:none;padding:11px 16px;font-weight:600;font-size:14.5px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
-.dtabs button svg{width:17px;height:17px}
-.dtabs button:hover{color:var(--ink)}
-.dtabs button.on{color:var(--ink);border-bottom-color:var(--acc2)}
-.dtabs button .bdg{font-size:11px;background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:0 7px;color:var(--muted)}
 
 .dpanel{position:relative;min-height:200px}
 .dpanel.loading > *{opacity:.45;transition:opacity .15s}
@@ -299,51 +293,92 @@ details.dmap[open] summary{margin-bottom:10px}
   .dtitle h1{font-size:22px}
 }
 
-/* Pole Position Gantt */
-.gantt{border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.gantt .gh,.gantt .gjob{display:grid;grid-template-columns:170px minmax(0,1fr)}
-.gantt .gh{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:2}
-.gaxis{position:relative;height:40px}
-.gaxis span{position:absolute;top:8px;font-size:11.5px;color:var(--muted);transform:translateX(3px);white-space:nowrap;font-variant-numeric:tabular-nums}
-.gaxis span.today{top:auto;bottom:1px;font-size:10.5px;font-weight:700;color:var(--ink);transform:translateX(-50%)}
-.gbody{max-height:760px;overflow:auto}
-.gantt .g1{background:var(--acc);color:#fff;padding:7px 12px;font-weight:700;font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;display:flex;justify-content:space-between}
-.gantt .g2{padding:6px 12px;font-weight:700;font-size:13px;background:var(--acc-soft);display:flex;justify-content:space-between}
-.gantt .g3{padding:6px 12px 3px 20px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;border-top:1px solid var(--line)}
+/* Pole Position Gantt - wide, scrolls sideways, label column stays put */
+.gantt{border:1px solid var(--line);border-radius:12px;overflow:hidden;--glab:200px}
+.gscroll{overflow:auto;max-height:640px;cursor:grab}
+.gscroll.dragging{cursor:grabbing;user-select:none}
+.gin{min-width:100%}
+.gantt .gh,.gantt .gjob{display:grid;grid-template-columns:var(--glab) max-content}
+.gantt .gh{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:4}
+.gantt .gh .glab{position:sticky;left:0;z-index:5;background:var(--card);font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding-left:14px;border-right:1px solid var(--line)}
+.gaxis{position:relative;height:44px}
+.gaxis span{position:absolute;top:7px;font-size:12px;font-weight:600;color:var(--ink2);transform:translateX(4px);white-space:nowrap;font-variant-numeric:tabular-nums}
+.gaxis span.wkl{top:auto;bottom:4px;font-size:10.5px;font-weight:400;color:var(--muted);transform:translateX(-50%)}
+.gaxis span.today{top:auto;bottom:3px;font-size:10.5px;font-weight:700;color:#fff;background:var(--ink);padding:0 5px;border-radius:99px;transform:translateX(-50%);z-index:2}
+.gaxis em{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--axis)}
+.gbody{position:relative}
+.gantt .g1,.gantt .g2,.gantt .g3{display:block}
+.gantt .gst{position:sticky;left:0;display:flex;justify-content:space-between;gap:24px;width:var(--vis,100%);max-width:100%;box-sizing:border-box}
+.gantt .g1{background:var(--acc);color:#fff;font-weight:700;font-size:12.5px;letter-spacing:.04em;text-transform:uppercase}
+.gantt .g1 .gst{padding:7px 12px}
+.gantt .g2{font-weight:700;font-size:13px;background:var(--acc-soft)}
+.gantt .g2 .gst{padding:6px 12px}
+.gantt .g3{font-weight:700;font-size:13px;border-top:1px solid var(--line)}
+.gantt .g3 .gst{padding:6px 12px 3px 20px}
 .gantt .g3 a{color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
 .gantt .g3 a:hover{color:var(--acc2);text-decoration:underline}
-.gantt .g1 span:last-child,.gantt .g2 span:last-child,.gantt .g3 span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
-.gantt .gjob{cursor:pointer;min-height:34px}
-.gantt .gjob:hover{background:color-mix(in srgb,var(--acc-soft) 60%,transparent)}
-.gantt .gjob.on{background:var(--acc-soft);box-shadow:inset 3px 0 0 var(--acc2)}
-.gantt .glab{padding:5px 8px 5px 30px;min-width:0;line-height:1.15;display:flex;flex-direction:column;justify-content:center}
+.gantt .gst span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.gantt .gjob{cursor:pointer;min-height:36px}
+.gantt .gjob .glab{position:sticky;left:0;z-index:3;background:var(--card);border-right:1px solid var(--line);padding:5px 8px 5px 30px;min-width:0;line-height:1.15;display:flex;flex-direction:column;justify-content:center}
+.gantt .gjob:hover .glab,.gantt .gjob:hover .gtrack{background:color-mix(in srgb,var(--acc-soft) 55%,var(--card))}
+.gantt .gjob.on .glab,.gantt .gjob.on .gtrack{background:var(--acc-soft)}
+.gantt .gjob.on .glab{box-shadow:inset 3px 0 0 var(--acc2)}
 .gantt .glab b{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gantt .glab small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gtrack{position:relative;border-left:1px solid var(--line)}
+.gtrack{position:relative}
 .gtrack > i{position:absolute;top:0;bottom:0;width:1px;background:var(--grid)}
-.gtrack .gtoday{position:absolute;top:0;bottom:0;width:0;border-left:1.5px solid var(--ink);opacity:.55;z-index:1}
+.gtrack > i.yr{width:2px;background:var(--axis)}
+.gtrack > i.wk{background:color-mix(in srgb,var(--grid) 55%,transparent)}
+.gtrack .gtoday{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--ink);opacity:.5;z-index:1}
 .gbar{position:absolute;top:6px;bottom:6px;border-radius:5px;display:flex;align-items:center;overflow:visible;z-index:2;min-width:4px}
 .gbar.open{border-radius:5px 0 0 5px;border-right:3px dotted var(--ink)}
 .gbar em{position:absolute;left:0;bottom:0;height:3px;opacity:.55;border-radius:0 0 0 5px}
-.gbar span{padding:0 7px;font-size:11.5px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.gbar span{position:sticky;left:calc(var(--glab) + 6px);padding:0 8px;font-size:12px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .gbar.outside span{position:absolute;left:100%;color:var(--ink);padding-left:6px}
-.gnodate{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11.5px;color:var(--muted);font-style:italic}
-.jobpanel{position:sticky;top:112px;align-self:start}
-.jp .jph small{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.jp h3{margin:2px 0 8px;font-size:18px}
+.gnodate{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11.5px;color:var(--muted);font-style:italic;white-space:nowrap}
+/* job details - full width under the chart */
+.jp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 28px;align-items:start}
+.jp .jph{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.jp .jph small{flex-basis:100%;font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.jp h3{margin:0;font-size:19px}
 .jp h3 a{color:var(--acc2);text-decoration:none}
 .jp h3 a:hover{text-decoration:underline}
-.jst{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:99px;padding:3px 10px 3px 6px;margin-bottom:12px}
+.jst{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:99px;padding:3px 10px 3px 6px}
 .jst i{width:14px;height:14px;border-radius:4px}
-.jp dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0 0 6px;font-size:13px}
-.jp dt{color:var(--muted)}
-.jp dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.jpc{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.jp .jph .btn{margin-left:auto}
+.jp dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 18px;margin:6px 0 0;font-size:13px}
+.jp dl div{display:flex;flex-direction:column;gap:2px}
+.jp dt{color:var(--muted);font-size:12px}
+.jp dd{margin:0;font-weight:650;font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.jp .jmeter{grid-column:1/2}
+.jp .jside{display:flex;flex-direction:column;gap:12px}
+.jpc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg)}
 .jpc h4{margin:0 0 5px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.jpc p{margin:0;font-size:13.5px;white-space:pre-wrap}
-.jcfl{display:flex;gap:8px;align-items:center;font-size:13px}
+.jpc p{margin:0;font-size:14px;white-space:pre-wrap}
+.jcfl{display:flex;gap:8px;align-items:center;font-size:13.5px}
 .jcfl a,.jcfl span{flex:1;min-width:0;overflow-wrap:anywhere}
-@media (max-width:1100px){.jobpanel{position:static}}
-@media (max-width:640px){.gantt .gh,.gantt .gjob{grid-template-columns:96px minmax(0,1fr)}.gantt .glab{padding-left:10px}}
+@media (max-width:900px){.jp{grid-template-columns:1fr}.jp .jmeter{grid-column:auto}}
+@media (max-width:640px){.gantt{--glab:110px}.gantt .gjob .glab{padding-left:10px}}
 :root[data-theme=dark] .gbar{box-shadow:0 0 0 1px rgba(255,255,255,.28)}
 @media (prefers-color-scheme: dark){:root:not([data-theme=light]) .gbar{box-shadow:0 0 0 1px rgba(255,255,255,.28)}}
+
+/* dashboard tabs - big, highlighted, above the filters, pinned while scrolling */
+.dtabs{position:sticky;top:0;z-index:31;display:flex;gap:8px;margin:16px 0 12px;padding:8px;background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 20px rgba(16,33,58,.10);overflow-x:auto}
+.dtabs button{flex:1 1 0;justify-content:center;min-width:max-content;border:0;background:transparent;padding:13px 22px;font-weight:700;font-size:16px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:10px;border-radius:11px;white-space:nowrap;transition:background .12s,color .12s,box-shadow .12s}
+.dtabs button svg{width:21px;height:21px}
+.dtabs button:hover{background:var(--acc-soft);color:var(--ink)}
+.dtabs button.on{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--acc2) 45%,transparent)}
+.dtabs button .bdg{font-size:11px;background:rgba(255,255,255,.2);border-radius:99px;padding:0 7px}
+@media (max-width:700px){.dtabs button{flex:0 0 auto;padding:10px 14px;font-size:14.5px}}
+/* images from the Images folder */
+.gimg{flex:none;display:grid;place-items:center}
+.gimg.has{width:132px;height:96px;border-radius:12px;background:#fff;border:1px solid var(--line);padding:6px}
+.gimg.has img{max-width:100%;max-height:100%;object-fit:contain}
+.igrp .ih{align-items:center}
+.iimg{display:none}
+.iimg.has{display:block;width:100%;height:64px;margin-bottom:6px;border-radius:8px;background:#fff;padding:4px}
+.iimg.has img{width:100%;height:100%;object-fit:contain}
+.heroimg{display:none}
+.heroimg.has{display:block;position:absolute;right:16px;top:50%;transform:translateY(-50%);width:72px;height:72px}
+.heroimg.has img{width:100%;height:100%;object-fit:contain}
+.kpi.hero{position:relative}

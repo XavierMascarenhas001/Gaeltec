@@ -347,12 +347,16 @@ file_project_mapping = {
     "LV Lanark 2026New": ["Lanark", "LV"],
     "Lanark _11kv refur 2026 NEW": ["Lanark", "11kV Refurb"],
     "Lanark _33kv refur 2026 NEW": ["Lanark", "33kV Refurb"],
-    "Reinforcement_Lanark":["Lanark", "Reinforcement"],   # (comma added - was missing)
+    "Reinforcement_Lanark":["Lanark", "Reinforcement"],
  
  
     # ---------- Glasgow----------
  
     "Glasgow 2026_11kV": ["Glasgow", "11kV Refurb"],
+
+    # ---------- Hazards and defects ----------
+ 
+    "Hazards and Defects": ["Scotland", "Hazards and defects"],
 }
  
 # --- REGION MAPPING ---
