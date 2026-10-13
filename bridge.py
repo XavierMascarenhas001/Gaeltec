@@ -41,6 +41,49 @@ def _need(path, label):
     return path
 
 
+# Columns each Build Master input must have (names compared lower-case, trimmed)
+_TRACKER_COLS = ["shire", "project", "segmentcode", "job name", "pid", "po"]
+_MISC_COLS = ["column_1", "column_2"]
+_MASTER_HINT = ["job", "enid", "description", "qsub", "datetouse", "sourcefile"]
+
+
+def _parquet_columns(path):
+    try:
+        import pyarrow.parquet as pq
+        names = pq.read_schema(path).names
+    except Exception:
+        import pandas as pd
+        names = list(pd.read_parquet(path).columns)
+    return [str(c).strip().lower() for c in names]
+
+
+def _check_inputs(tracker, misc, aggregated=None):
+    """Fail fast, before any long work, if a file went into the wrong box."""
+    def what_is(cols):
+        if all(c in cols for c in _MASTER_HINT):
+            return "a Master file"
+        if all(c in cols for c in _TRACKER_COLS):
+            return "the Project Tracker"
+        if all(c in cols for c in _MISC_COLS):
+            return "the miscelaneous file"
+        return None
+    problems = []
+    for path, label, need in ((tracker, "Project Tracker.parquet", _TRACKER_COLS), (misc, "miscelaneous.parquet", _MISC_COLS)):
+        cols = _parquet_columns(path)
+        missing = [c for c in need if c not in cols]
+        if missing:
+            seems = what_is(cols)
+            problems.append(
+                f"• The file in the '{label}' box ({os.path.basename(path)}) is missing the column(s): {', '.join(missing)}."
+                + (f" It looks like {seems} – drop {label} there instead." if seems else f" Make sure it's {label}."))
+    if aggregated:
+        cols = _parquet_columns(aggregated)
+        if not all(c in cols for c in ("district", "project", "circuit", "job", "description")):
+            problems.append(f"• The file in the 'CF_aggregated.parquet' box ({os.path.basename(aggregated)}) doesn't look like CF_aggregated_aggregated.parquet.")
+    if problems:
+        raise UserError("Nothing was run – a file looks like it's in the wrong box:\n" + "\n".join(problems))
+
+
 # ---------------------------------------------------------------------------
 # Tool 1 - Target Price -> Control File
 # ---------------------------------------------------------------------------
@@ -76,6 +119,7 @@ def master(aggregated, tracker, misc, output_name="", include_man_day=True, log=
     _need(aggregated, "CF_aggregated.parquet")
     _need(tracker, "Project Tracker.parquet")
     _need(misc, "miscelaneous.parquet")
+    _check_inputs(tracker, misc, aggregated)
     default = "Master_" + datetime.now().strftime("%d-%m-%Y") + ".parquet"
     out = os.path.join(_outdir(), _name(output_name, ".parquet", default))
     return tool_build_master.run(aggregated, tracker, misc, out, include_man_day=bool(include_man_day), log=log)
@@ -94,6 +138,7 @@ def build_master_direct(files, tracker, misc, output_name="", include_man_day=Tr
         _need(f, "Control File")
     _need(tracker, "Project Tracker.parquet")
     _need(misc, "miscelaneous.parquet")
+    _check_inputs(tracker, misc)
     out_dir = _outdir()
     log("━━━━━━━━ Step 1 of 2 · Aggregating the Control Files ━━━━━━━━")
     agg_outputs = tool_aggregate_cf.run(file_paths=files, output_file=os.path.join(out_dir, "CF_aggregated.xlsx"), log=log)

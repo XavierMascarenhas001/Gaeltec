@@ -14,12 +14,56 @@ import numpy as np
 import pandas as pd
 
 COLUMNS_NEEDED = [
-    "job", "plan1", "done", "datetouse", "invoice date", "total", "orig",
+    "job", "plan1", "plan2", "done", "datetouse", "invoice date", "total", "orig", "comment",
     "district", "project", "project manager", "team", "team lider", "pid",
     "circuit", "enid", "sourcefile",
 ]
-DATE_FIELDS = {"Plan1": "plan1", "Done": "done", "DateToUse": "datetouse"}
-PRESETS = ["All time", "Last 7 days", "Last 30 days", "This month", "This year", "Last year", "Custom range"]
+DATE_FIELDS = {"Plan1": "plan1", "Plan2": "plan2", "Done": "done", "DateToUse": "datetouse"}
+PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month", "This year", "Last year", "Custom range"]
+
+# ---- Quick ranges on the calendar (today's date): whole weeks Mon-Sun, whole months ----
+CAL_PRESETS = ("Current week", "Last week", "Current month", "Last month")
+
+
+def calendar_range(preset, today=None):
+    t = pd.Timestamp(today if today is not None else pd.Timestamp.today()).normalize()
+    monday = t - pd.Timedelta(days=t.weekday())
+    if preset == "Current week":
+        return monday.date(), (monday + pd.Timedelta(days=6)).date()
+    if preset == "Last week":
+        return (monday - pd.Timedelta(days=7)).date(), (monday - pd.Timedelta(days=1)).date()
+    first = t.replace(day=1)
+    if preset == "Current month":
+        return first.date(), (first + pd.offsets.MonthEnd(0)).date()
+    last_end = first - pd.Timedelta(days=1)          # Last month
+    return last_end.replace(day=1).date(), last_end.date()
+
+
+# ---- Plan2: the most repeated comments for the rows in view ----
+_BLANK_COMMENTS = {"", "nan", "none", "nat", "<na>", "null", "0", "-"}
+
+
+def plan2_comments(frame, date_col, comment_col="comment", job_col="job", limit=500):
+    if comment_col not in frame.columns or date_col not in frame.columns:
+        return {"available": False}
+    sub = frame[frame[date_col].notna()]
+    txt = sub[comment_col].astype(str).str.strip()
+    keep = ~txt.str.lower().isin(_BLANK_COMMENTS)
+    sub, txt = sub[keep], txt[keep]
+    if sub.empty:
+        return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": 0, "distinct": 0, "top": []}
+    txt = txt.str.replace("\u00a0", " ").str.replace(r"\s+", " ", regex=True)
+    g = pd.DataFrame({"c": txt.values, "k": txt.str.lower().str.strip(" .").values, "d": pd.to_datetime(sub[date_col]).values,
+                      "j": sub[job_col].astype(str).values if job_col in sub.columns else ""})
+    # same comment typed differently ("NO TIME" / "No Time") counts once, shown in its commonest spelling
+    shown = g.groupby("k")["c"].agg(lambda x: x.value_counts().index[0])
+    agg = (g.groupby("k").agg(n=("k", "size"), jobs=("j", "nunique"), first=("d", "min"), last=("d", "max"))
+           .sort_values(["n", "jobs"], ascending=False))
+    agg.index = shown.reindex(agg.index).values
+    top = [[c, int(r["n"]), int(r["jobs"]), r["first"].strftime("%Y-%m-%d"), r["last"].strftime("%Y-%m-%d")] for c, r in agg.head(limit).iterrows()]
+    return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": int(len(sub)),
+            "distinct": int(len(agg)), "top": top}
+
 
 
 # --------------------------------------------------------------------------
@@ -28,7 +72,12 @@ PRESETS = ["All time", "Last 7 days", "Last 30 days", "This month", "This year",
 def load_data(path_str: str):
     """Returns (df, error_message). Never raises."""
     try:
-        df = pd.read_parquet(path_str, columns=COLUMNS_NEEDED)
+        try:   # plan2 / comment are optional - older Master files may not have them
+            import pyarrow.parquet as _pq
+            _have = set(_pq.read_schema(path_str).names)
+        except Exception:
+            _have = set(COLUMNS_NEEDED)
+        df = pd.read_parquet(path_str, columns=[c for c in COLUMNS_NEEDED if c in _have or c not in ("plan2", "comment")])
     except Exception as e:
         return None, str(e)
 
@@ -36,8 +85,9 @@ def load_data(path_str: str):
     df["total"] = pd.to_numeric(df["total"], errors="coerce")
     df["orig"] = pd.to_numeric(df["orig"], errors="coerce")
 
-    for c in ["plan1", "done", "datetouse", "invoice date"]:
-        df[c] = pd.to_datetime(df[c], errors="coerce")
+    for c in ["plan1", "plan2", "done", "datetouse", "invoice date"]:
+        if c in df.columns:
+            df[c] = pd.to_datetime(df[c], errors="coerce")
 
     for c in ["district", "project", "project manager", "team", "team lider", "pid", "job", "circuit", "enid", "sourcefile"]:
         df[c] = df[c].astype("string").str.strip()
@@ -48,8 +98,9 @@ def load_data(path_str: str):
     df.loc[job_lower.str.startswith(("m -", "m-"), na=False), "flag"] = "material"
     df.loc[job_lower.str.startswith(("c -", "c-"), na=False), "flag"] = "construction"
 
-    for c in ["plan1", "done", "datetouse"]:
-        df[c] = df[c].where(df[c].dt.year > 1901)
+    for c in ["plan1", "plan2", "done", "datetouse"]:
+        if c in df.columns:
+            df[c] = df[c].where(df[c].dt.year > 1901)
 
     return df, None
 
@@ -91,6 +142,8 @@ def bucket_label(ts: pd.Timestamp, granularity: str) -> str:
 def resolve_date_range(frame, active_col, preset, custom_from=None, custom_to=None):
     """pick_date_field_and_range's range logic - presets anchored to the
     LATEST date in the data, clipped to the data's own range."""
+    if preset in CAL_PRESETS:
+        return calendar_range(preset)
     col_min = frame[active_col].min().normalize()
     col_max = frame[active_col].max().normalize()
     if preset == "All time":
@@ -236,6 +289,7 @@ def view(path, date_field="DateToUse", preset="All time", custom_from=None, cust
         "date_from": str(date_from), "date_to": str(date_to),
         "data_min": str(date_min.date()), "data_max": str(date_max.date()),
         "records": int(len(fdf_dated)), "granularity": gran, "granularity_auto": granularity == "Auto",
+        "plan2_comments": plan2_comments(fdf_dated, active_date_col) if active_date_col == "plan2" else None,
     }
     out["trends"] = _trends(fdf_dated, active_date_col, gran)
     out["pid"] = _pid_breakdown(fdf, pid_mode)

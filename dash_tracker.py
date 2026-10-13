@@ -643,8 +643,52 @@ def load_forecast_workbook(file_bytes: bytes, sheet_name: str):
 # the same statements as in the Streamlit app, returning data instead of
 # drawing widgets.
 # ============================================================
-PRESETS = ["All time", "Last 7 days", "Last 30 days", "This month", "This year", "Last year", "Custom range"]
-DATE_FIELD_OPTIONS = {"Plan1": "plan1", "Done": "done", "DateToUse": "datetouse"}
+PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month", "This year", "Last year", "Custom range"]
+DATE_FIELD_OPTIONS = {"Plan1": "plan1", "Plan2": "plan2", "Done": "done", "DateToUse": "datetouse"}
+
+# ---- Quick ranges on the calendar (today's date): whole weeks Mon-Sun, whole months ----
+CAL_PRESETS = ("Current week", "Last week", "Current month", "Last month")
+
+
+def calendar_range(preset, today=None):
+    t = pd.Timestamp(today if today is not None else pd.Timestamp.today()).normalize()
+    monday = t - pd.Timedelta(days=t.weekday())
+    if preset == "Current week":
+        return monday.date(), (monday + pd.Timedelta(days=6)).date()
+    if preset == "Last week":
+        return (monday - pd.Timedelta(days=7)).date(), (monday - pd.Timedelta(days=1)).date()
+    first = t.replace(day=1)
+    if preset == "Current month":
+        return first.date(), (first + pd.offsets.MonthEnd(0)).date()
+    last_end = first - pd.Timedelta(days=1)          # Last month
+    return last_end.replace(day=1).date(), last_end.date()
+
+
+# ---- Plan2: the most repeated comments for the rows in view ----
+_BLANK_COMMENTS = {"", "nan", "none", "nat", "<na>", "null", "0", "-"}
+
+
+def plan2_comments(frame, date_col, comment_col="comment", job_col="job", limit=500):
+    if comment_col not in frame.columns or date_col not in frame.columns:
+        return {"available": False}
+    sub = frame[frame[date_col].notna()]
+    txt = sub[comment_col].astype(str).str.strip()
+    keep = ~txt.str.lower().isin(_BLANK_COMMENTS)
+    sub, txt = sub[keep], txt[keep]
+    if sub.empty:
+        return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": 0, "distinct": 0, "top": []}
+    txt = txt.str.replace("\u00a0", " ").str.replace(r"\s+", " ", regex=True)
+    g = pd.DataFrame({"c": txt.values, "k": txt.str.lower().str.strip(" .").values, "d": pd.to_datetime(sub[date_col]).values,
+                      "j": sub[job_col].astype(str).values if job_col in sub.columns else ""})
+    # same comment typed differently ("NO TIME" / "No Time") counts once, shown in its commonest spelling
+    shown = g.groupby("k")["c"].agg(lambda x: x.value_counts().index[0])
+    agg = (g.groupby("k").agg(n=("k", "size"), jobs=("j", "nunique"), first=("d", "min"), last=("d", "max"))
+           .sort_values(["n", "jobs"], ascending=False))
+    agg.index = shown.reindex(agg.index).values
+    top = [[c, int(r["n"]), int(r["jobs"]), r["first"].strftime("%Y-%m-%d"), r["last"].strftime("%Y-%m-%d")] for c, r in agg.head(limit).iterrows()]
+    return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": int(len(sub)),
+            "distinct": int(len(agg)), "top": top}
+
 COL_FIELDS = [  # (key, label, guesses)
     ("item_col", "Description / item", ("item", "description")),
     ("qsub_col", "Quantity (qsub)", ("qsub", "quantity_used")),
@@ -797,6 +841,8 @@ def _date_pick(frame, date_field, preset, custom_from, custom_to):
     labels = list(available.keys())
     chosen_label = date_field if date_field in labels else ("DateToUse" if "DateToUse" in labels else labels[0])
     dates = available[chosen_label]
+    if preset in CAL_PRESETS:
+        return (dates, *calendar_range(preset))
     col_min = dates.min().normalize()
     col_max = dates.max().normalize()
     if preset == "All time":
@@ -915,6 +961,8 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None):
             pole_rows.append({"Pole type": POLE_DISPLAY_NAMES.get(cat_name, cat_name), "Count": sub["_qsub_adj"].sum()})
     pole_summary = pd.DataFrame(pole_rows)
     pole_total = pole_summary["Count"].sum() if not pole_summary.empty else 0
+    res["plan2_comments"] = (plan2_comments(f, "_date", "comment", "_job_clean" if "_job_clean" in f.columns else cols["job_col"])
+                             if (filters or {}).get("date_field") == "Plan2" else None)
     res["overview"] = {"recover_total": _n(recover_total), "trend": trend, "pole_total": _n(pole_total),
                        "poles": [{"type": r["Pole type"], "count": _n(r["Count"])} for r in pole_rows]}
 

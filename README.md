@@ -71,8 +71,8 @@ while you're away.
 
 | Dashboard | Files to drop | Python file |
 |-----------|---------------|-------------|
-| Network Job Tracker | Master file (.parquet or .csv); optionally High-level_planning_2026.xlsx, the Service Partner Workbank and the outage calendar .ics | `dash_tracker.py` |
-| Master Control | Master file | `dash_master.py` |
+| Planning Dashboard (was Network Job Tracker) | Master file (.parquet or .csv); optionally High-level_planning_2026.xlsx, the Service Partner Workbank and the outage calendar .ics | `dash_tracker.py` |
+| Financial Dashboard (was Master Control) | Master file | `dash_master.py` |
 | Materials Breakdown | materials_all.parquet + the Master file (maps optional, on the Maps tab) | `dash_materials.py` + `engine.py` |
 
 * A Master file dropped once is shared by all three dashboards.
@@ -110,4 +110,4 @@ from:
   the site is blocked. Ask IT to allow `cdn.jsdelivr.net`.
 * **A dashboard shows a red message after dropping a file**: it's the same
   error the Streamlit app would have given, for example a missing column. On
-  the Network Job Tracker, open **⚙ Column mapping** and pick the right column.
+  the Planning Dashboard, open **⚙ Column mapping** and pick the right column.

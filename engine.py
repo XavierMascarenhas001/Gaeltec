@@ -25,6 +25,7 @@ except ImportError:
 
 DATE_FIELDS = {
     "Plan1": "plan1",
+    "Plan2": "plan2",
     "Done": "done",
     "DateToUse": "datetouse",
 }

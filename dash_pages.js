@@ -3,9 +3,9 @@
    file strip, one filter bar, tabs and a grid of cards.
    ====================================================================== */
 const DASHES = [
-  {key: "tracker", c: "c2", icon: "grid", title: "Network Job Tracker",
+  {key: "tracker", c: "c2", icon: "grid", title: "Planning Dashboard",
    desc: "Network jobs from the Master file, the Outages Programme calendar, mapped items, pole position and totals."},
-  {key: "master", c: "c1", icon: "pound", title: "Master Control",
+  {key: "master", c: "c1", icon: "pound", title: "Financial Dashboard",
    desc: "Job costing: totals by date and team leader, PID breakdown and financial health."},
   {key: "materials", c: "c3", icon: "box3", title: "Materials Breakdown",
    desc: "Poles, Free Issue and GUK materials for the filtered Control File, with the maps check and Excel export."},
@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 12-Oct-2026</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 13-Oct-2026</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -103,6 +103,7 @@ function pageDashboard(key){
     if (def.header) def.header(P, P.panel);
     const t = def.tabs.find(x => x.id === st.tab) || def.tabs[0];
     try { t.render(P, P.panel); } catch(e){ console.error(e); P.panel.append(errNote(e)); }
+    if (P.v.plan2_comments && !(def.noComments || []).includes(t.id)) P.panel.append(plan2CommentsCard(P.v.plan2_comments, P.v));
   };
   /* async work inside a tab (outages, maps...) - ignored if the tab was re-drawn meanwhile */
   P.tabCall = async (fn, kwargs, needs) => { const my = P.tseq; const r = await PY.call(fn, kwargs, {needs: needs || def.needs}); if (my !== P.tseq || !P.alive()) throw {stale: true}; return r.result; };
@@ -192,12 +193,43 @@ function filterBar(P, spec){
 }
 const capHTML = parts => parts.filter(Boolean).map(p => Array.isArray(p) ? `<b>${esc(p[0])}</b> ${esc(p[1] || "")}` : esc(p)).join(" · ");
 
+/* ---------- Plan2: most repeated comments in the Master for the Plan2 dates in view ---------- */
+function plan2CommentsCard(c, v){
+  const wrap = h(`<div class="dgrid" style="margin-top:16px"></div>`);
+  const card = dcard("Plan2 comments — most repeated", "", 12); wrap.append(card);
+  const range = v.date_from ? `${fmtDate(v.date_from)} → ${fmtDate(v.date_to)}` : "all Plan2 dates";
+  if (!c.available){ card.body.append(emptyMsg("This Master file has no comment column.")); return wrap; }
+  $("p", card) || $(".tt", card).append(h(`<p></p>`));
+  $(".tt p", card).textContent = `Comments on the rows with a Plan2 date in ${range} (same filters as above) · ${intf(c.with_comment)} of ${intf(c.rows)} rows have a comment · ${intf(c.distinct)} different comments`;
+  if (!c.top.length){ card.body.append(emptyMsg("No comments on the rows with a Plan2 date in this range.")); return wrap; }
+  const [tc, tn, tj] = c.top[0];
+  const call = h(`<div class="ctop"><div class="cq">“<span></span>”</div><div class="cm"><b></b><span></span></div></div>`);
+  $(".cq span", call).textContent = tc; $(".cm b", call).textContent = `${intf(tn)} times`;
+  $(".cm span", call).textContent = `on ${intf(tj)} job(s) · ${c.with_comment ? Math.round(tn / c.with_comment * 100) : 0}% of all comments in view · most repeated`;
+  card.body.append(call);
+  const top = c.top.slice(0, 15);
+  let mode = "chart"; const holder = h(`<div></div>`);
+  card.acts.append(segc([["chart", "Top 15"], ["table", `All ${intf(c.top.length)}`]], mode, m => { mode = m; draw(); }));
+  card.body.append(holder);
+  function draw(){
+    holder.textContent = "";
+    if (mode === "table"){ holder.append(dtable({name: "Plan2 comments", columns: ["Comment", "Times", "Jobs", "First Plan2", "Last Plan2"], rows: c.top, height: 460})); return; }
+    const host = h(`<div class="viz"></div>`); holder.append(host);
+    Viz.bars(host, {labels: top.map(x => x[0]), labelMax: 420, rowH: 30, fmt: intf, valueLabel: i => `${intf(top[i][1])}×`,
+      series: [{name: "Times", values: top.map(x => x[1]), color: "var(--s1)"}],
+      tip: i => ({title: top[i][0], rows: [{color: "var(--s1)", name: "Times written", value: intf(top[i][1])}, {name: "Jobs", value: intf(top[i][2])},
+        {name: "Plan2 dates", value: `${fmtDate(top[i][3])} → ${fmtDate(top[i][4])}`}]})});
+  }
+  requestAnimationFrame(draw);
+  return wrap;
+}
+
 /* ---------- shared renderers ---------- */
 function tableCard(title, sub, table, span = 12){ const c = dcard(title, sub, span); c.body.append(table.rows && table.rows.length ? dtable(table) : emptyMsg("No rows for the current filters.")); return c; }
 const tbl = (t, name, extra) => ({columns: t.columns, rows: t.rows, name, ...(extra || {})});
 
 /* ======================================================================
-   Master Control
+   Financial Dashboard (was Master Control)
    ====================================================================== */
 const DASHDEF = {};
 const STAGES = [["invoiced", "Invoiced", "var(--s7)"], ["done", "Done", "var(--s3)"], ["planned", "Planned", "var(--s4)"], ["remaining", "Remaining", "var(--neutral)"]];
@@ -366,7 +398,7 @@ function mcFinance(P, panel){
 }
 
 /* ======================================================================
-   Network Job Tracker
+   Planning Dashboard (was Network Job Tracker)
    ====================================================================== */
 DASHDEF.tracker = {
   slots: [["master", true], ["outages", false], ["forecast", false], ["ics", false]], loadSlots: ["master"], needs: NEED_NT,
@@ -397,6 +429,7 @@ DASHDEF.tracker = {
     return wrap;
   },
   ready: P => !P.st.L.missing_required.length,
+  noComments: ["forecast"],
   viewFn: "nt_view",
   ntFilters(P){ const f = P.st.f; return {date_field: f.date_field, preset: f.preset, custom_from: f.custom_from || null, custom_to: f.custom_to || null,
     districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], sourcefiles: f.sourcefiles || [], circuits: f.circuits || [], poles: f.poles || []}; },
@@ -449,13 +482,13 @@ function ntItems(P, panel){
     b.title = "Show the rows behind " + c.label; b.onclick = () => { P.st.detail = c.name; P.refresh(); }; return b; };
   it.groups.forEach(gr => {
     const c = dcard(gr.title, "", 6); c.querySelector(".ch").remove();
-    const w = h(`<div class="igrp"><div class="ih"><div><h3></h3><p></p></div></div><div class="icards"></div></div>`);
-    $(".ih", w).prepend(imageEl(GROUP_IMAGE[gr.title], `<div class="ico">${ICON2[GROUP_ICON[gr.title]] || I.box3}</div>`, "gimg"));
+    const w = h(`<div class="igrp centre"><div class="ih"><h3></h3><p></p></div><div class="icards"></div></div>`);
+    $(".ih", w).after(imageEl(GROUP_IMAGE[gr.title], `<div class="ico">${ICON2[GROUP_ICON[gr.title]] || I.box3}</div>`, "gimg"));
     $("h3", w).textContent = gr.title; $("p", w).textContent = gr.cards.length ? `${gr.cards.length} item type(s)` : "No records for this group under the current filters.";
     gr.cards.forEach(x => $(".icards", w).append(cardEl(x)));
     c.body.append(w); g.append(c);
   });
-  if (it.other.length){ const c = dcard("Other items", "", 12); const w = h(`<div class="icards"></div>`); it.other.forEach(x => w.append(cardEl(x))); c.body.append(w); g.append(c); }
+  if (it.other.length){ const c = dcard("Other items", "", 12); const w = h(`<div class="icards centre"></div>`); it.other.forEach(x => w.append(cardEl(x))); c.body.append(w); g.append(c); }
   if (it.detail){
     const c = dcard("Details", "The rows behind the selected item – click any card above, or pick here", 12);
     const sel = h(`<select></select>`); it.detail_names.forEach(n => { const o = document.createElement("option"); o.textContent = n; sel.append(o); }); sel.value = chosen;
@@ -768,6 +801,7 @@ DASHDEF.materials = {
   about: ["materials_all.parquet (Programs\\Program files) and the Master_DD-MM-YYYY.parquet control file.",
           "Maps are optional – drop Outages Programme folders or PDF maps on the Maps tab."],
   slotNotes: {master: "The control file: Master_DD-MM-YYYY (vN).parquet"},
+  noComments: ["maps", "export"],
   loadFn: "mb_load", loadArgs: () => ({master_path: FILES.materials.path, control_path: FILES.master.path}),
   init(P){ const f = P.st.f, L = P.st.L; if (!L.date_fields.includes(f.date_field_label)) f.date_field_label = L.default_date_field || "DateToUse";
     P.st.scope = P.st.scope || "All poles matching filters"; P.st.pdf = P.st.pdf || []; P.st.mapsMode = P.st.mapsMode || "Manual folder(s)"; },

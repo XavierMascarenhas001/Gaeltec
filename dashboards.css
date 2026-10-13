@@ -382,3 +382,21 @@ details.dmap[open] summary{margin-bottom:10px}
 .heroimg.has{display:block;position:absolute;right:16px;top:50%;transform:translateY(-50%);width:72px;height:72px}
 .heroimg.has img{width:100%;height:100%;object-fit:contain}
 .kpi.hero{position:relative}
+
+/* Mapped Items: big pictures centred above the items they belong to */
+.igrp.centre{align-items:center;text-align:center;height:100%}
+.igrp.centre .ih{flex-direction:column;gap:2px}
+.igrp.centre .ih h3{font-size:18px}
+.igrp.centre .gimg.has{box-sizing:border-box;width:min(100%,360px);height:220px;border-radius:14px;padding:10px;margin:4px auto 6px;box-shadow:var(--shadow)}
+.igrp.centre .gimg:not(.has) .ico{width:64px;height:64px;border-radius:16px;margin:6px auto}
+.igrp.centre .gimg:not(.has) .ico svg{width:34px;height:34px}
+.icards{display:flex;flex-wrap:wrap;gap:10px}
+.icards > .icard{flex:0 1 190px;min-width:150px}
+.igrp.centre .icards,.icards.centre{justify-content:center;width:100%}
+.igrp.centre .icard{text-align:center;align-items:center}
+.iimg.has{height:110px}
+/* Plan2 comments */
+.ctop{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;background:var(--acc-soft);border-radius:12px;padding:14px 18px;margin-bottom:14px}
+.ctop .cq{font-size:22px;font-weight:700;flex:1 1 320px;min-width:0;overflow-wrap:anywhere}
+.ctop .cm{display:flex;flex-direction:column;font-size:13px;color:var(--muted)}
+.ctop .cm b{font-size:24px;color:var(--ink);font-variant-numeric:tabular-nums}

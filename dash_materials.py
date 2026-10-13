@@ -16,6 +16,50 @@ import pandas as pd
 
 import engine as eng
 
+
+# ---- (shared) Quick ranges on the calendar (today's date): whole weeks Mon-Sun, whole months ----
+CAL_PRESETS = ("Current week", "Last week", "Current month", "Last month")
+
+
+def calendar_range(preset, today=None):
+    t = pd.Timestamp(today if today is not None else pd.Timestamp.today()).normalize()
+    monday = t - pd.Timedelta(days=t.weekday())
+    if preset == "Current week":
+        return monday.date(), (monday + pd.Timedelta(days=6)).date()
+    if preset == "Last week":
+        return (monday - pd.Timedelta(days=7)).date(), (monday - pd.Timedelta(days=1)).date()
+    first = t.replace(day=1)
+    if preset == "Current month":
+        return first.date(), (first + pd.offsets.MonthEnd(0)).date()
+    last_end = first - pd.Timedelta(days=1)          # Last month
+    return last_end.replace(day=1).date(), last_end.date()
+
+
+# ---- Plan2: the most repeated comments for the rows in view ----
+_BLANK_COMMENTS = {"", "nan", "none", "nat", "<na>", "null", "0", "-"}
+
+
+def plan2_comments(frame, date_col, comment_col="comment", job_col="job", limit=500):
+    if comment_col not in frame.columns or date_col not in frame.columns:
+        return {"available": False}
+    sub = frame[frame[date_col].notna()]
+    txt = sub[comment_col].astype(str).str.strip()
+    keep = ~txt.str.lower().isin(_BLANK_COMMENTS)
+    sub, txt = sub[keep], txt[keep]
+    if sub.empty:
+        return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": 0, "distinct": 0, "top": []}
+    txt = txt.str.replace("\u00a0", " ").str.replace(r"\s+", " ", regex=True)
+    g = pd.DataFrame({"c": txt.values, "k": txt.str.lower().str.strip(" .").values, "d": pd.to_datetime(sub[date_col]).values,
+                      "j": sub[job_col].astype(str).values if job_col in sub.columns else ""})
+    # same comment typed differently ("NO TIME" / "No Time") counts once, shown in its commonest spelling
+    shown = g.groupby("k")["c"].agg(lambda x: x.value_counts().index[0])
+    agg = (g.groupby("k").agg(n=("k", "size"), jobs=("j", "nunique"), first=("d", "min"), last=("d", "max"))
+           .sort_values(["n", "jobs"], ascending=False))
+    agg.index = shown.reindex(agg.index).values
+    top = [[c, int(r["n"]), int(r["jobs"]), r["first"].strftime("%Y-%m-%d"), r["last"].strftime("%Y-%m-%d")] for c, r in agg.head(limit).iterrows()]
+    return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": int(len(sub)),
+            "distinct": int(len(agg)), "top": top}
+
 _CATEGORY_PALETTE = [
     "#2E75B6", "#548235", "#BF8F00", "#7030A0", "#C00000",
     "#215868", "#E36C09", "#4472C4", "#70AD47", "#A9483D",
@@ -244,7 +288,7 @@ def load(master_path, control_path):
         "master_name": os.path.basename(master_path), "control_name": os.path.basename(control_path),
         "counts": {"poles": len(poles), "free_issue": len(free_issue), "guk_items": len(guk_items),
                    "guk_subitems": len(guk_subitems), "aliases": len(aliases), "control_rows": len(control_df)},
-        "date_fields": list(eng.DATE_FIELDS.keys()), "default_date_field": list(eng.DATE_FIELDS.keys())[2],
+        "date_fields": [k for k, c in eng.DATE_FIELDS.items() if c in control_df.columns], "default_date_field": "DateToUse",
         "options": {k: opts[k] for k in ("district", "project", "pid", "sourcefile")},
         "network_root": eng.NETWORK_ROOT,
     }
@@ -290,6 +334,8 @@ def view(master_path, control_path, filters=None, fi_cats=None, fi_mats=None,
     res = {
         "circuit_options": circuit_options, "pole_options": enid_options,
         "rows": int(len(filtered)), "mat_rows": mat_rows,
+        "plan2_comments": (plan2_comments(filtered, "plan2", "comment", "job")
+                           if (filters or {}).get("date_field_label") == "Plan2" else None),
         "kpis": {"poles": int(poles_out["qty"].sum()) if not poles_out.empty else 0,
                  "fi": int(len(fi_out)), "guk": int(len(guk_out)), "guk_sub": int(len(guk_sub_out))},
     }
