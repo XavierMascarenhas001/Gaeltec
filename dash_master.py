@@ -21,6 +21,26 @@ COLUMNS_NEEDED = [
 DATE_FIELDS = {"Plan1": "plan1", "Plan2": "plan2", "Done": "done", "DateToUse": "datetouse"}
 PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month", "This year", "Last year", "Custom range"]
 
+# ---- Cascading filters: each one only offers what the filters before it allow ----
+_BLANK_OPT = {"", "nan", "none", "<na>", "nat"}
+
+
+def cascade_options(df, base_mask, order, selections):
+    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level)."""
+    mask = base_mask.copy()
+    opts = {}
+    for key, col in order:
+        if not col or col not in df.columns:
+            opts[key] = []
+            continue
+        col_s = df[col].astype(str).str.strip()
+        opts[key] = sorted({v for v in col_s[mask].unique() if v.lower() not in _BLANK_OPT})
+        sel = selections.get(key) or []
+        if sel:
+            mask &= col_s.isin([str(x).strip() for x in sel])
+    return opts, mask
+
+
 # ---- Quick ranges on the calendar (today's date): whole weeks Mon-Sun, whole months ----
 CAL_PRESETS = ("Current week", "Last week", "Current month", "Last month")
 
@@ -241,26 +261,14 @@ def view(path, date_field="DateToUse", preset="All time", custom_from=None, cust
     def _distinct(series: pd.Series) -> list:
         return sorted(series.dropna().unique().tolist())
 
-    # Cascading Circuit / Pole options (unchanged)
-    _scope_mask = pd.Series(True, index=df.index)
-    if districts:
-        _scope_mask &= df["district"].isin(districts)
-    if projects:
-        _scope_mask &= df["project"].isin(projects)
-    if pids:
-        _scope_mask &= df["pid"].isin(pids)
-    if pms:
-        _scope_mask &= df["project manager"].isin(pms)
-    if sourcefiles:
-        _scope_mask &= df["sourcefile"].isin(sourcefiles)
-    _scope_mask &= df[active_date_col].isna() | (
-        (df[active_date_col] >= pd.Timestamp(date_from)) & (df[active_date_col] < pd.Timestamp(date_to) + pd.Timedelta(days=1))
-    )
-    circuit_options = _distinct(df.loc[_scope_mask, "circuit"])
-    _scope_mask_for_pole = _scope_mask.copy()
-    if circuits:
-        _scope_mask_for_pole &= df["circuit"].isin(circuits)
-    pole_options = _distinct(df.loc[_scope_mask_for_pole, "enid"])
+    # Cascading filters: District > Project > PID > Project Manager > Source file > Circuit > Pole
+    _scope = df[active_date_col].isna() | (
+        (df[active_date_col] >= pd.Timestamp(date_from)) & (df[active_date_col] < pd.Timestamp(date_to) + pd.Timedelta(days=1)))
+    options, _m = cascade_options(df, _scope, [("districts", "district"), ("projects", "project"), ("pids", "pid"), ("pms", "project manager"),
+                                               ("sourcefiles", "sourcefile"), ("circuits", "circuit"), ("poles", "enid")],
+                                  {"districts": districts, "projects": projects, "pids": pids, "pms": pms, "sourcefiles": sourcefiles,
+                                   "circuits": circuits, "poles": poles_selected})
+    circuit_options, pole_options = options["circuits"], options["poles"]
 
     # Apply filters (unchanged)
     mask = pd.Series(True, index=df.index)
@@ -285,7 +293,7 @@ def view(path, date_field="DateToUse", preset="All time", custom_from=None, cust
     gran = auto_granularity(date_from, date_to) if granularity == "Auto" else granularity
 
     out = {
-        "circuit_options": circuit_options, "pole_options": pole_options,
+        "options": options, "circuit_options": circuit_options, "pole_options": pole_options,
         "date_from": str(date_from), "date_to": str(date_to),
         "data_min": str(date_min.date()), "data_max": str(date_max.date()),
         "records": int(len(fdf_dated)), "granularity": gran, "granularity_auto": granularity == "Auto",

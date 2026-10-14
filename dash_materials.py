@@ -17,6 +17,26 @@ import pandas as pd
 import engine as eng
 
 
+# ---- Cascading filters: each one only offers what the filters before it allow ----
+_BLANK_OPT = {"", "nan", "none", "<na>", "nat"}
+
+
+def cascade_options(df, base_mask, order, selections):
+    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level)."""
+    mask = base_mask.copy()
+    opts = {}
+    for key, col in order:
+        if not col or col not in df.columns:
+            opts[key] = []
+            continue
+        col_s = df[col].astype(str).str.strip()
+        opts[key] = sorted({v for v in col_s[mask].unique() if v.lower() not in _BLANK_OPT})
+        sel = selections.get(key) or []
+        if sel:
+            mask &= col_s.isin([str(x).strip() for x in sel])
+    return opts, mask
+
+
 # ---- (shared) Quick ranges on the calendar (today's date): whole weeks Mon-Sun, whole months ----
 CAL_PRESETS = ("Current week", "Last week", "Current month", "Last month")
 
@@ -301,25 +321,24 @@ def _distinct(series: pd.Series) -> list[str]:
 
 def _filtered(control_df, date_field_label="DateToUse", date_from=None, date_to=None, districts=None,
               projects=None, pids=None, sourcefiles=None, circuits=None, enids=None):
+    """Same filter_control result as before; options now cascade District > Project > PID >
+    Source file > Circuit > Pole (each narrowed by the ones above it)."""
     date_field = eng.DATE_FIELDS[date_field_label]
     date_from = date_from or None
     date_to = date_to or None
-    scope_for_circuit = eng.filter_control(
-        control_df, districts=districts or None, projects=projects or None,
-        date_field=date_field, date_from=date_from, date_to=date_to,
-    )
-    circuit_options = _distinct(scope_for_circuit["circuit"])
-    scope_for_pole = eng.filter_control(
-        control_df, districts=districts or None, projects=projects or None,
-        circuits=circuits or None, date_field=date_field, date_from=date_from, date_to=date_to,
-    )
-    enid_options = _distinct(scope_for_pole["enid"])
+    scope = eng.filter_control(control_df, date_field=date_field, date_from=date_from, date_to=date_to)
+    base = pd.Series(True, index=scope.index)
+    options, _m = cascade_options(scope, base, [("districts", "district"), ("projects", "project"), ("pids", "pid"),
+                                                ("sourcefiles", "sourcefile"), ("circuits", "circuit"), ("enids", "enid")],
+                                  {"districts": districts, "projects": projects, "pids": pids, "sourcefiles": sourcefiles,
+                                   "circuits": circuits, "enids": enids})
     filtered = eng.filter_control(
         control_df, districts=districts or None, projects=projects or None, circuits=circuits or None,
         pids=pids or None, enids=enids or None, sourcefiles=sourcefiles or None,
         date_field=date_field, date_from=date_from, date_to=date_to,
     )
-    return filtered, circuit_options, enid_options, date_field
+    _filtered.options = options
+    return filtered, options["circuits"], options["enids"], date_field
 
 
 def view(master_path, control_path, filters=None, fi_cats=None, fi_mats=None,
@@ -334,6 +353,7 @@ def view(master_path, control_path, filters=None, fi_cats=None, fi_mats=None,
     res = {
         "circuit_options": circuit_options, "pole_options": enid_options,
         "rows": int(len(filtered)), "mat_rows": mat_rows,
+        "options": getattr(_filtered, "options", {}),
         "plan2_comments": (plan2_comments(filtered, "plan2", "comment", "job")
                            if (filters or {}).get("date_field_label") == "Plan2" else None),
         "kpis": {"poles": int(poles_out["qty"].sum()) if not poles_out.empty else 0,

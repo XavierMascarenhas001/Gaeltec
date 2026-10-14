@@ -645,6 +645,27 @@ def load_forecast_workbook(file_bytes: bytes, sheet_name: str):
 # ============================================================
 PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month", "This year", "Last year", "Custom range"]
 DATE_FIELD_OPTIONS = {"Plan1": "plan1", "Plan2": "plan2", "Done": "done", "DateToUse": "datetouse"}
+UNPLANNED = "Unplanned"   # rows with no Plan1 and no Done date
+
+# ---- Cascading filters: each one only offers what the filters before it allow ----
+_BLANK_OPT = {"", "nan", "none", "<na>", "nat"}
+
+
+def cascade_options(df, base_mask, order, selections):
+    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level)."""
+    mask = base_mask.copy()
+    opts = {}
+    for key, col in order:
+        if not col or col not in df.columns:
+            opts[key] = []
+            continue
+        col_s = df[col].astype(str).str.strip()
+        opts[key] = sorted({v for v in col_s[mask].unique() if v.lower() not in _BLANK_OPT})
+        sel = selections.get(key) or []
+        if sel:
+            mask &= col_s.isin([str(x).strip() for x in sel])
+    return opts, mask
+
 
 # ---- Quick ranges on the calendar (today's date): whole weeks Mon-Sun, whole months ----
 CAL_PRESETS = ("Current week", "Last week", "Current month", "Last month")
@@ -808,13 +829,13 @@ def load(path, cols=None):
             parsed = parsed.where(parsed.dt.year > 1901)
             if parsed.notna().any():
                 available.append(label)
-    res["date_fields"] = available
+    res["date_fields"] = available + ([UNPLANNED] if "plan1" in df.columns or "done" in df.columns else [])
     res["default_date_field"] = "DateToUse" if "DateToUse" in available else (available[0] if available else None)
 
     def opts(col):
         return sorted(df[col].dropna().astype(str).unique()) if col and col in df.columns else []
     res["options"] = {"district": opts(cols["district_col"]), "project": opts(cols["project_col"]),
-                      "pid": opts(cols["pid_col"]), "sourcefile": opts(cols["job_col"])}
+                      "pid": opts(cols["pid_col"]), "job": opts(cols["job_col"]), "sourcefile": opts("sourcefile")}
     return res
 
 
@@ -871,58 +892,42 @@ def _date_pick(frame, date_field, preset, custom_from, custom_to):
     return dates, date_from, date_to
 
 
+def _real_dates(frame, col):
+    if col not in frame.columns:
+        return pd.Series(pd.NaT, index=frame.index)
+    parsed = pd.to_datetime(frame[col], errors="coerce")
+    return parsed.where(parsed.dt.year > 1901)
+
+
 def _filtered(path, cols, filters):
-    """The sidebar filters: date field/range, District, Project, PID, Source
-    file, then cascading Circuit and Pole - same statements as the app."""
+    """The filters: date field/range (or Unplanned), then District > Project > PID >
+    Job name > Source File > Circuit > Pole, each narrowed by the ones above it."""
     raw_df = _raw(path)
     cols = _clean_cols(raw_df, cols)
     df = _proc(path, cols)
     fl = filters or {}
     district_col, project_col, circuit_col = cols["district_col"], cols["project_col"], cols["circuit_col"]
     pole_col, pid_col, job_col = cols.get("pole_col"), cols.get("pid_col"), cols.get("job_col")
-    _dates_active, _date_from_picked, _date_to_picked = _date_pick(
-        df, fl.get("date_field"), fl.get("preset", "All time"), fl.get("custom_from"), fl.get("custom_to"))
-    df["_date"] = _dates_active
-    date_range = (_date_from_picked, _date_to_picked) if _date_from_picked is not None and _date_to_picked is not None else None
-    districts, projects = fl.get("districts") or [], fl.get("projects") or []
-    pids, sourcefiles = fl.get("pids") or [], fl.get("sourcefiles") or []
-    circuits, poles_selected = fl.get("circuits") or [], fl.get("poles") or []
-
-    _scope_mask = pd.Series(True, index=df.index)
-    if date_range and isinstance(date_range, tuple) and len(date_range) == 2:
-        _start, _end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-        _scope_mask &= df["_date"].between(_start, _end)
-    if districts:
-        _scope_mask &= df[district_col].astype(str).isin(districts)
-    if projects:
-        _scope_mask &= df[project_col].astype(str).isin(projects)
-    if pids and pid_col:
-        _scope_mask &= df[pid_col].astype(str).isin(pids)
-    if sourcefiles and job_col:
-        _scope_mask &= df[job_col].astype(str).isin(sourcefiles)
-    circuit_options = sorted(df.loc[_scope_mask, circuit_col].dropna().astype(str).unique()) if circuit_col else []
-    _scope_mask_for_pole = _scope_mask.copy()
-    if circuits:
-        _scope_mask_for_pole &= df[circuit_col].astype(str).isin(circuits)
-    pole_options = sorted(df.loc[_scope_mask_for_pole, pole_col].dropna().astype(str).unique()) if pole_col else []
-
-    f = df.copy()
-    if date_range and isinstance(date_range, tuple) and len(date_range) == 2:
-        start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-        f = f[f["_date"].between(start, end)]
-    if districts:
-        f = f[f[district_col].astype(str).isin(districts)]
-    if projects:
-        f = f[f[project_col].astype(str).isin(projects)]
-    if circuits:
-        f = f[f[circuit_col].astype(str).isin(circuits)]
-    if pids and pid_col:
-        f = f[f[pid_col].astype(str).isin(pids)]
-    if sourcefiles and job_col:
-        f = f[f[job_col].astype(str).isin(sourcefiles)]
-    if poles_selected and pole_col:
-        f = f[f[pole_col].astype(str).isin(poles_selected)]
-    return df, f, cols, {"circuit_options": circuit_options, "pole_options": pole_options,
+    unplanned = fl.get("date_field") == UNPLANNED
+    if unplanned:
+        base = _real_dates(df, "plan1").isna() & _real_dates(df, "done").isna()
+        df["_date"] = pd.Series(pd.NaT, index=df.index)
+        date_range = None
+    else:
+        _dates_active, _date_from_picked, _date_to_picked = _date_pick(
+            df, fl.get("date_field"), fl.get("preset", "All time"), fl.get("custom_from"), fl.get("custom_to"))
+        df["_date"] = _dates_active
+        date_range = (_date_from_picked, _date_to_picked) if _date_from_picked is not None and _date_to_picked is not None else None
+        base = pd.Series(True, index=df.index)
+        if date_range:
+            _start, _end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+            base &= df["_date"].between(_start, _end)
+    order = [("districts", district_col), ("projects", project_col), ("pids", pid_col), ("jobs", job_col),
+             ("sourcefiles", "sourcefile"), ("circuits", circuit_col), ("poles", pole_col)]
+    options, mask = cascade_options(df, base, order, fl)
+    f = df[mask].copy()
+    return df, f, cols, {"options": options, "circuit_options": options["circuits"], "pole_options": options["poles"],
+                         "unplanned": unplanned,
                          "date_from": _s(date_range[0]) if date_range else "", "date_to": _s(date_range[1]) if date_range else "",
                          "rows_total": int(len(df)), "rows": int(len(f))}
 
@@ -963,6 +968,26 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None):
     pole_total = pole_summary["Count"].sum() if not pole_summary.empty else 0
     res["plan2_comments"] = (plan2_comments(f, "_date", "comment", "_job_clean" if "_job_clean" in f.columns else cols["job_col"])
                              if (filters or {}).get("date_field") == "Plan2" else None)
+    if meta.get("unplanned"):
+        by_col = circuit_col if (filters or {}).get("projects") else project_col
+        by_name = "Circuit" if (filters or {}).get("projects") else "Project"
+        series, totals = [], None
+        for cat_name, mapping in POLE_CATEGORIES.items():
+            if cat_name == "CV7_recover":
+                continue
+            keys = {normalize_item(k) for k in mapping}
+            sub = f[f["_item_norm"].isin(keys)]
+            if sub.empty or by_col not in sub.columns:
+                continue
+            g = sub.groupby(sub[by_col].astype(str).str.strip())["_qsub_adj"].sum()
+            series.append((POLE_DISPLAY_NAMES.get(cat_name, cat_name), g))
+            totals = g if totals is None else totals.add(g, fill_value=0)
+        if totals is not None and len(totals):
+            order_ = totals.sort_values(ascending=False).index.tolist()
+            res["unplanned_poles"] = {"by": by_name, "labels": order_, "totals": [_n(totals[k]) for k in order_],
+                                      "series": [{"name": n_, "values": [_n(g_.get(k, 0)) for k in order_]} for n_, g_ in series]}
+        else:
+            res["unplanned_poles"] = {"by": by_name, "labels": [], "totals": [], "series": []}
     res["overview"] = {"recover_total": _n(recover_total), "trend": trend, "pole_total": _n(pole_total),
                        "poles": [{"type": r["Pole type"], "count": _n(r["Count"])} for r in pole_rows]}
 

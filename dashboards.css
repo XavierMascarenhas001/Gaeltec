@@ -373,7 +373,7 @@ details.dmap[open] summary{margin-bottom:10px}
 /* images from the Images folder */
 .gimg{flex:none;display:grid;place-items:center}
 .gimg.has{width:132px;height:96px;border-radius:12px;background:#fff;border:1px solid var(--line);padding:6px}
-.gimg.has img{max-width:100%;max-height:100%;object-fit:contain}
+.gimg.has img{width:100%;height:100%;max-width:100%;object-fit:contain;display:block}
 .igrp .ih{align-items:center}
 .iimg{display:none}
 .iimg.has{display:block;width:100%;height:64px;margin-bottom:6px;border-radius:8px;background:#fff;padding:4px}
@@ -394,9 +394,13 @@ details.dmap[open] summary{margin-bottom:10px}
 .icards > .icard{flex:0 1 190px;min-width:150px}
 .igrp.centre .icards,.icards.centre{justify-content:center;width:100%}
 .igrp.centre .icard{text-align:center;align-items:center}
-.iimg.has{height:110px}
+.iimg.has{height:110px;overflow:hidden}
 /* Plan2 comments */
 .ctop{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;background:var(--acc-soft);border-radius:12px;padding:14px 18px;margin-bottom:14px}
 .ctop .cq{font-size:22px;font-weight:700;flex:1 1 320px;min-width:0;overflow-wrap:anywhere}
 .ctop .cm{display:flex;flex-direction:column;font-size:13px;color:var(--muted)}
 .ctop .cm b{font-size:24px;color:var(--ink);font-variant-numeric:tabular-nums}
+
+.igrp.centre .gimg.has{display:flex;align-items:center;justify-content:center}
+.igrp.centre .gimg.has img{width:100%;height:200px;max-width:100%;object-fit:contain;display:block}
+.igrp.centre .gimg.has{overflow:hidden}

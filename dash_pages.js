@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 13-Oct-2026</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 14-Oct-2026</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -86,7 +86,7 @@ function pageDashboard(key){
       P.v = v;
       /* cascading filters: drop picks that the other filters have made impossible */
       let dropped = false;
-      (def.cascade || []).forEach(([k, optKey]) => { const ok = new Set(v[optKey] || []); const keep = (st.f[k] || []).filter(x => ok.has(x)); if (keep.length !== (st.f[k] || []).length){ st.f[k] = keep; dropped = true; } });
+      (def.cascade || []).forEach(([k, optKey]) => { const ok = new Set((v.options && v.options[k]) || v[optKey] || []); const keep = (st.f[k] || []).filter(x => ok.has(x)); if (keep.length !== (st.f[k] || []).length){ st.f[k] = keep; dropped = true; } });
       P.fbar.update(v);
       if (dropped) return P.refresh();
       P.renderTab();
@@ -128,7 +128,7 @@ function filterBar(P, spec){
   const lbl = t => { const s = h(`<span class="lbl"></span>`); s.textContent = t; return s; };
   const changed = () => { drawChips(); P.refresh(); };
   if (spec.dateFields && spec.dateFields.length){
-    r1.append(lbl("Date field"), segc(spec.dateFields, f[spec.dateKey], v => { f[spec.dateKey] = v; changed(); }));
+    r1.append(lbl("Date field"), segc(spec.dateFields, f[spec.dateKey], v => { f[spec.dateKey] = v; el._showRange && el._showRange(); changed(); }));
     r1.append(h(`<span class="sep"></span>`));
   }
   const dateIn = (key, title) => { const i = h(`<input type="date">`); i.title = title; i.value = f[key] || ""; i.onchange = () => { f[key] = i.value || null; changed(); }; return i; };
@@ -143,7 +143,9 @@ function filterBar(P, spec){
     custom.from = cf; custom.to = ct;
     custom.classList.toggle("hidden", sel.value !== "Custom range");
     sel.onchange = () => { f.preset = sel.value; custom.classList.toggle("hidden", sel.value !== "Custom range"); changed(); };
-    r1.append(lbl("Range"), sel, custom);
+    const rl = lbl("Range"); r1.append(rl, sel, custom);
+    const showRange = () => { const off = f[spec.dateKey] === "Unplanned"; [rl, sel].forEach(x => x.style.display = off ? "none" : ""); custom.classList.toggle("hidden", off || sel.value !== "Custom range"); };
+    el._showRange = showRange; showRange();
   } else if (spec.fromTo){
     const cf = dateIn(spec.fromTo[0], "From (blank = no limit)"), ct = dateIn(spec.fromTo[1], "To (blank = no limit)");
     r1.append(lbl("From"), cf, lbl("To"), ct);
@@ -183,7 +185,7 @@ function filterBar(P, spec){
     });
   }
   el.update = v => {
-    spec.multis.forEach(m => { if (m.cascade) ms[m.key].setOptions(v[m.cascade] || []); ms[m.key].set(f[m.key] || []); });
+    spec.multis.forEach(m => { const o = v.options && v.options[m.key]; if (o) ms[m.key].setOptions(o); else if (m.cascade) ms[m.key].setOptions(v[m.cascade] || []); ms[m.key].set(f[m.key] || []); });
     cap.innerHTML = spec.caption ? spec.caption(v) : "";
     if (custom){ if (!custom.from.value && v.date_from) custom.from.value = v.date_from; if (!custom.to.value && v.date_to) custom.to.value = v.date_to; }
     drawChips();
@@ -245,7 +247,7 @@ DASHDEF.master = {
   viewArgs(P){ const f = P.st.f; return {path: FILES.master.path, date_field: f.date_field, preset: f.preset, custom_from: f.custom_from || null, custom_to: f.custom_to || null,
     districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], pms: f.pms || [], sourcefiles: f.sourcefiles || [],
     circuits: f.circuits || [], poles: f.poles || [], granularity: f.granularity, pid_mode: f.pid_mode}; },
-  cascade: [["circuits", "circuit_options"], ["poles", "pole_options"]],
+  cascade: [["districts"], ["projects"], ["pids"], ["pms"], ["sourcefiles"], ["circuits", "circuit_options"], ["poles", "pole_options"]],
   pre(P){
     const L = P.st.L; if (!L.other_count) return null;
     const d = h(`<details class="dmap"><summary></summary><p class="muted" style="margin:0 0 6px;font-size:13px">These jobs don't start with 'M -' / 'M-' (material) or 'C -' / 'C-' (construction), so they're excluded from every chart. Their dates still count toward the date range. Sample job codes:</p><div class="chips"></div></details>`);
@@ -258,8 +260,8 @@ DASHDEF.master = {
       multis: [{key: "districts", label: "District", options: o.district}, {key: "projects", label: "Project", options: o.project},
                {key: "pids", label: "PID", options: o.pid}, {key: "pms", label: "Project Manager", options: o.pm},
                {key: "sourcefiles", label: "Source file", options: o.sourcefile},
-               {key: "circuits", label: "Circuit", cascade: "circuit_options", hint: "Narrowed to circuits that exist given the other filters."},
-               {key: "poles", label: "Pole (enid)", cascade: "pole_options", hint: "Narrowed to poles that exist given the other filters (including Circuit)."}],
+               {key: "circuits", label: "Circuit", cascade: "circuit_options", hint: "Narrowed to the circuits the filters to its left allow."},
+               {key: "poles", label: "Pole (enid)", cascade: "pole_options", hint: "Narrowed to the poles the filters to its left allow (including Circuit)."}],
       caption: v => capHTML([[fmtDate(v.date_from) + " → " + fmtDate(v.date_to)], [intf(v.records), "records"], `by ${v.granularity}${v.granularity_auto ? " (auto)" : ""}`])}; },
   tabs: [
     {id: "trends", label: "Trends", icon: "trend", render: mcTrends},
@@ -432,16 +434,19 @@ DASHDEF.tracker = {
   noComments: ["forecast"],
   viewFn: "nt_view",
   ntFilters(P){ const f = P.st.f; return {date_field: f.date_field, preset: f.preset, custom_from: f.custom_from || null, custom_to: f.custom_to || null,
-    districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], sourcefiles: f.sourcefiles || [], circuits: f.circuits || [], poles: f.poles || []}; },
+    districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], jobs: f.jobs || [], sourcefiles: f.sourcefiles || [], circuits: f.circuits || [], poles: f.poles || []}; },
   viewArgs(P){ return {path: FILES.master.path, cols: P.st.cols, filters: DASHDEF.tracker.ntFilters(P), granularity: P.st.gran, detail: P.st.detail || null}; },
-  cascade: [["circuits", "circuit_options"], ["poles", "pole_options"]],
+  cascade: [["districts"], ["projects"], ["pids"], ["jobs"], ["sourcefiles"], ["circuits", "circuit_options"], ["poles", "pole_options"]],
   filters(P){ const L = P.st.L, o = L.options;
+    const hint = "Narrowed to what the filters to its left allow.";
     return {dateFields: L.date_fields, dateKey: "date_field", presets: L.presets,
-      multis: [{key: "districts", label: "District", options: o.district}, {key: "projects", label: "Project", options: o.project},
-               {key: "pids", label: "PID", options: o.pid}, {key: "sourcefiles", label: "Source file", options: o.sourcefile},
-               {key: "circuits", label: "Circuit", cascade: "circuit_options", hint: "Narrowed to circuits that exist given the filters above."},
-               {key: "poles", label: "Pole", cascade: "pole_options", hint: "Narrowed to poles that exist given the filters above (including Circuit)."}],
-      caption: v => capHTML([v.date_from ? [fmtDate(v.date_from) + " → " + fmtDate(v.date_to)] : "", [intf(v.rows), `of ${intf(v.rows_total)} rows`]])}; },
+      multis: [{key: "districts", label: "District", options: o.district}, {key: "projects", label: "Project", options: o.project, hint},
+               {key: "pids", label: "PID", options: o.pid, hint}, {key: "jobs", label: "Job name", options: o.job, hint},
+               {key: "sourcefiles", label: "Source File", options: o.sourcefile || [], hint},
+               {key: "circuits", label: "Circuit", cascade: "circuit_options", hint},
+               {key: "poles", label: "Pole", cascade: "pole_options", hint: "Narrowed to the poles of the circuits (and other filters) to its left."}],
+      caption: v => v.unplanned ? capHTML([["Unplanned", "– no Plan1 or Done date"], [intf(v.rows), `of ${intf(v.rows_total)} rows`]])
+                                : capHTML([v.date_from ? [fmtDate(v.date_from) + " → " + fmtDate(v.date_to)] : "", [intf(v.rows), `of ${intf(v.rows_total)} rows`]])}; },
   tabs: [
     {id: "overview", label: "Overview", icon: "trend", render: ntOverview},
     {id: "jobs", label: "Jobs", icon: "cal", render: ntJobs},
@@ -456,8 +461,23 @@ function ntOverview(P, panel){
   panel.append(kpis([{label: "Total CV7_recover count", value: intf(o.recover_total), hero: true}, {label: "Total poles (all categories)", value: intf(o.pole_total)},
     {label: "Rows after filters", value: intf(P.v.rows), note: `of ${intf(P.v.rows_total)}`}]));
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
+  if (P.v.unplanned_poles){
+    const u = P.v.unplanned_poles;
+    if (!u.labels.length){ const c = dcard(`Unplanned poles by ${u.by.toLowerCase()}`, "", 12); c.body.append(emptyMsg("No unplanned poles under the current filters.")); g.append(c); }
+    else {
+      const cols = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)"];
+      const series = u.series.map((x, i) => ({name: x.name, values: x.values, color: cols[i % cols.length]}));
+      g.append(vizCard({title: `Unplanned poles by ${u.by.toLowerCase()}`, span: 12,
+        sub: (u.by === "Circuit" ? "Rows with no Plan1 and no Done date, for the selected project(s) · by circuit" : "Rows with no Plan1 and no Done date · pick a Project to see it by circuit") + ` · ${intf(u.labels.length)} ${u.by.toLowerCase()}(s)`,
+        legend: series.length > 1 ? series.map(x => ({name: x.name, color: x.color})) : null,
+        draw: host => Viz.columns(host, {labels: u.labels, height: 360, axis: compact, fmt: intf, valueLabels: u.labels.length <= 40, series,
+          tip: i => ({title: `${u.by}: ${u.labels[i]}`, rows: series.filter(x => x.values[i]).map(x => ({color: x.color, name: x.name, value: intf(x.values[i])})), total: {name: "Unplanned poles", value: intf(u.totals[i])}})}),
+        table: () => ({name: `Unplanned poles by ${u.by}`, columns: [u.by, ...series.map(x => x.name), "Total"], rows: u.labels.map((l, i) => [l, ...series.map(x => x.values[i]), u.totals[i]])})}));
+    }
+  }
   const gsel = segc(["Day", "Week", "Month"], P.st.gran, x => { P.st.gran = x; P.refresh(); });
-  if (!o.trend){ const c = dcard("CV7_recover — count over time", "", 12); c.acts.append(gsel); c.body.append(emptyMsg("No CV7_recover records (with a date) for the current filters.")); g.append(c); }
+  if (P.v.unplanned_poles){ /* no dates to plot over time */ }
+  else if (!o.trend){ const c = dcard("CV7_recover — count over time", "", 12); c.acts.append(gsel); c.body.append(emptyMsg("No CV7_recover records (with a date) for the current filters.")); g.append(c); }
   else { const labs = o.trend.x.map(x => periodLabel(x, P.st.gran)), ys = o.trend.y, mx = Math.max(...ys);
     g.append(vizCard({title: "CV7_recover — count over time", sub: `Grouped by ${P.st.gran.toLowerCase()} · hover a bar for its count`, span: 12, extra: gsel,
       draw: host => Viz.columns(host, {labels: labs, height: 340, axis: compact, fmt: intf, valueLabels: ys.length <= 40,
@@ -810,7 +830,7 @@ DASHDEF.materials = {
     pids: f.pids || [], sourcefiles: f.sourcefiles || [], circuits: f.circuits || [], enids: f.enids || []}; },
   viewArgs(P){ const s = P.st; return {master_path: FILES.materials.path, control_path: FILES.master.path, filters: DASHDEF.materials.mbFilters(P),
     fi_cats: s.fi_cats || [], fi_mats: s.fi_mats || [], guk_cats: s.guk_cats || [], guk_mats: s.guk_mats || [], guk_submats: s.guk_submats || []}; },
-  cascade: [["circuits", "circuit_options"], ["enids", "pole_options"]],
+  cascade: [["districts"], ["projects"], ["pids"], ["sourcefiles"], ["circuits", "circuit_options"], ["enids", "pole_options"]],
   filters(P){ const L = P.st.L, o = L.options;
     return {dateFields: L.date_fields, dateKey: "date_field_label", fromTo: ["date_from", "date_to"],
       multis: [{key: "districts", label: "District", options: o.district}, {key: "projects", label: "Project", options: o.project},
