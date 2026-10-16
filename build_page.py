@@ -13,7 +13,7 @@ import base64, glob, json, os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
-PY_FILES = ["bridge.py", "py_boot.py", "engine.py"] + sorted(glob.glob("tool_*.py")) + sorted(glob.glob("dash_*.py"))
+PY_FILES = ["bridge.py", "py_boot.py", "engine.py", "fast_xlsb.py", "fast_xlsx.py"] + sorted(glob.glob("tool_*.py")) + sorted(glob.glob("dash_*.py"))
 sources = {f: open(f, encoding="utf-8").read() for f in PY_FILES}
 page = open("page_template.html", encoding="utf-8").read()
 page = page.replace("/*__DASH_CSS__*/", open("dashboards.css", encoding="utf-8").read())

@@ -141,7 +141,8 @@ def build_master_direct(files, tracker, misc, output_name="", include_man_day=Tr
     _check_inputs(tracker, misc)
     out_dir = _outdir()
     log("━━━━━━━━ Step 1 of 2 · Aggregating the Control Files ━━━━━━━━")
-    agg_outputs = tool_aggregate_cf.run(file_paths=files, output_file=os.path.join(out_dir, "CF_aggregated.xlsx"), log=log)
+    agg_outputs = tool_aggregate_cf.run(file_paths=files, output_file=os.path.join(out_dir, "CF_aggregated.xlsx"), log=log,
+                                        write_excel=bool(keep_aggregated))
     agg_parquet = next((p for p in agg_outputs if p.endswith("_aggregated.parquet")), None)
     if not agg_parquet:
         raise UserError("No data was aggregated from those Control Files - see the log above.")

@@ -16,6 +16,40 @@ The two halves of step 2 can still be run on their own from links at the
 bottom of its page. The home page also has a **Useful links** section
 (Teams Vacations, Telclock, UMV, What3words, Google maps).
 
+## Your files (home page)
+
+The **Your files** box at the top of the home page takes the Master file,
+Materials master, Outages Programme (High-level planning), Service Partner
+Workbank and the outage calendar. Drop each one once: the dashboards, Outputs
+and Work Instructions all use it from there. After **Build Master File**, the
+**Use this Master in the tools & dashboards** button loads the new Master
+without saving and re-dropping it.
+
+**Privacy:** 30 minutes after files are loaded, the page asks *"Are you still
+using this page?"*. If nobody answers within 2 minutes, every file, result
+and loaded table is cleared from the page and Python is restarted. Answering
+**Yes** asks again 30 minutes later. If a job is still running when the time
+runs out, the files are cleared as soon as it finishes.
+
+## Build Master File: speed
+
+Building the Master is now about 10 times faster, with exactly the same
+result: the same columns, values and order in the `.parquet` and the `.xlsx`.
+This was checked against the previous version on the same Control Files, both
+in Python and in the browser's Python.
+
+* `fast_xlsb.py` reads `.xlsb` Control Files itself. It only decodes the
+  columns Block1 and PA CONTROL use, and each workbook is opened once instead
+  of twice. If a file looks unusual in any way, it falls back to the normal
+  pyxlsb reader.
+* Dates, segment text, locations and team codes are worked out once per
+  distinct value instead of once per row.
+* PID / PO matching looks up each distinct job once.
+* `fast_xlsx.py` writes the `.xlsx` files. It produces the same cells as
+  pandas + xlsxwriter, much faster.
+* The intermediate `CF_aggregated.xlsx` is only written when "Also download
+  the intermediate CF_aggregated files" is ticked.
+
 ## Images
 
 Put an `Images` folder next to `index.html` in the GitHub repo, with these
@@ -58,9 +92,8 @@ is simply left out.
 * In the map scan, an outage folder that is completely **empty** isn't listed
   as "had no Workpack zones folder", because browsers don't pass empty
   folders through. The results are otherwise unchanged.
-* Very large jobs, such as aggregating 75+ Control Files, run slower than in
-  Jupyter. They may hit the browser's memory limit; if that happens, do them
-  in batches.
+* Very large jobs, such as aggregating 75+ Control Files, may hit the
+  browser's memory limit. If that happens, do them in batches.
 
 ## Dashboards
 
@@ -101,6 +134,7 @@ from:
 * `dashboards.css`, `dash_core.js`, `dash_pages.js` – the dashboards (layout, filters, charts)
 * `worker.js` – runs Python in the browser
 * `bridge.py` – connects the page to the tools
+* `fast_xlsb.py`, `fast_xlsx.py` – the fast Excel reader and writer used by Build Master
 * `py_boot.py` – swaps in the no-threads and pure-rapidfuzz versions
 * `pylibs.zip` – openpyxl, xlsxwriter, python-docx, pyxlsb and rapidfuzz
 

@@ -187,6 +187,23 @@ tr:nth-child(even) td{background:var(--bg)}
 @media (max-width:560px){#srv span:last-child{display:none}}
 @media (max-width:700px){.roots{width:130px}.frow .dt{display:none}header{padding:14px 16px}main{padding:18px 16px 50px}}
 .hidden{display:none!important}
+/* ---------- home: shared files ---------- */
+.shared{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin:0 0 26px}
+.shared .sh{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+.shared .sh .ico{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#fff;flex:none}
+.shared h3{margin:2px 0 2px;font-size:17px}
+.shared p{margin:0;color:var(--muted);font-size:13.5px}
+.shared .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.shared .slot{max-width:none;min-width:0;box-shadow:none;background:var(--bg)}
+.shared .slot.has{background:var(--card)}
+/* ---------- "still using?" prompt ---------- */
+.idle-card{background:var(--card);border-radius:16px;width:min(460px,100%);padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center}
+.idle-card .iico{width:46px;height:46px;border-radius:13px;display:inline-grid;place-items:center;color:#fff}
+.idle-card h3{margin:8px 0 6px;font-size:19px}
+.idle-card p{margin:0 0 10px;color:var(--muted);font-size:14px}
+.idle-card .cd{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin:4px 0 14px}
+.idle-card .row{justify-content:center}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:10px 16px;border-radius:10px;font-size:14px;z-index:120;box-shadow:var(--shadow);max-width:min(560px,calc(100% - 32px))}
 h2.section{margin:34px 0 4px;font-size:20px}
 .dstat[data-state=running]{color:var(--ok);background:var(--ok-soft)}
 .dstat[data-state=failed]{color:var(--err);background:var(--err-soft)}
@@ -240,7 +257,7 @@ code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 14-Oct-2026</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 16-Oct-2026</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -280,7 +297,7 @@ const NETWORK_ROOT = "\\\\gaeltec-gl\\Gaeltec_Network\\62.OHLT.UK\\03.SPEN\\21.P
    ====================================================================== */
 const PY = (() => {
   let worker = null, seq = 0, readyP = null, isReady = false, lastStatus = "";
-  const pend = new Map(), statusCbs = [];
+  const pend = new Map(), statusCbs = [], mounted = new Set();
   const setStatus = (t, state) => { lastStatus = t; statusCbs.forEach(cb => cb(t, state)); };
   function send(type, payload, onLog){
     const id = ++seq;
@@ -312,11 +329,24 @@ const PY = (() => {
   return {
     start, onStatus(cb){ statusCbs.push(cb); if (lastStatus) cb(lastStatus, isReady ? "on" : "busy"); },
     get ready(){ return isReady; },
-    async mount(items){ await start(); return (await send("mount", {items})).dir; },
-    async unmount(dir){ if (worker && dir) await send("unmount", {dir}).catch(() => {}); },
+    async mount(items, opts = {}){ await start(); const dir = (await send("mount", {items})).dir; if (!opts.system) mounted.add(dir); return dir; },
+    async unmount(dir){ mounted.delete(dir); if (worker && dir) await send("unmount", {dir}).catch(() => {}); },
     async call(fn, kwargs, opts = {}){
       await start();
       return send("call", {fn, kwargs: JSON.stringify(kwargs || {}), needs: opts.needs || []}, opts.onLog);
+    },
+    /* files currently handed to Python (dropped on any tool or dashboard) */
+    get hasFiles(){ return mounted.size > 0; },
+    get busy(){ return pend.size > 0; },
+    /* forget everything: stop Python (its memory, files and results go with it)
+       and start a fresh one in the background */
+    reset(){
+      if (worker){ worker.terminate(); worker = null; }
+      readyP = null; isReady = false; mounted.clear();
+      pend.forEach(p => p.rej(new Error("Stopped - the uploaded files were cleared.")));
+      pend.clear();
+      setStatus("Restarting Python…", "busy");
+      setTimeout(() => start().catch(() => {}), 300);
     },
   };
 })();
@@ -393,7 +423,7 @@ async function entriesFromDataTransfer(dt){
 /* Drop zone for files (kind 'file' / 'files').
    types = [[label, ".a,.b"], ...] - same file-type filter as the old dialogs;
    a type with "" means "All files". */
-function dropField({label, kind, types, onChange, hint}){
+function dropField({label, kind, types, onChange, hint, system}){
   const multi = kind === "files";
   const exts = (types || []).map(t => t[1]).filter(Boolean).join(",").split(",").filter(Boolean);
   const anyType = !types || !types.length || types.some(t => !t[1]);
@@ -431,7 +461,7 @@ function dropField({label, kind, types, onChange, hint}){
     dz.classList.add("busy");
     try {
       for (const f of list){
-        const dir = await PY.mount([{rel: f.name, file: f}]);
+        const dir = await PY.mount([{rel: f.name, file: f}], {system});   // system = e.g. the report logos, not user data
         const it = {name: f.name, path: dir + "/" + f.name, dir, size: f.size};
         if (multi){ state.items = state.items.filter(x => x.name !== f.name).concat(it); }
         else { state.items.forEach(x => PY.unmount(x.dir)); state.items = [it]; }
@@ -628,6 +658,7 @@ function home(){
   app.innerHTML = "";
   app.append(h(`<p class="intro">Pick a tool, then drag your files onto it. Everything runs here in your browser – files never leave your PC, and nothing needs installing.</p>`));
   app.append(h(`<div class="flow">Usual order: ${TOOLS.map(t=>`<span class="step">${t.n}. ${esc(t.title)}</span>`).join(` ${I.arrow} `)}</div>`));
+  app.append(sharedFilesPanel());
   const g = h(`<div class="grid"></div>`);
   TOOLS.forEach(t => {
     const tile = h(`<button class="tile"><div class="ico ${t.c}">${I[t.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag">Step ${t.n}</span><h3>${esc(t.title)}</h3><p>${esc(t.desc)}</p><span class="go">Open ${I.arrow}</span></button>`);
@@ -659,6 +690,47 @@ function home(){
   });
   app.append(lg);
 }
+/* the files every tool and dashboard can use - dropped once, here */
+function sharedFilesPanel(){
+  const el = h(`<section class="shared"><div class="sh"><div class="ico c1">${I.db.replace("<svg","<svg width=22 height=22")}</div>
+    <div style="flex:1"><h3>Your files</h3><p>Drop them once here – every tool and dashboard picks them up, so there's no need to drop them again on each page.
+    For privacy they're cleared if the page is left unattended (you'll be asked after 30 minutes).</p></div>
+    <button class="btn sm clr hidden">Clear all files</button></div><div class="sgrid"></div></section>`);
+  const grid = $(".sgrid", el), clr = $(".clr", el);
+  Object.keys(SLOTS).forEach(k => grid.append(slotEl(k, false)));
+  const upd = () => clr.classList.toggle("hidden", !Object.keys(FILES).length);
+  const cb = () => { if (!el.isConnected) { fileListeners.delete(cb); return; } upd(); };
+  fileListeners.add(cb); upd();
+  clr.onclick = () => { if (confirm("Remove all the files from this page?")) Object.keys(FILES).forEach(clearSlot); };
+  return el;
+}
+
+/* A tool's "Master file" box = the shared Master slot (the one on the home page
+   and in the dashboards). onPath(path, file) runs now if a Master is already
+   loaded, and again whenever it's replaced or removed. */
+function sharedSlotField(slot, onPath, note){
+  const el = slotZone(slot, true, note);
+  let last = null;
+  const fire = () => { const f = FILES[slot]; const p = f ? f.path : ""; if (p !== last){ last = p; onPath(p, f); } };
+  const cb = k => { if (k !== slot) return; if (!el.isConnected){ fileListeners.delete(cb); return; } fire(); };
+  fileListeners.add(cb);
+  setTimeout(fire, 0);
+  return el;
+}
+
+/* after Build Master: offer to make the new Master the shared one */
+function offerAsMaster(run, r){
+  const f = r && (r.files || []).find(x => /\.parquet$/i.test(x.name) && !/_aggregated|_resume/i.test(x.name));
+  if (!f) return;
+  const row = h(`<div class="row" style="margin-top:10px"><button class="btn sm">${I.db.replace("<svg","<svg width=16 height=16")} Use this Master in the tools &amp; dashboards</button><span class="status"></span></div>`);
+  $("button", row).onclick = async () => {
+    const st = $(".status", row);
+    try { await setSlotFile("master", new File([f.data], f.name)); st.className = "status ok"; st.textContent = "✔ Loaded as the shared Master file"; }
+    catch(e){ st.className = "status err"; st.textContent = e.message; }
+  };
+  $(".outputs", run).append(row);
+}
+
 const LINKS = [
   {group: "Team", icon: "cal", items: [
     {name: "Teams Vacations", icon: "cal", url: "https://dev-nexus.telcabo.co/backoffice/calendar/index.php"},
@@ -756,7 +828,8 @@ function pageBuild(t){
     if (!files.get().length) { run.fail("Drop at least one Control File."); return; }
     if (!trk.get() || !misc.get()) { run.fail("Drop the Project Tracker and the miscelaneous file."); return; }
     run.run("build_master_direct", {files: files.get(), tracker: trk.get(), misc: misc.get(), output_name: nm.get(),
-      include_man_day: $("input", md).checked, keep_aggregated: $("input", keep).checked}, {needs: NEED_PARQUET, busy: "Aggregating Control Files, then building the Master…"});
+      include_man_day: $("input", md).checked, keep_aggregated: $("input", keep).checked}, {needs: NEED_PARQUET, busy: "Aggregating Control Files, then building the Master…"})
+      .then(r => offerAsMaster(run, r));
   };
   const alt = h(`<p class="hint" style="margin:6px 0 0">Need just one of the steps? <a href="#aggregate">Aggregate Control Files only</a> · <a href="#master">Build Master from an existing CF_aggregated.parquet</a></p>`);
   app.append(b1, b2, b3, b4, alt);
@@ -779,7 +852,8 @@ function pageMaster(t){
   b3.append(run);
   run.button.onclick = () => {
     if (!agg.get() || !trk.get() || !misc.get()) { run.fail("Drop all three input files."); return; }
-    run.run("master", {aggregated: agg.get(), tracker: trk.get(), misc: misc.get(), output_name: nm.get(), include_man_day: $("input", md).checked}, {needs: NEED_PARQUET, busy: "Building master…"});
+    run.run("master", {aggregated: agg.get(), tracker: trk.get(), misc: misc.get(), output_name: nm.get(), include_man_day: $("input", md).checked}, {needs: NEED_PARQUET, busy: "Building master…"})
+      .then(r => offerAsMaster(run, r));
   };
   app.append(b1, b2, b3);
 }
@@ -787,7 +861,7 @@ function pageMaster(t){
 /* ---------------- Tool 4: Outputs (CV Excel report) ---------------- */
 function logoField(label, key, imgName){
   /* optional logo image, remembered in this browser so it's only dropped once */
-  const el = dropField({label, kind: "file", types: [["Images", ".png,.jpg,.jpeg"]], hint: "optional – remembered for next time",
+  const el = dropField({label, kind: "file", types: [["Images", ".png,.jpg,.jpeg"]], hint: "optional – remembered for next time", system: true,
     onChange: async () => {
       try {
         const f = el._lastFile; if (!f) return;
@@ -815,9 +889,9 @@ function logoField(label, key, imgName){
 function pageOutputs(t){
   let path = "";
   const b1 = box(1, "Load CSV / Parquet");
-  const src = dropField({label: "Master file", kind: "file", types: [["Parquet", ".parquet"], ["CSV", ".csv"]],
-                         onChange: v => { path = v; if (v) load(); }});
   const loadStat = h(`<p class="status" style="margin:10px 0 0"></p>`);
+  const src = sharedSlotField("master", v => { path = v; if (v) load(); else { loadStat.className = "status"; loadStat.textContent = ""; } },
+                              "Master .parquet or .csv – shared with the other tools and dashboards");
   b1.append(src, loadStat);
 
   const b2 = box(2, "Filters", "Leave a box on “All” for no restriction. Each box also lets you type in your own value.");
@@ -905,9 +979,13 @@ function pageWI(t){
 
   /* --- Tab 1 --- */
   const a1 = box(null, `${I.db.replace("<svg","<svg width=18 height=18")} Master parquet file`);
-  const src = dropField({label: "Master parquet file", kind: "file", types: [["Parquet files", ".parquet"]],
-                         onChange: v => { path = v; if (v) load(); }});
   const loadStat = h(`<p class="status" style="margin:10px 0 0">No file loaded</p>`);
+  const src = sharedSlotField("master", (v, f) => {
+      path = "";
+      if (!v) { loadStat.className = "status"; loadStat.textContent = "No file loaded"; return; }
+      if (extOf(f.name) !== ".parquet") { loadStat.className = "status err"; loadStat.textContent = `Work Instructions need the Master as a .parquet file – “${f.name}” is a ${extOf(f.name)} file.`; return; }
+      path = v; load();
+    }, "Master .parquet – shared with the other tools and dashboards");
   a1.append(src, loadStat);
   const a2 = box(null, `${I.filter.replace("<svg","<svg width=18 height=18")} Filters`, "Search to narrow a list, click items to toggle, leave a filter empty = no restriction on that field.");
   const dr = h(`<div class="row" style="margin-bottom:12px"></div>`);
@@ -941,7 +1019,7 @@ function pageWI(t){
     try {
       const o = (await PY.call("wi_options", {path}, {needs: NEED_WI})).result;
       o.fields.forEach(f => lf[f.key].setValues(f.values));
-      loadStat.className = "status ok"; loadStat.textContent = `${src.names()[0]}  (${o.rows} rows)`;
+      loadStat.className = "status ok"; loadStat.textContent = `${(FILES.master || {}).name || ""}  (${o.rows} rows)`;
       preview();
     } catch(e){ loadStat.className = "status err"; loadStat.textContent = e.message; }
   }
@@ -1069,6 +1147,56 @@ window.addEventListener("hashchange", route);
 /* stop the browser opening a file that's dropped outside a drop zone */
 window.addEventListener("dragover", e => e.preventDefault());
 window.addEventListener("drop", e => e.preventDefault());
+
+/* ---------------- privacy: ask after 30 minutes, clear the files if no answer ---------------- */
+const IdleGuard = (() => {
+  const ASK_AFTER = (+Q.get("idle_min") || 30) * 60e3;        // ?idle_min= / ?idle_answer_s= are only for testing
+  const ANSWER_WITHIN = (+Q.get("idle_answer_s") || 120) * 1e3;
+  let since = 0, askedAt = 0, modal = null, pendingClear = false;
+  const has = () => PY.hasFiles || Object.keys(FILES).length > 0;
+  function toast(msg){ const t = h(`<div class="toast" role="status"></div>`); t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), 9000); }
+  function close(){ if (modal){ modal.remove(); modal = null; } askedAt = 0; }
+  function clearAll(why){
+    close(); pendingClear = false; since = 0;
+    Object.keys(FILES).forEach(k => delete FILES[k]);
+    Object.keys(DST).forEach(k => delete DST[k]);
+    PY.reset();                                              // Python's copies, results and caches go with it
+    route();                                                 // redraw the page without the files / results
+    toast(why);
+  }
+  function ask(){
+    askedAt = Date.now();
+    modal = h(`<div class="modal-bg on idle"><div class="idle-card" role="alertdialog" aria-labelledby="idle-h" aria-describedby="idle-p">
+      <div class="iico c1">${I.clock.replace("<svg","<svg width=24 height=24")}</div>
+      <h3 id="idle-h">Are you still using this page?</h3>
+      <p id="idle-p">Files have been loaded here for 30 minutes. If there's no answer, they'll be cleared from the page so the information isn't left open.</p>
+      <div class="cd" aria-live="polite"></div>
+      <div class="row"><button class="btn primary">Yes, I'm still using it</button><button class="btn">Clear my files now</button></div></div></div>`);
+    const [yes, no] = modal.querySelectorAll(".btn");
+    yes.onclick = () => { close(); since = Date.now(); };
+    no.onclick = () => clearAll("Your files were cleared.");
+    document.body.append(modal); yes.focus();
+    tick();
+  }
+  function tick(){
+    const now = Date.now();
+    if (!has()){ since = 0; pendingClear = false; if (modal) close(); return; }
+    if (!since) since = now;                                 // the clock starts with the first file
+    if (pendingClear){ if (!PY.busy) clearAll("Your files were cleared after 30 minutes with no answer."); return; }
+    if (modal){
+      const left = Math.max(0, ANSWER_WITHIN - (now - askedAt));
+      $(".cd", modal).textContent = `${Math.floor(left / 60e3)}:${String(Math.floor(left / 1e3) % 60).padStart(2, "0")}`;
+      if (!left){
+        if (PY.busy){ pendingClear = true; close(); }        // a run is still going: clear the moment it ends
+        else clearAll("Your files were cleared after 30 minutes with no answer.");
+      }
+      return;
+    }
+    if (now - since >= ASK_AFTER) ask();
+  }
+  setInterval(tick, 1000);
+  return {tick, clearAll};
+})();
 
 /* ---------------- start ---------------- */
 (function(){

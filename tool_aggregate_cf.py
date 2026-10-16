@@ -1,5 +1,14 @@
 """Tool 1 - Aggregate Control Files (Block1 + PA CONTROL -> Excel + parquet).
-Original logic kept verbatim; only the tkinter file dialogs were replaced."""
+Original logic kept verbatim; only the tkinter file dialogs were replaced.
+
+Speed-ups (same results, value for value):
+  * each workbook is opened once and .xlsb files go through fast_xlsb, which
+    only decodes the columns Block1 / PA CONTROL actually use;
+  * the per-cell helpers (dates, segment text, location, teams) remember the
+    answer for a value they have already seen, so repeated values - most of
+    a Control File - are worked out only once;
+  * the Excel copy is written by fast_xlsx, and only when it is wanted.
+"""
 import pandas as pd
 import os
 import re
@@ -446,8 +455,91 @@ def finalize_columns(df):
 FILETYPES = [("Excel files", "*.xlsx *.xlsm *.xls *.xlsb")]
 
 
-def run(file_paths, output_file, log=print):
+def _memo(fn):
+    """fn(x) that remembers its answer per distinct value (and type) of x.
+    NaN and unhashable values are always passed straight to fn."""
+    cache = {}
+
+    def f(x):
+        k = (x.__class__, x)
+        try:
+            return cache[k]
+        except KeyError:
+            pass
+        except TypeError:                    # unhashable
+            return fn(x)
+        r = fn(x)
+        try:
+            if x == x:                       # NaN / NaT / NA are not stored
+                cache[k] = r
+        except Exception:
+            pass
+        return r
+    return f
+
+
+def _apply_expand(series, fn):
+    """series.apply(fn) for an fn that returns a pd.Series (-> DataFrame),
+    giving the same frame: pandas builds it from the list of returned Series;
+    here it is built from the distinct ones only (fn is memoised, so repeated
+    values return the very same object) and then repeated row by row."""
+    if len(series) == 0:
+        return series.apply(fn)
+    pos, uniq, codes = {}, [], []
+    for x in series.tolist() if series.dtype.kind != "O" else series.array:
+        r = fn(x)
+        if not isinstance(r, pd.Series):
+            return series.apply(fn)          # not the expected shape: plain pandas
+        k = id(r)
+        c = pos.get(k)
+        if c is None:
+            c = pos[k] = len(uniq)
+            uniq.append(r)
+        codes.append(c)
+    frame = pd.DataFrame(uniq).take(codes)
+    frame.index = series.index
+    return frame
+
+
+class _Workbook:
+    """Opens a Control File once; read() behaves like pd.read_excel(file, ...)."""
+
+    def __init__(self, file_path, ext):
+        self.file_path, self.ext, self.xl = file_path, ext, None
+        try:
+            if ext == ".xlsb":
+                import fast_xlsb
+                self.xl = fast_xlsb.open_excel(file_path)
+            else:
+                self.xl = pd.ExcelFile(file_path)
+        except Exception:
+            self.xl = None                   # let read() raise the usual error
+
+    def read(self, **kw):
+        if self.xl is None:
+            if self.ext == ".xlsb":
+                kw["engine"] = "pyxlsb"
+            return pd.read_excel(self.file_path, **kw)
+        sheet = kw.pop("sheet_name")
+        if self.ext == ".xlsb":
+            import fast_xlsb
+            return fast_xlsb.parse(self.xl, sheet, **kw)
+        return self.xl.parse(sheet, **kw)
+
+    def close(self):
+        try:
+            if self.xl is not None:
+                self.xl.close()
+        except Exception:
+            pass
+
+
+def run(file_paths, output_file, log=print, write_excel=True):
     outputs = []
+    date_parse = _memo(parse_excel_date)
+    segment_parse = _memo(lambda x: parse_segment_info(x, project_mapping))
+    location_of = _memo(extract_location)
+    team_names = _memo(map_teams)
     if not file_paths:
         log("❌ No files selected. Exiting.")
         return outputs
@@ -471,6 +563,7 @@ def run(file_paths, output_file, log=print):
 
         # Store simple file info
         resume_list_files.append([file_name, project, shire])
+        book = _Workbook(file_path, ext)
 
         # --- BLOCK1 ---
         try:
@@ -478,17 +571,13 @@ def run(file_paths, output_file, log=print):
             try:
                 read_kwargs = dict(sheet_name="Block1", header=2, skiprows=range(3, 29),
                                    usecols=BLOCK1_USECOLS_FULL)
-                if ext == ".xlsb":
-                    read_kwargs["engine"] = "pyxlsb"
-                df = pd.read_excel(file_path, **read_kwargs)
+                df = book.read(**read_kwargs)
             except Exception:
                 # Column CA (Defect Code) may not exist in this file — retry without it
                 had_defect_code_col = False
                 read_kwargs = dict(sheet_name="Block1", header=2, skiprows=range(3, 29),
                                    usecols=BLOCK1_USECOLS_FALLBACK)
-                if ext == ".xlsb":
-                    read_kwargs["engine"] = "pyxlsb"
-                df = pd.read_excel(file_path, **read_kwargs)
+                df = book.read(**read_kwargs)
 
             df.columns = df.columns.str.strip().str.lower()
             df.columns = df.columns.str.strip()
@@ -506,25 +595,23 @@ def run(file_paths, output_file, log=print):
             col_a_name = df.columns[0]  # Column A
             df = df[~df[col_a_name].str.lower().isin(['stop']) & df[col_a_name].notna()]
             # --- Parse dates ---
-            df['plan1'] = df['plan1'].apply(parse_excel_date)
+            df['plan1'] = df['plan1'].apply(date_parse)
             if 'plan2' in df.columns:
-                df['plan2'] = df['plan2'].apply(parse_excel_date)
-            df['done'] = df['done'].apply(parse_excel_date)
+                df['plan2'] = df['plan2'].apply(date_parse)
+            df['done'] = df['done'].apply(date_parse)
             df['datetouse'] = df['done'].combine_first(df['plan1'])
             date_cols = [c for c in df.columns if c.startswith('date')]
             for col in date_cols:
-                df[col] = df[col].apply(parse_excel_date)
+                df[col] = df[col].apply(date_parse)
 
             # Parse segment info
             if 'segment' in df.columns:
-                df[['type', 'segmentdesc', 'segmentcode', 'projectmanager']] = df['segment'].apply(
-                    lambda x: parse_segment_info(x, project_mapping)
-                )
+                df[['type', 'segmentdesc', 'segmentcode', 'projectmanager']] = df['segment'].apply(segment_parse)
 
             # Add project info
             df['project'] = project
             df['shire'] = shire
-            df['location'] = df['segmentdesc'].apply(extract_location)
+            df['location'] = df['segmentdesc'].apply(location_of)
             df['region'] = df['location'].where(df['location'].notna() & (df['location'] != ""), df['shire'])
             df['sourcefile'] = file_name
             #Add the teams to the output
@@ -532,7 +619,7 @@ def run(file_paths, output_file, log=print):
 
             if 'team' in df.columns:
                 df['team'] = df['team'].astype(str).str.strip().str.upper()
-                df['team_name'] = df['team'].apply(map_teams)
+                df['team_name'] = df['team'].apply(team_names)
 
             if 'item' in df.columns:
                 for col in ['qty', 'qsub']:
@@ -547,10 +634,7 @@ def run(file_paths, output_file, log=print):
         # --- PA CONTROL ---
         try:
             pa_kwargs = dict(sheet_name="PA CONTROL", header=0, skiprows=1, usecols=[0,2,4])
-            if ext == ".xlsb":
-                pa_kwargs["engine"] = "pyxlsb"
-
-            pa_df = pd.read_excel(file_path, **pa_kwargs)
+            pa_df = book.read(**pa_kwargs)
             pa_df.columns = ["section", "value_eur", "completion"]
 
             # Keep only MC sections
@@ -562,14 +646,12 @@ def run(file_paths, output_file, log=print):
             pa_df['%complete'] = (pa_df['completion'] / pa_df['value_eur'].replace(0, np.nan)) * 100
 
             # Parse segment info
-            pa_df[['type', 'segmentdesc', 'segmentcode', 'projectmanager']] = pa_df['section'].apply(
-                lambda x: parse_segment_info(x, project_mapping)
-            )
+            pa_df[['type', 'segmentdesc', 'segmentcode', 'projectmanager']] = pa_df['section'].apply(segment_parse)
 
             # Add project info
             pa_df['project'] = project
             pa_df['shire'] = shire
-            pa_df['location'] = pa_df['segmentdesc'].apply(extract_location)
+            pa_df['location'] = pa_df['segmentdesc'].apply(location_of)
             pa_df['region'] = pa_df['location'].where(pa_df['location'].notna() & (pa_df['location'] != ""), pa_df['shire'])
             pa_df['sourcefile'] = file_name
 
@@ -578,6 +660,7 @@ def run(file_paths, output_file, log=print):
             log(f"   ✅ 'PA CONTROL' loaded — {len(pa_df)} rows")
         except Exception as e:
             log(f"   ⚠️ Could not read 'PA CONTROL': {e}")
+        book.close()
 
     # --- SAVE OUTPUT ---
     if aggregated_df.empty:
@@ -593,15 +676,17 @@ def run(file_paths, output_file, log=print):
         log("❌ No output file selected. Exiting.")
         return outputs
 
-    with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
-        aggregated_df.to_excel(writer, index=False, sheet_name="Aggregated")
-
-        # Concatenate PA CONTROL DataFrames safely
+    # Concatenate PA CONTROL DataFrames safely
+    if resume_list_dfs:
+        resume_df = pd.concat(resume_list_dfs, ignore_index=True)
+    if write_excel:
+        import fast_xlsx
+        sheets = [("Aggregated", aggregated_df)]
         if resume_list_dfs:
-            resume_df = pd.concat(resume_list_dfs, ignore_index=True)
-            resume_df.to_excel(writer, index=False, sheet_name="Resume")
-    log(f"✅ Excel saved: {output_file}")
-    outputs.append(output_file)
+            sheets.append(("Resume", resume_df))
+        fast_xlsx.write(output_file, sheets)
+        log(f"✅ Excel saved: {output_file}")
+        outputs.append(output_file)
 
     # --- Save Aggregated Parquet ---
     aggregated_parquet_file = os.path.splitext(output_file)[0] + "_aggregated.parquet"

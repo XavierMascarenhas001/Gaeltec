@@ -660,7 +660,7 @@ def cascade_options(df, base_mask, order, selections):
             opts[key] = []
             continue
         col_s = df[col].astype(str).str.strip()
-        opts[key] = sorted({v for v in col_s[mask].unique() if v.lower() not in _BLANK_OPT})
+        opts[key] = sorted({v for v in col_s[mask].unique() if isinstance(v, str) and v.lower() not in _BLANK_OPT})
         sel = selections.get(key) or []
         if sel:
             mask &= col_s.isin([str(x).strip() for x in sel])

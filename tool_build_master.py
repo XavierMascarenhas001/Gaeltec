@@ -79,19 +79,52 @@ def run(aggregated_file, tracker_file, misc_file, output_parquet_file,
     # -----------------------------
     # MATCH PID + PO LOGIC
     # -----------------------------
+    # Same rule as before - for each row, the first tracker row (in tracker
+    # order) of its (district, project, circuit) group whose job name appears
+    # in the row's job text gives the PID / PO - but each distinct
+    # (group, job text) is only worked out once instead of once per row.
     log("🔗 Matching PID / PO against the Project Tracker...")
-    for i, row in agg_df.iterrows():
-        key = (row.get(AGG_SHIRE_COL), row.get(AGG_PROJECT_COL), row.get(AGG_CIRCUIT_COL))
-        if key not in tracker_groups.groups:
+    tvals = tracker_df.values                 # the values iterrows() would give
+    tcols = list(tracker_df.columns)
+
+    def tcol(name):
+        return tcols.index(name) if name in tcols else None
+
+    j_job, j_pid, j_po = tcol(TRACKER_JOBNAME_COL), tcol('pid'), tcol('po')
+    candidates = {}
+    for key, pos in tracker_groups.indices.items():
+        lst = []
+        for p in sorted(pos):
+            trow = tvals[p]
+            job_name = str(trow[j_job] if j_job is not None else '').strip()
+            lst.append((job_name, trow[j_pid] if j_pid is not None else None,
+                        trow[j_po] if j_po is not None else None))
+        candidates[key] = lst
+
+    def column(name):
+        return agg_df[name].tolist() if name in agg_df.columns else [None] * len(agg_df)
+
+    pids, pos_ = [None] * len(agg_df), [None] * len(agg_df)
+    agg_job = column(AGG_JOB_COL) if AGG_JOB_COL in agg_df.columns else [''] * len(agg_df)
+    found = {}
+    for i, key in enumerate(zip(column(AGG_SHIRE_COL), column(AGG_PROJECT_COL), column(AGG_CIRCUIT_COL))):
+        cand = candidates.get(key)
+        if cand is None:
             continue
-        subset = tracker_groups.get_group(key)
-        segment_text = str(row.get(AGG_JOB_COL, ''))
-        for _, trow in subset.iterrows():
-            job_name = str(trow.get(TRACKER_JOBNAME_COL, '')).strip()
-            if job_name and job_name in segment_text:
-                agg_df.at[i, 'pid'] = trow.get('pid')
-                agg_df.at[i, 'po'] = trow.get('po')
-                break
+        segment_text = str(agg_job[i])
+        fk = (key, segment_text)
+        hit = found.get(fk, found)           # `found` itself = not worked out yet
+        if hit is found:
+            hit = None
+            for job_name, pid, po in cand:
+                if job_name and job_name in segment_text:
+                    hit = (pid, po)
+                    break
+            found[fk] = hit
+        if hit is not None:
+            pids[i], pos_[i] = hit
+    agg_df['pid'] = pd.Series(pids, index=agg_df.index, dtype=object)
+    agg_df['po'] = pd.Series(pos_, index=agg_df.index, dtype=object)
     log(f"   ✅ PID matched on {agg_df['pid'].notna().sum()} of {len(agg_df)} rows")
 
     # -----------------------------
@@ -129,7 +162,8 @@ def run(aggregated_file, tracker_file, misc_file, output_parquet_file,
         output_parquet_file += ".parquet"
     agg_df.to_parquet(output_parquet_file, index=False)
     xlsx_file = output_parquet_file.replace(".parquet", ".xlsx")
-    agg_df.to_excel(xlsx_file, index=False)
+    import fast_xlsx
+    fast_xlsx.write(xlsx_file, [("Sheet1", agg_df)])
     log(f"💾 Saved: {output_parquet_file}")
     log(f"💾 Saved: {xlsx_file}")
     log("Done!")
