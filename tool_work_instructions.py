@@ -669,7 +669,42 @@ def _style_paragraph(p):
         run.font.size = Pt(WORD_FONT_SIZE_PT)
  
  
-MAX_COMMENT_WORDS = 2   # comments longer than this are not written into the Work Instructions
+# ---- Which comments go into the Work Instructions ----
+# Short comments (up to MAX_COMMENT_WORDS words) are always kept. Longer ones
+# are kept only when they are a technical description - a pole size
+# ("12x305 inter", "10x285 sect/ang biocide", "11x295 H term"), a cable
+# ("3ph 35mm sne", "185mm 4c w/f", "2x95+E") or a transformer ("50kva 1ph") -
+# and are no longer than MAX_TECH_COMMENT_WORDS words. Office notes such as
+# "Lack of resource", "See separate PCB TP" or "Cancelled by SPEN" are left out.
+# When a technical description has a note after it ("10x285 sect/ang - No
+# Access - Access Issues"), only the description before the " - " is kept.
+MAX_COMMENT_WORDS = 2
+MAX_TECH_COMMENT_WORDS = 8
+_TECH_COMMENT_RE = re.compile(
+    r"\d+\s*x\s*\d+"            # pole / cable size: 12x305, 2x50(+E)
+    r"|\d+(?:\.\d+)?\s*mm\b"     # cable size: 35mm, 185mm
+    r"|\d+\s*mm²"
+    r"|\d+\s*kva\b"              # transformer: 50kva
+    r"|\b[123]\s*ph\b"           # 1ph / 3ph
+    r"|\b\d+c\b",                # 3c / 4c cable
+    re.IGNORECASE)
+
+
+def _is_tech_comment(text):
+    return bool(_TECH_COMMENT_RE.search(text)) and len(text.split()) <= MAX_TECH_COMMENT_WORDS
+
+
+def _work_comment(text):
+    """The part of a comment that belongs in the Work Instructions ('' = none)."""
+    text = (text or "").strip()
+    if not text or len(text.split()) <= MAX_COMMENT_WORDS:
+        return text
+    if _is_tech_comment(text) and not re.search(r"\s-\s", text):
+        return text
+    first = re.split(r"\s+-\s+", text, maxsplit=1)[0].strip()
+    if first != text and _is_tech_comment(first):
+        return first
+    return ""
 
 
 def _build_display_parts(qsub_raw, comment_raw, comment_flag, qsub_flag, unit_abbrev=""):
@@ -698,11 +733,8 @@ def _build_display_parts(qsub_raw, comment_raw, comment_flag, qsub_flag, unit_ab
  
     comment_text = ""
     if comment_flag:
-        comment_text = _clean(comment_raw)
-        # Long comments (more than MAX_COMMENT_WORDS words) are notes for the
-        # office, not instructions for the crew - leave them out of the doc.
-        if len(comment_text.split()) > MAX_COMMENT_WORDS:
-            comment_text = ""
+        # only technical descriptions / short comments - see _work_comment
+        comment_text = _work_comment(_clean(comment_raw))
  
     return qty_text, comment_text
  
