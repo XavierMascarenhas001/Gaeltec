@@ -1,6 +1,5 @@
 """Tool 4 - Materials / CV Excel Export (was the "Excel Export Tool" window).
 Original logic kept verbatim; only the tkinter window was replaced."""
-
 import pandas as pd
 import numpy as np
 import io
@@ -9,6 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.drawing.image import Image
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.properties import Outline
 import threading
  
  
@@ -443,9 +443,6 @@ extra_categories = [
  
  
 # =========================================================
-# 🔧 NORMALISE POLE (FIXED for letters + numbers)
-# =========================================================
-# =========================================================
 # 📌 SHEET SCHEMA (INTERNAL ONLY - DO NOT RENAME THESE)
 # =========================================================
  
@@ -462,21 +459,10 @@ sheet_columns_lower = [c.lower() for c in sheet_columns]
 # =========================================================
 # 🔗 NEW MASTER-FILE -> INTERNAL SCHEMA BRIDGE
 # =========================================================
-# The aggregation / build-master pipeline that produces the master
-# parquet renames several source columns before saving it (e.g.
-# "item" -> "description", "shire" -> "district", "segmentcode" ->
-# "circuit", "pole" -> "enid", "qvci" stays "qvci" but this program
-# expects "qcvi", "projectmanager" -> "project manager", "pid_ohl_nr"
-# -> "pid"). Everything below this program was originally written
-# around the OLD raw names, so we translate the new file's column
-# names back to those old internal names immediately on load — all
-# the matching/filtering/summary/export logic further down stays
-# completely unchanged.
-#
-# NOTE: the new master file no longer includes "segmentdesc" (the
-# parsed segment description) or "total"/"orig" (financial values).
-# Those simply come through blank/zero, exactly as this program
-# already handles any other missing column.
+# The aggregation / build-master pipeline renames several source
+# columns before saving the master parquet. We translate them back
+# to the old internal names immediately on load so everything below
+# stays unchanged.
 NEW_TO_OLD_COLUMNS = {
     "job": "segment",
     "enid": "pole",
@@ -498,6 +484,10 @@ BASE_EXPORT_COLUMNS = {
     "plan1", "done", "shire", "project",
     "circuit", "job", "sourcefile"
 }
+ 
+# 🔥 Sheets that get the money columns "total" + "orig" right after
+# "done" (and after any extra date-filter columns).
+SHEETS_WITH_MONEY_COLUMNS = {"Outputs", "Variations"}
  
 IMG_LEFT = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\Images\GaeltecImage.png"
 IMG_RIGHT = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\Images\SPEN.png"
@@ -524,8 +514,6 @@ def prepare_for_excel(df):
 def format_excel_dates(df):
     df = df.copy()
  
-    # 🔥 "plan2" added alongside "plan1"/"done" so it gets formatted
-    # as a date the same way, whenever it's present in the sheet.
     date_like_cols = {"plan1", "plan2", "done"}
  
     for col in df.columns:
@@ -584,14 +572,39 @@ def normalize_cv_name(s):
  
 def most_common_value(series):
     """Return the most frequently occurring non-blank value in a
-    Series, or '' if there isn't one. Used to roll several rows that
-    share the same circuit up into a single representative value
-    (e.g. the most common job text, or the most common comment)."""
+    Series, or '' if there isn't one."""
     s = series.dropna()
     s = s[s.astype(str).str.strip() != ""]
     if s.empty:
         return ""
     return s.mode().iat[0]
+ 
+ 
+# Text that should be treated as "no value" anywhere it shows up
+BLANK_TEXT = {"", "nan", "none", "nat", "null", "<na>"}
+ 
+ 
+def most_common_comment(series, min_words=2):
+    """Most frequent comment, ignoring blanks / 'nan' / 'None' and any
+    comment with fewer than `min_words` words. Returns '' if nothing
+    qualifies."""
+    s = series.dropna().astype(str).str.strip()
+    s = s[~s.str.lower().isin(BLANK_TEXT)]
+    s = s[s.str.split().str.len() >= min_words]
+    if s.empty:
+        return ""
+    return s.mode().iat[0]
+ 
+ 
+def blank_out_nans(df):
+    """Replace NaN / 'nan' / 'None' style values with None so they come
+    through as empty cells in Excel."""
+    df = df.astype(object).where(pd.notna(df), None)
+    for col in df.columns:
+        df[col] = df[col].map(
+            lambda v: None if isinstance(v, str) and v.strip().lower() in BLANK_TEXT else v
+        )
+    return df
  
  
 # =========================================================
@@ -605,19 +618,36 @@ def clean_dataframe(df):
  
  
 # =========================================================
+# 📏 AUTO COLUMN WIDTH (shared helper)
+# =========================================================
+def autofit_columns(ws, start_row=2, max_width=40):
+    for col_idx in range(1, ws.max_column + 1):
+        col_letter = get_column_letter(col_idx)
+        max_length = 0
+        for row in range(start_row, ws.max_row + 1):
+            val = ws.cell(row=row, column=col_idx).value
+            if val is not None:
+                max_length = max(max_length, len(str(val)))
+        ws.column_dimensions[col_letter].width = min(max_length + 4, max_width)
+ 
+ 
+# =========================================================
 # 📤 WRITE SHEET (FINAL EXPORT LAYER)
 # =========================================================
-def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None):
+def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None, header_row=2):
+    """Writes one sheet and returns the worksheet.
+    header_row lets a caller (the Variations sheet) push the table
+    further down to leave room for something above it."""
  
     ws = wb.create_sheet(name[:31])
  
     if df is None or df.empty:
         ws.append(["No Data"])
-        return
+        return ws
  
     df = prepare_for_excel(df)
     df = format_excel_dates(df)
-    df = df.copy()
+    df = blank_out_nans(df)
  
     # =========================
     # IMAGES
@@ -654,19 +684,31 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None):
  
     center_align = Alignment(horizontal="center")
  
-    # 💷 CURRENCY FORMAT (IMPORTANT)
+    # 💷 CURRENCY FORMAT
     currency_format = '£#,##0.00'
  
     thick_bottom = Border(
         bottom=Side(style="medium")
     )
  
-    header_row = 2
- 
     # =========================
-    # SUMMARY SHEET
+    # SUMMARY SHEET (pivot style: District > project > circuit)
     # =========================
+    # Expects a hidden "_level" column built in generate_excel:
+    #   0 = district row, 1 = project row, 2 = circuit row, 3 = grand total
+    # Project and circuit rows are Excel outline groups, so the [+]/[-]
+    # buttons expand/collapse them like a pivot table.
     if name.lower() == "summary":
+ 
+        levels = list(df["_level"]) if "_level" in df.columns else [2] * len(df)
+        df = df.drop(columns=["_level"], errors="ignore")
+ 
+        district_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        grand_fill = PatternFill(start_color="9DC3E6", end_color="9DC3E6", fill_type="solid")
+        money_cols = {"total", "orig", "Variations"}
+        indent_cols = {"project_name": 2, "circuit": 4}
+ 
+        ws.sheet_properties.outlinePr = Outline(summaryBelow=False, summaryRight=True)
  
         # HEADER
         for col_idx, col_name in enumerate(df.columns, 1):
@@ -675,74 +717,40 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None):
             cell.font = header_font
             cell.alignment = center_align
  
-        col_map = {col: i + 1 for i, col in enumerate(df.columns)}
-        project_col_idx = col_map.get("project")
-        
- 
-        # =========================
         # DATA
-        # =========================
-        for r_idx, row in enumerate(df.itertuples(index=False), header_row + 1):
- 
-            row_values = list(row)
-            row_dict = dict(zip(df.columns, row_values))
- 
-            project_val = str(row_dict.get("project", "")).strip()
-            project_name_val = str(row_dict.get("project_name", "")).strip()
-            district_val = str(row_dict.get("District", "")).strip()
- 
-            is_total_row = project_name_val == "TOTAL"
-            is_grand_total = project_val == "GRAND TOTAL"
-            is_district_total = project_val == "DISTRICT TOTAL"
-            is_district_header = district_val != "" and project_val == "" and not is_grand_total
-            has_project_value = project_val != "" and not is_grand_total and not is_district_total
- 
-            for c_idx, value in enumerate(row_values, 1):
- 
+        for r_idx, (row, level) in enumerate(zip(df.itertuples(index=False), levels), header_row + 1):
+            for c_idx, value in enumerate(row, 1):
                 col_name = df.columns[c_idx - 1]
- 
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
  
-                # =========================
-                # FONT RULES
-                # =========================
-                if is_grand_total or is_district_total or is_total_row:
-                    cell.font = big_font
-                elif is_district_header:
+                if level == 0:
                     cell.font = Font(bold=True, size=16, color="FFFFFF")
-                elif has_project_value:
-                    cell.font = medium_font
+                    cell.fill = district_fill
+                elif level == 1:
+                    cell.font = project_font
+                    cell.fill = header_fill
+                elif level == 3:
+                    cell.font = big_font
+                    cell.fill = grand_fill
+                    cell.border = thick_bottom
                 else:
                     cell.font = normal_font
+                    if col_name in indent_cols:
+                        cell.alignment = Alignment(indent=indent_cols[col_name])
  
-                # =========================
-                # BACKGROUND
-                # =========================
-                if is_district_header:
-                    cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-                elif is_district_total:
-                    cell.fill = PatternFill(start_color="9DC3E6", end_color="9DC3E6", fill_type="solid")
-                elif is_total_row or is_grand_total or has_project_value:
-                    cell.fill = header_fill
- 
-                # =========================
-                # PROJECT COLUMN BOLD + SIZE
-                # =========================
-                if project_col_idx is not None and c_idx == project_col_idx:
-                    if value is not None and str(value).strip() != "":
-                        cell.font = Font(bold=True, size=14)
- 
-                # =========================
-                # 💷 CURRENCY FORMATTING (NEW)
-                # =========================
-                if col_name in ["total", "orig", "Variations"]:
+                if col_name in money_cols:
                     cell.number_format = currency_format
  
-                # =========================
-                # BORDER FOR TOTAL ROWS
-                # =========================
-                if is_total_row or is_district_total:
-                    cell.border = thick_bottom
+            # outline: projects under districts, circuits under projects
+            if level == 1:
+                ws.row_dimensions[r_idx].outlineLevel = 1
+            elif level == 2:
+                ws.row_dimensions[r_idx].outlineLevel = 2
+                ws.row_dimensions[r_idx].hidden = True   # circuits start collapsed
+ 
+            # mark project rows collapsed when their circuits are hidden
+            if level == 1:
+                ws.row_dimensions[r_idx].collapsed = True
  
     # =========================
     # NORMAL SHEETS
@@ -756,9 +764,7 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None):
             "circuit", "job", 'sourcefile'
         ]
  
-        # 🔥 Extra date-filter columns (e.g. "plan2") the user picked in
-        # the Date Filter box get inserted right after "done" - Summary
-        # never sees this (this whole branch is the non-Summary path).
+        # Extra date-filter columns (e.g. "plan2") go right after "done"
         if extra_date_columns:
             done_idx = export_columns.index("done")
             insert_at = done_idx + 1
@@ -767,14 +773,14 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None):
                     export_columns.insert(insert_at, col)
                     insert_at += 1
  
-        # 🔥 Combined sheet only: insert "total" right after "done" and
-        # any extra date-filter columns that were just added.
-        if name == "Combined":
+        # 🔥 Outputs + Variations sheets: insert "total" and "orig"
+        # right after "done" and any extra date-filter columns.
+        if name in SHEETS_WITH_MONEY_COLUMNS:
             done_idx = export_columns.index("done")
             insert_pos = done_idx + 1
             while insert_pos < len(export_columns) and export_columns[insert_pos] in (extra_date_columns or []):
                 insert_pos += 1
-            export_columns = export_columns[:insert_pos] + ["total"] + export_columns[insert_pos:]
+            export_columns = export_columns[:insert_pos] + ["total", "orig"] + export_columns[insert_pos:]
  
         for c in export_columns:
             if c not in df.columns:
@@ -791,24 +797,144 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None):
         for r_idx, row in enumerate(df.itertuples(index=False), header_row + 1):
             for c_idx, value in enumerate(row, 1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
-                if export_columns[c_idx - 1] == "total":
+                if export_columns[c_idx - 1] in ("total", "orig"):
                     cell.number_format = currency_format
  
     # =========================
     # AUTO COLUMN WIDTH
     # =========================
-    for col_idx in range(1, ws.max_column + 1):
+    autofit_columns(ws, start_row=header_row)
  
-        col_letter = ws.cell(row=header_row, column=col_idx).column_letter
+    return ws
  
-        max_length = 0
  
-        for row in range(header_row, ws.max_row + 1):
-            val = ws.cell(row=row, column=col_idx).value
-            if val is not None:
-                max_length = max(max_length, len(str(val)))
+# =========================================================
+# 📊 VARIATIONS SHEET (pivot-style block + detail rows)
+# =========================================================
+def build_variations_pivot(df):
+    """Aggregate the variations != 0 rows into:
+       - job_stats: one row per (sourcefile, job) with Sum of total
+         and the most common comment for that job
+       - src_totals: Sum of total per sourcefile"""
+    p = df.copy()
  
-        ws.column_dimensions[col_letter].width = min(max_length + 4, 40)
+    def clean_text(col):
+        if col not in p.columns:
+            return pd.Series("(blank)", index=p.index)
+        s = p[col].fillna("").astype(str).str.strip()
+        return s.where(s != "", "(blank)")
+ 
+    p["_src"] = clean_text("sourcefile")
+    p["_job"] = clean_text("job")
+    if "comment" not in p.columns:
+        p["comment"] = ""
+    p["total"] = pd.to_numeric(p.get("total", 0), errors="coerce").fillna(0)
+ 
+    job_stats = (
+        p.groupby(["_src", "_job"], as_index=False)
+         .agg(total=("total", "sum"), comment=("comment", most_common_comment))
+         .sort_values(["_src", "_job"])
+    )
+    src_totals = p.groupby("_src")["total"].sum().sort_index()
+ 
+    return job_stats, src_totals
+ 
+ 
+def write_pivot_block(ws, job_stats, src_totals, start_row):
+    """Writes a pivot-style table in columns A:C starting at start_row.
+    Each source file is a bold row with its total; its jobs sit
+    underneath as a collapsed Excel outline group, so clicking the [+]
+    next to a source file expands it into its jobs. Returns the last
+    row used."""
+ 
+    currency_format = '£#,##0.00'
+    header_fill = PatternFill(start_color="00CCFF", end_color="00CCFF", fill_type="solid")
+    src_fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
+    grand_fill = PatternFill(start_color="9DC3E6", end_color="9DC3E6", fill_type="solid")
+    thick_bottom = Border(bottom=Side(style="medium"))
+ 
+    # Put the [+]/[-] button on the source-file row (above its jobs),
+    # like a real pivot table, instead of Excel's default (below).
+    ws.sheet_properties.outlinePr = Outline(summaryBelow=False, summaryRight=True)
+ 
+    headers = ["Source File / Job", "Sum of total", "Most Common Comment"]
+    for c_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=start_row, column=c_idx, value=h)
+        cell.fill = header_fill
+        cell.font = Font(bold=True, size=15)
+        cell.alignment = Alignment(horizontal="center")
+ 
+    r = start_row + 1
+    for src, src_total in src_totals.items():
+        # --- source file row (always visible) ---
+        src_row = r
+        ws.cell(row=src_row, column=1, value=src).font = Font(bold=True, size=12)
+        tot_cell = ws.cell(row=src_row, column=2, value=float(src_total))
+        tot_cell.number_format = currency_format
+        tot_cell.font = Font(bold=True, size=12)
+        for c in range(1, 4):
+            ws.cell(row=src_row, column=c).fill = src_fill
+        r += 1
+ 
+        # --- job rows (grouped + collapsed) ---
+        jobs = job_stats[job_stats["_src"] == src]
+        first_job_row = r
+        for _, jr in jobs.iterrows():
+            ws.cell(row=r, column=1, value=jr["_job"]).alignment = Alignment(indent=2)
+            c = ws.cell(row=r, column=2, value=float(jr["total"]))
+            c.number_format = currency_format
+            ws.cell(row=r, column=3, value=jr["comment"] or None)
+            r += 1
+        last_job_row = r - 1
+ 
+        if last_job_row >= first_job_row:
+            ws.row_dimensions.group(first_job_row, last_job_row, outline_level=1, hidden=True)
+            ws.row_dimensions[src_row].collapsed = True
+ 
+    # --- grand total ---
+    ws.cell(row=r, column=1, value="GRAND TOTAL")
+    g = ws.cell(row=r, column=2, value=float(src_totals.sum()))
+    g.number_format = currency_format
+    for c in range(1, 4):
+        cell = ws.cell(row=r, column=c)
+        cell.fill = grand_fill
+        cell.font = Font(bold=True, size=14)
+        cell.border = thick_bottom
+ 
+    return r
+ 
+ 
+def write_variations_sheet(wb, df, extra_date_columns=None):
+    """Variations sheet: pivot-style summary at the top (source file ->
+    job, Sum of total, most common comment), then the detail rows
+    underneath. Only rows where variations != 0 are passed in."""
+ 
+    if df is None or df.empty:
+        return write_sheet(wb, "Variations", df)
+ 
+    job_stats, src_totals = build_variations_pivot(df)
+ 
+    # Work out how tall the pivot block will be, so the detail table
+    # can start below it (outline groups hide whole rows, so the two
+    # can't sit side by side).
+    pivot_start = 2
+    n_pivot_rows = 1 + len(src_totals) + len(job_stats) + 1   # header + sources + jobs + grand total
+    pivot_end = pivot_start + n_pivot_rows - 1
+    table_header_row = pivot_end + 3          # two blank rows between pivot and table
+ 
+    ws = write_sheet(
+        wb, "Variations", df,
+        extra_date_columns=extra_date_columns,
+        header_row=table_header_row
+    )
+ 
+    write_pivot_block(ws, job_stats, src_totals, pivot_start)
+ 
+    # widths now need to cover both the pivot and the table
+    autofit_columns(ws, start_row=2)
+ 
+    return ws
+ 
         
 # =========================================================
 # 🔥 CV FUNCTIONS
@@ -855,9 +981,6 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
     if selected_cv_groups is None:
         selected_cv_groups = list(cv_groups.keys())
  
-    # Normalized lookup sets for matching `categories`/`extra_categories`
-    # names against `cv_groups` keys, regardless of spacing/underscores/case.
-    # These MUST be defined here, before any loop below uses them.
     cv_groups_norm = {normalize_cv_name(k) for k in cv_groups.keys()}
     selected_norm = {normalize_cv_name(s) for s in selected_cv_groups}
  
@@ -876,14 +999,10 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
         ).fillna(0)
  
     def get_numeric_col(df, col):
-        """Like safe_numeric(df.get(col, 0)), but returns a proper
-        zero-filled Series (not a bare int) when the column is missing —
-        e.g. 'total'/'orig' which the new master file doesn't include."""
         if col in df.columns:
             return safe_numeric(df[col])
         return pd.Series(0.0, index=df.index)
  
-    # INTERNAL ONLY (not shown in Summary)
     df["quantity_used"] = get_numeric_col(df, "qsub")
     df["quantity_original"] = get_numeric_col(df, "qty")
     df["variations"] = get_numeric_col(df, "qcvi")
@@ -899,22 +1018,12 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
     # =========================
     # 🔧 "job" COLUMN (most common job/segment text per circuit)
     # =========================
-    # Computed once here, before the data gets split into per-category
-    # sheets, so every sheet (Combined, each category, CV8/CV31 resume)
-    # shows the SAME per-circuit value, rather than the mode of just
-    # whatever subset of rows happens to land on that particular sheet.
     if "circuit" in df.columns and "segment" in df.columns:
         circuit_job_mode = df.groupby("circuit")["segment"].agg(most_common_value)
         df["job"] = df["circuit"].map(circuit_job_mode)
     else:
         df["job"] = ""
  
-    # 🔥 "project_name" always exists as a column from here on (blank if
-    # the source data doesn't supply one) so the Summary sheet can
-    # reliably build/display it - see the override further down that
-    # replaces its content with the most common "job" text per
-    # circuit/project/district. It's intentionally kept OFF every other
-    # sheet (see BASE_EXPORT_COLUMNS / export_columns in write_sheet).
     if "project_name" not in df.columns:
         df["project_name"] = ""
  
@@ -933,7 +1042,12 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
     # =========================
     # SHEETS
     # =========================
-    write_sheet(wb, "Combined", df, extra_date_columns=extra_date_columns)
+    # 🔥 "Combined" is now "Outputs" (with total + orig columns)
+    write_sheet(wb, "Outputs", df, extra_date_columns=extra_date_columns)
+ 
+    # 🔥 Variations: only rows where variations is NOT 0, plus pivot block
+    variations_df = df[df["variations"] != 0].copy()
+    write_variations_sheet(wb, variations_df, extra_date_columns=extra_date_columns)
  
     for name, mapping, *_ in categories:
         if normalize_cv_name(name) in cv_groups_norm and normalize_cv_name(name) not in selected_norm:
@@ -991,9 +1105,7 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
               .sum()
         )
  
-        # =========================
         # CATEGORY COLUMNS
-        # =========================
         for name, mapping, *_ in categories:
             if normalize_cv_name(name) in cv_groups_norm and normalize_cv_name(name) not in selected_norm:
                 continue
@@ -1030,9 +1142,7 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
         except:
             pass
  
-        # =========================
         # CV COUNTS
-        # =========================
         if "CV8" in selected_cv_groups and not cv8_resume.empty:
             cv8_tmp = (
                 cv8_resume.groupby(group_cols)
@@ -1051,9 +1161,7 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
  
         summary_df = summary_df.fillna(0)
  
-        # =========================
         # DERIVED COLUMN
-        # =========================
         summary_df["Variations"] = summary_df["total"] - summary_df["orig"]
  
         cols = list(summary_df.columns)
@@ -1061,181 +1169,73 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
         cols.insert(cols.index("orig") + 1, "Variations")
         summary_df = summary_df[cols]
  
-        # =========================
-        # PROJECT TOTALS
-        # =========================
+        # Value columns (everything that gets summed)
         numeric_cols_all = [c for c in summary_df.columns if c not in group_cols]
  
-        project_group_cols = ["shire", "project"] if "shire" in group_cols else ["project"]
- 
-        project_totals = (
-            summary_df.groupby(project_group_cols, as_index=False)[numeric_cols_all]
-                      .sum()
-        )
- 
-        project_totals["project_name"] = "TOTAL"
- 
-        summary_df = pd.concat([summary_df, project_totals], ignore_index=True)
- 
-        # =========================
-        # DISTRICT (SHIRE) TOTALS
-        # =========================
-        if "shire" in group_cols:
- 
-            district_totals = (
-                summary_df[summary_df["project_name"] != "TOTAL"]
-                    .groupby(["shire"], as_index=False)[numeric_cols_all]
-                    .sum()
-            )
- 
-            district_totals["project"] = "DISTRICT TOTAL"
-            district_totals["project_name"] = ""
- 
-            summary_df = pd.concat([summary_df, district_totals], ignore_index=True)
- 
-        # =========================
-        # GRAND TOTAL
-        # =========================
-        grand_base = summary_df[
-            (summary_df["project_name"] != "TOTAL") &
-            (summary_df["project"] != "DISTRICT TOTAL")
-        ]
- 
-        grand_row = {c: "" for c in summary_df.columns}
-        grand_row["project"] = "GRAND TOTAL"
- 
-        for c in numeric_cols_all:
-            grand_row[c] = grand_base[c].sum()
- 
-        summary_df = pd.concat([summary_df, pd.DataFrame([grand_row])], ignore_index=True)
- 
-        # keep grand total last
-        normal_rows = summary_df[summary_df["project"] != "GRAND TOTAL"]
-        grand_rows = summary_df[summary_df["project"] == "GRAND TOTAL"]
- 
-        normal_rows = normal_rows.sort_values(group_cols, na_position="last")
- 
-        summary_df = pd.concat([normal_rows, grand_rows], ignore_index=True)
- 
-        # =========================
-        # 🔥 "project_name" (Summary only) - overwrite with the most
-        # common "job" text for each circuit, within each project,
-        # within each district. TOTAL / DISTRICT TOTAL / GRAND TOTAL
-        # marker rows keep their existing marker text ("TOTAL" / "" / "").
-        # =========================
+        # "project_name" - most common "job" text per circuit/project/district
         if "project_name" in summary_df.columns and "job" in df.columns:
             proj_group_keys = [c for c in group_cols if c != "project_name"]
- 
             if proj_group_keys:
                 job_mode_df = (
                     df.groupby(proj_group_keys, as_index=False)["job"]
                       .agg(most_common_value)
                       .rename(columns={"job": "_job_mode"})
                 )
- 
-                marker_mask = (
-                    (summary_df["project_name"] == "TOTAL") |
-                    (summary_df["project"] == "DISTRICT TOTAL") |
-                    (summary_df["project"] == "GRAND TOTAL")
-                )
- 
                 summary_df = summary_df.merge(job_mode_df, on=proj_group_keys, how="left")
-                summary_df.loc[~marker_mask, "project_name"] = summary_df.loc[~marker_mask, "_job_mode"].fillna("")
+                summary_df["project_name"] = summary_df["_job_mode"].fillna("")
                 summary_df = summary_df.drop(columns=["_job_mode"])
  
-        # =========================
-        # 🔥 "Most Common Comment" (Summary only, only when "plan2" is
-        # one of the ticked date filters) - most frequent "comment" text
-        # per circuit, computed against the full (pre-split) data so
-        # TOTAL/DISTRICT TOTAL/GRAND TOTAL rows (which have no single
-        # circuit) simply come through blank.
-        # =========================
-        if extra_date_columns and "plan2" in extra_date_columns \
-                and "circuit" in summary_df.columns and "comment" in df.columns:
-            circuit_comment_mode = df.groupby("circuit")["comment"].agg(most_common_value)
+        # "Most Common Comment" (only when "plan2" is ticked) - ignores
+        # blanks / nan and comments shorter than two words
+        has_comment = (
+            extra_date_columns and "plan2" in extra_date_columns
+            and "circuit" in summary_df.columns and "comment" in df.columns
+        )
+        if has_comment:
+            circuit_comment_mode = df.groupby("circuit")["comment"].agg(most_common_comment)
             summary_df["Most Common Comment"] = summary_df["circuit"].map(circuit_comment_mode).fillna("")
  
-            cols = list(summary_df.columns)
-            cols.remove("Most Common Comment")
-            cols.insert(cols.index("circuit") + 1, "Most Common Comment")
-            summary_df = summary_df[cols]
- 
         # =========================
-        # PIVOT STYLE FORMAT (DISTRICT -> PROJECT -> PROJECT NAME -> CIRCUIT)
+        # PIVOT LAYOUT: District row (district totals)
+        #   > project row (project totals)
+        #     > circuit rows (grouped, collapsed)
+        # then GRAND TOTAL. "_level" tells write_sheet how to style and
+        # group each row; it is not written to the sheet.
         # =========================
-        def format_pivot(df, group_cols):
+        has_shire = "shire" in group_cols
+        out_cols = [c for c in ["shire", "project", "project_name", "circuit"] if c in summary_df.columns]
+        if has_comment:
+            out_cols.append("Most Common Comment")
+        out_cols += numeric_cols_all
  
-            df = df.copy()
+        def totals_row(sub, level, **labels):
+            row = {c: None for c in out_cols}
+            row.update(labels)
+            for c in numeric_cols_all:
+                row[c] = sub[c].sum()
+            row["_level"] = level
+            return row
  
-            has_shire = "shire" in group_cols
-            g1 = "project"
-            g2 = "project_name" if "project_name" in group_cols else None
-            g3 = "circuit" if "circuit" in group_cols else None
+        base = summary_df.sort_values(group_cols)
+        pivot_rows = []
+        shire_iter = base.groupby("shire", sort=True) if has_shire else [(None, base)]
  
-            formatted_rows = []
+        for shire_val, g_shire in shire_iter:
+            if has_shire:
+                pivot_rows.append(totals_row(g_shire, 0, shire=shire_val))
  
-            grand_total_df = df[df["project"] == "GRAND TOTAL"]
-            df = df[df["project"] != "GRAND TOTAL"]
+            for project, g_proj in g_shire.groupby("project", sort=True):
+                pivot_rows.append(totals_row(g_proj, 1, project=project))
  
-            shire_groups = df.groupby("shire", sort=False) if has_shire else [(None, df)]
+                for _, r in g_proj.iterrows():
+                    circuit_row = {c: r[c] for c in out_cols if c not in ("shire", "project")}
+                    circuit_row["_level"] = 2
+                    pivot_rows.append(circuit_row)
  
-            for shire_val, g_shire in shire_groups:
+        pivot_rows.append(totals_row(base, 3, project="GRAND TOTAL"))
  
-                if has_shire:
-                    shire_header = {col: "" for col in df.columns}
-                    shire_header["shire"] = str(shire_val)
-                    formatted_rows.append(shire_header)
- 
-                district_total_rows = g_shire[g_shire[g1] == "DISTRICT TOTAL"]
-                project_rows = g_shire[g_shire[g1] != "DISTRICT TOTAL"]
- 
-                for project, g_proj in project_rows.groupby(g1, sort=False):
- 
-                    for _, row in g_proj.iterrows():
- 
-                        new_row = row.copy()
- 
-                        is_project_total = str(row.get("project_name", "")).strip() == "TOTAL"
- 
-                        if g2 and pd.notna(row.get(g2)) and not is_project_total:
-                            new_row[g2] = "   " + str(row[g2])
- 
-                        if g3 and pd.notna(row.get(g3)):
-                            new_row[g3] = "      " + str(row[g3])
- 
-                        # Keep the project name only on its TOTAL row
-                        new_row[g1] = str(project) if is_project_total else ""
- 
-                        if has_shire:
-                            new_row["shire"] = ""
- 
-                        formatted_rows.append(new_row.to_dict())
- 
-                for _, row in district_total_rows.iterrows():
-                    new_row = row.copy()
-                    if has_shire:
-                        new_row["shire"] = ""
-                    formatted_rows.append(new_row.to_dict())
- 
-            result = pd.DataFrame(formatted_rows)
- 
-            if not grand_total_df.empty:
-                result = pd.concat([result, grand_total_df], ignore_index=True)
- 
-            return result
- 
-        summary_df = format_pivot(summary_df, group_cols)
- 
-        # =========================
-        # RENAME FOR DISPLAY (shire -> District, placed before project)
-        # =========================
+        summary_df = pd.DataFrame(pivot_rows, columns=out_cols + ["_level"])
         summary_df = summary_df.rename(columns={"shire": "District"})
- 
-        cols = list(summary_df.columns)
-        if "District" in cols and "project" in cols:
-            cols.remove("District")
-            cols.insert(cols.index("project"), "District")
-            summary_df = summary_df[cols]
  
     else:
         summary_df = pd.DataFrame()
@@ -1257,9 +1257,8 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
     output.seek(0)
  
     return output.getvalue()
- 
 
-# =====================================================================
+
 # WEB WRAPPER - replaces the tkinter FilterApp window. Loading, filter
 # population, Apply Filters and Export Excel are the original methods'
 # bodies, unchanged; only the widgets became function arguments.
