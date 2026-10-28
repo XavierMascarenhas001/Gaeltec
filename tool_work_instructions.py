@@ -174,8 +174,11 @@ def unique_sorted(df, col):
     return vals
  
  
+COL_CAT = "cat"   # optional: MAT / CONST (any case) - lets you keep only materials or construction
+
+
 def apply_filters(df, shires=None, projects=None, circuits=None,
-                   sourcefiles=None, poles=None, date_from=None, date_to=None):
+                   sourcefiles=None, poles=None, date_from=None, date_to=None, categories=None):
     """
     Each of shires/projects/circuits/sourcefiles/poles is a list of values.
     An empty/None list means "no filter" on that field.
@@ -193,6 +196,9 @@ def apply_filters(df, shires=None, projects=None, circuits=None,
     out = apply_list_filter(out, COL_CIRCUIT, circuits)
     out = apply_list_filter(out, COL_SOURCEFILE, sourcefiles)
     out = apply_list_filter(out, COL_POLE, poles)
+    if categories and COL_CAT in out.columns:
+        wanted = {str(c).strip().lower() for c in categories}
+        out = out[out[COL_CAT].fillna("").astype(str).str.strip().str.lower().isin(wanted)]
  
     if date_from is not None:
         out = out[out[COL_DATE] >= date_from]
@@ -663,6 +669,9 @@ def _style_paragraph(p):
         run.font.size = Pt(WORD_FONT_SIZE_PT)
  
  
+MAX_COMMENT_WORDS = 2   # comments longer than this are not written into the Work Instructions
+
+
 def _build_display_parts(qsub_raw, comment_raw, comment_flag, qsub_flag, unit_abbrev=""):
     """
     Builds the two display fragments for one MD Poling entry from raw
@@ -690,6 +699,10 @@ def _build_display_parts(qsub_raw, comment_raw, comment_flag, qsub_flag, unit_ab
     comment_text = ""
     if comment_flag:
         comment_text = _clean(comment_raw)
+        # Long comments (more than MAX_COMMENT_WORDS words) are notes for the
+        # office, not instructions for the crew - leave them out of the doc.
+        if len(comment_text.split()) > MAX_COMMENT_WORDS:
+            comment_text = ""
  
     return qty_text, comment_text
  
@@ -1904,6 +1917,7 @@ FILTER_FIELDS = [  # (key, label, column) - same 5 boxes as Tab 1
     ("sourcefiles", "Sourcefile", COL_SOURCEFILE),
     ("poles", "Pole", COL_POLE),
 ]
+CATEGORY_OPTIONS = ["Const", "Mat"]   # same two choices as the Outputs tool
 PREVIEW_COLUMNS = [COL_DATE, COL_SHIRE, COL_PROJECT, COL_CIRCUIT, COL_SOURCEFILE,
                    COL_POLE, COL_MDPOLING, COL_QSUB, COL_COMMENT]
 
@@ -1926,7 +1940,7 @@ def filter_options(df):
         "fields": [
             {"key": key, "label": label, "values": unique_sorted(df, col)}
             for key, label, col in FILTER_FIELDS
-        ],
+        ] + ([{"key": "categories", "label": "Category", "values": CATEGORY_OPTIONS}] if COL_CAT in df.columns else []),
     }
 
 
@@ -1940,6 +1954,7 @@ def filtered(df, filters):
         circuits=filters.get("circuits") or [],
         sourcefiles=filters.get("sourcefiles") or [],
         poles=filters.get("poles") or [],
+        categories=filters.get("categories") or [],
         date_from=parse_date(filters.get("date_from")),
         date_to=parse_date(filters.get("date_to")),
     )
