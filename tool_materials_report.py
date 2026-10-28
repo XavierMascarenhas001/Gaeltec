@@ -492,6 +492,20 @@ SHEETS_WITH_MONEY_COLUMNS = {"Outputs", "Variations"}
 IMG_LEFT = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\Images\GaeltecImage.png"
 IMG_RIGHT = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\Images\SPEN.png"
  
+# 🔥 Service codes lookup file (description -> service code).
+# Column_1 = description (same text as the master file's "description"),
+# Column_3 = service code. ⚠️ Change this path to wherever the file lives.
+SERVICE_CODES_PATH = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\miscelaneous.parquet"
+ 
+# Header used for the service code column in the exported sheets
+SERVICE_CODE_COL = "service code"
+ 
+# Name of the optional per-service-code variations sheet
+SERVICE_CODE_SHEET = "Variations_service codes"
+ 
+# 💷 Money format: negatives shown in red with a minus sign
+MONEY_FORMAT = '£#,##0.00;[Red]-£#,##0.00'
+ 
  
 # =========================================================
 # 🔧 EXPORT RENAMING (ONLY USED AT FINAL STEP)
@@ -578,12 +592,12 @@ def most_common_value(series):
     if s.empty:
         return ""
     return s.mode().iat[0]
- 
- 
+
+
 # Text that should be treated as "no value" anywhere it shows up
 BLANK_TEXT = {"", "nan", "none", "nat", "null", "<na>"}
- 
- 
+
+
 def most_common_comment(series, min_words=2):
     """Most frequent comment, ignoring blanks / 'nan' / 'None' and any
     comment with fewer than `min_words` words. Returns '' if nothing
@@ -594,8 +608,8 @@ def most_common_comment(series, min_words=2):
     if s.empty:
         return ""
     return s.mode().iat[0]
- 
- 
+
+
 def blank_out_nans(df):
     """Replace NaN / 'nan' / 'None' style values with None so they come
     through as empty cells in Excel."""
@@ -605,6 +619,38 @@ def blank_out_nans(df):
             lambda v: None if isinstance(v, str) and v.strip().lower() in BLANK_TEXT else v
         )
     return df
+
+
+# =========================================================
+# 🏷️ SERVICE CODES
+# =========================================================
+def load_service_codes(path=None):
+    """Reads the service-codes file and returns a dict
+    {normalised description: service code}. Descriptions come from
+    Column_1 (or the first column) and codes from Column_3 (or a column
+    with 'service' in its name). Codes that are blank or '0' are
+    skipped, so those items simply get no service code."""
+    path = path or SERVICE_CODES_PATH
+    lower = str(path).lower()
+    if lower.endswith(".parquet"):
+        codes = pd.read_parquet(path)
+    elif lower.endswith(".csv"):
+        codes = pd.read_csv(path, dtype=str)
+    else:
+        codes = pd.read_excel(path, dtype=str)
+ 
+    cols = list(codes.columns)
+    desc_col = "Column_1" if "Column_1" in cols else cols[0]
+    code_col = "Column_3" if "Column_3" in cols else next(
+        (c for c in cols if "service" in str(c).lower()), cols[2] if len(cols) > 2 else cols[-1]
+    )
+ 
+    desc = codes[desc_col].apply(normalize_item)
+    code = codes[code_col].astype(str).str.strip()
+    code = code.str.replace(r"\.0$", "", regex=True)          # 30980981.0 -> 30980981
+    keep = (desc != "") & ~code.str.lower().isin(BLANK_TEXT | {"0"})
+ 
+    return dict(zip(desc[keep], code[keep]))
  
  
 # =========================================================
@@ -739,7 +785,7 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None, header_ro
                         cell.alignment = Alignment(indent=indent_cols[col_name])
  
                 if col_name in money_cols:
-                    cell.number_format = currency_format
+                    cell.number_format = MONEY_FORMAT
  
             # outline: projects under districts, circuits under projects
             if level == 1:
@@ -782,6 +828,17 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None, header_ro
                 insert_pos += 1
             export_columns = export_columns[:insert_pos] + ["total", "orig"] + export_columns[insert_pos:]
  
+        # 🔥 "service code": right after "orig" on Outputs/Variations; on
+        # the other sheets (no money columns) it sits in the same place,
+        # right after "done" and any extra date-filter columns.
+        if "orig" in export_columns:
+            sc_pos = export_columns.index("orig") + 1
+        else:
+            sc_pos = export_columns.index("done") + 1
+            while sc_pos < len(export_columns) and export_columns[sc_pos] in (extra_date_columns or []):
+                sc_pos += 1
+        export_columns.insert(sc_pos, SERVICE_CODE_COL)
+ 
         for c in export_columns:
             if c not in df.columns:
                 df[c] = ""
@@ -798,7 +855,7 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None, header_ro
             for c_idx, value in enumerate(row, 1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
                 if export_columns[c_idx - 1] in ("total", "orig"):
-                    cell.number_format = currency_format
+                    cell.number_format = MONEY_FORMAT
  
     # =========================
     # AUTO COLUMN WIDTH
@@ -813,66 +870,77 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None, header_ro
 # =========================================================
 def build_variations_pivot(df):
     """Aggregate the variations != 0 rows into:
-       - job_stats: one row per (sourcefile, job) with Sum of total
-         and the most common comment for that job
-       - src_totals: Sum of total per sourcefile"""
+       - job_stats: one row per (sourcefile, job) with Orig, Total,
+         Variation (Total - Orig) and the most common comment (Reason)
+       - src_stats: Orig, Total, Variation per sourcefile"""
     p = df.copy()
  
     def clean_text(col):
         if col not in p.columns:
             return pd.Series("(blank)", index=p.index)
         s = p[col].fillna("").astype(str).str.strip()
-        return s.where(s != "", "(blank)")
+        return s.where(~s.str.lower().isin(BLANK_TEXT), "(blank)")
  
     p["_src"] = clean_text("sourcefile")
     p["_job"] = clean_text("job")
     if "comment" not in p.columns:
         p["comment"] = ""
-    p["total"] = pd.to_numeric(p.get("total", 0), errors="coerce").fillna(0)
+    for c in ("orig", "total"):
+        p[c] = pd.to_numeric(p[c], errors="coerce").fillna(0) if c in p.columns else 0.0
  
     job_stats = (
         p.groupby(["_src", "_job"], as_index=False)
-         .agg(total=("total", "sum"), comment=("comment", most_common_comment))
+         .agg(orig=("orig", "sum"), total=("total", "sum"),
+              reason=("comment", most_common_comment))
          .sort_values(["_src", "_job"])
     )
-    src_totals = p.groupby("_src")["total"].sum().sort_index()
+    job_stats["variation"] = job_stats["total"] - job_stats["orig"]
  
-    return job_stats, src_totals
+    src_stats = p.groupby("_src")[["orig", "total"]].sum().sort_index()
+    src_stats["variation"] = src_stats["total"] - src_stats["orig"]
+ 
+    return job_stats, src_stats
  
  
-def write_pivot_block(ws, job_stats, src_totals, start_row):
-    """Writes a pivot-style table in columns A:C starting at start_row.
-    Each source file is a bold row with its total; its jobs sit
-    underneath as a collapsed Excel outline group, so clicking the [+]
-    next to a source file expands it into its jobs. Returns the last
-    row used."""
+def write_pivot_block(ws, job_stats, src_stats, start_row):
+    """Writes a pivot-style table in columns A:E starting at start_row:
+    Job | Orig | Total | Variation | Reason.
+    Each source file is a bold row with its own Orig/Total/Variation;
+    its jobs sit underneath as a collapsed Excel outline group, so the
+    [+] next to a source file expands it into its jobs. Returns the
+    last row used."""
  
-    currency_format = '£#,##0.00'
     header_fill = PatternFill(start_color="00CCFF", end_color="00CCFF", fill_type="solid")
     src_fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
     grand_fill = PatternFill(start_color="9DC3E6", end_color="9DC3E6", fill_type="solid")
     thick_bottom = Border(bottom=Side(style="medium"))
+    money_cols = (2, 3, 4)            # Orig, Total, Variation
+    n_cols = 5
  
-    # Put the [+]/[-] button on the source-file row (above its jobs),
-    # like a real pivot table, instead of Excel's default (below).
+    # Put the [+]/[-] button on the source-file row (above its jobs)
     ws.sheet_properties.outlinePr = Outline(summaryBelow=False, summaryRight=True)
  
-    headers = ["Source File / Job", "Sum of total", "Most Common Comment"]
+    headers = ["Job", "Orig", "Total", "Variation", "Reason"]
     for c_idx, h in enumerate(headers, 1):
         cell = ws.cell(row=start_row, column=c_idx, value=h)
         cell.fill = header_fill
         cell.font = Font(bold=True, size=15)
         cell.alignment = Alignment(horizontal="center")
  
+    def write_money(row, values, font=None):
+        for col, val in zip(money_cols, values):
+            cell = ws.cell(row=row, column=col, value=float(val))
+            cell.number_format = MONEY_FORMAT
+            if font is not None:
+                cell.font = font
+ 
     r = start_row + 1
-    for src, src_total in src_totals.items():
+    for src, st in src_stats.iterrows():
         # --- source file row (always visible) ---
         src_row = r
         ws.cell(row=src_row, column=1, value=src).font = Font(bold=True, size=12)
-        tot_cell = ws.cell(row=src_row, column=2, value=float(src_total))
-        tot_cell.number_format = currency_format
-        tot_cell.font = Font(bold=True, size=12)
-        for c in range(1, 4):
+        write_money(src_row, (st["orig"], st["total"], st["variation"]), Font(bold=True, size=12))
+        for c in range(1, n_cols + 1):
             ws.cell(row=src_row, column=c).fill = src_fill
         r += 1
  
@@ -881,9 +949,8 @@ def write_pivot_block(ws, job_stats, src_totals, start_row):
         first_job_row = r
         for _, jr in jobs.iterrows():
             ws.cell(row=r, column=1, value=jr["_job"]).alignment = Alignment(indent=2)
-            c = ws.cell(row=r, column=2, value=float(jr["total"]))
-            c.number_format = currency_format
-            ws.cell(row=r, column=3, value=jr["comment"] or None)
+            write_money(r, (jr["orig"], jr["total"], jr["variation"]))
+            ws.cell(row=r, column=5, value=jr["reason"] or None)
             r += 1
         last_job_row = r - 1
  
@@ -893,9 +960,8 @@ def write_pivot_block(ws, job_stats, src_totals, start_row):
  
     # --- grand total ---
     ws.cell(row=r, column=1, value="GRAND TOTAL")
-    g = ws.cell(row=r, column=2, value=float(src_totals.sum()))
-    g.number_format = currency_format
-    for c in range(1, 4):
+    write_money(r, (src_stats["orig"].sum(), src_stats["total"].sum(), src_stats["variation"].sum()))
+    for c in range(1, n_cols + 1):
         cell = ws.cell(row=r, column=c)
         cell.fill = grand_fill
         cell.font = Font(bold=True, size=14)
@@ -912,13 +978,13 @@ def write_variations_sheet(wb, df, extra_date_columns=None):
     if df is None or df.empty:
         return write_sheet(wb, "Variations", df)
  
-    job_stats, src_totals = build_variations_pivot(df)
+    job_stats, src_stats = build_variations_pivot(df)
  
     # Work out how tall the pivot block will be, so the detail table
     # can start below it (outline groups hide whole rows, so the two
     # can't sit side by side).
     pivot_start = 2
-    n_pivot_rows = 1 + len(src_totals) + len(job_stats) + 1   # header + sources + jobs + grand total
+    n_pivot_rows = 1 + len(src_stats) + len(job_stats) + 1   # header + sources + jobs + grand total
     pivot_end = pivot_start + n_pivot_rows - 1
     table_header_row = pivot_end + 3          # two blank rows between pivot and table
  
@@ -928,14 +994,98 @@ def write_variations_sheet(wb, df, extra_date_columns=None):
         header_row=table_header_row
     )
  
-    write_pivot_block(ws, job_stats, src_totals, pivot_start)
+    write_pivot_block(ws, job_stats, src_stats, pivot_start)
  
     # widths now need to cover both the pivot and the table
     autofit_columns(ws, start_row=2)
  
     return ws
  
-        
+
+# =========================================================
+# 🏷️ VARIATIONS BY SERVICE CODE (optional sheet)
+# =========================================================
+def write_service_code_sheet(wb, df):
+    """One row per distinct service code (rows with variations != 0),
+    with the description, summed quantities (qty / qsub), Orig, Total
+    and Variation (Total - Orig), plus a GRAND TOTAL row. Items with
+    no service code are grouped under '(no code)'."""
+ 
+    ws = wb.create_sheet(SERVICE_CODE_SHEET[:31])
+ 
+    if df is None or df.empty:
+        ws.append(["No Data"])
+        return ws
+ 
+    p = df.copy()
+    code = p[SERVICE_CODE_COL].fillna("").astype(str).str.strip() if SERVICE_CODE_COL in p.columns \
+        else pd.Series("", index=p.index)
+    p["_code"] = code.where(code != "", "(no code)")
+ 
+    agg = (
+        p.groupby("_code", as_index=False)
+         .agg(item=("item", most_common_value),
+              quantity_original=("quantity_original", "sum"),
+              quantity_used=("quantity_used", "sum"),
+              orig=("orig", "sum"),
+              total=("total", "sum"))
+    )
+    agg["variation"] = agg["total"] - agg["orig"]
+    # real codes first (sorted), "(no code)" last
+    agg = agg.sort_values("_code", key=lambda s: s.eq("(no code)").astype(str) + s)
+ 
+    headers = [SERVICE_CODE_COL, "item", "quantity_original", "quantity_used",
+               "Orig", "Total", "Variation"]
+    data_cols = ["_code", "item", "quantity_original", "quantity_used",
+                 "orig", "total", "variation"]
+    money = {"Orig", "Total", "Variation"}
+ 
+    header_fill = PatternFill(start_color="00CCFF", end_color="00CCFF", fill_type="solid")
+    grand_fill = PatternFill(start_color="9DC3E6", end_color="9DC3E6", fill_type="solid")
+    header_row = 2
+ 
+    try:
+        img1 = Image(IMG_LEFT); img1.width, img1.height = 110, 75
+        img2 = Image(IMG_RIGHT); img2.width, img2.height = 140, 60
+        ws.add_image(img1, "A1"); ws.add_image(img2, "B1")
+        ws.row_dimensions[1].height = 60
+    except Exception as e:
+        print(f"Image load failed: {e}")
+ 
+    for c_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=header_row, column=c_idx, value=h)
+        cell.fill = header_fill
+        cell.font = Font(bold=True, size=15)
+        cell.alignment = Alignment(horizontal="center")
+ 
+    r = header_row + 1
+    for _, row in agg.iterrows():
+        for c_idx, (h, col) in enumerate(zip(headers, data_cols), 1):
+            val = row[col]
+            if col == "item" and (val == "" or pd.isna(val)):
+                val = None
+            cell = ws.cell(row=r, column=c_idx, value=val)
+            if h in money:
+                cell.number_format = MONEY_FORMAT
+        r += 1
+ 
+    # grand total
+    ws.cell(row=r, column=1, value="GRAND TOTAL")
+    for c_idx, (h, col) in enumerate(zip(headers, data_cols), 1):
+        if col in ("quantity_original", "quantity_used", "orig", "total", "variation"):
+            cell = ws.cell(row=r, column=c_idx, value=float(agg[col].sum()))
+            if h in money:
+                cell.number_format = MONEY_FORMAT
+    for c in range(1, len(headers) + 1):
+        cell = ws.cell(row=r, column=c)
+        cell.fill = grand_fill
+        cell.font = Font(bold=True, size=14)
+        cell.border = Border(bottom=Side(style="medium"))
+ 
+    autofit_columns(ws, start_row=header_row, max_width=60)
+    return ws
+ 
+ 
 # =========================================================
 # 🔥 CV FUNCTIONS
 # =========================================================
@@ -972,7 +1122,12 @@ def process_cv(df, mapping, cv7_poles):
 # =========================================================
 # 📊 EXCEL GENERATOR
 # =========================================================
-def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_date_columns=None):
+def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_date_columns=None,
+                   service_codes=None, include_service_code_sheet=False):
+    """service_codes: dict {description: code} from load_service_codes().
+    If None, it is loaded from SERVICE_CODES_PATH (if that fails, the
+    service code column is just left blank).
+    include_service_code_sheet: add the optional 'Variations_service codes' sheet."""
  
     output = io.BytesIO()
     wb = Workbook()
@@ -1012,6 +1167,17 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
  
     df["item_norm"] = df["item"].apply(normalize_item)
  
+    # =========================
+    # 🏷️ SERVICE CODE (looked up from the description)
+    # =========================
+    if service_codes is None:
+        try:
+            service_codes = load_service_codes(SERVICE_CODES_PATH)
+        except Exception as e:
+            print(f"Service codes not loaded ({e}) - service code column will be blank")
+            service_codes = {}
+    df[SERVICE_CODE_COL] = df["item_norm"].map(service_codes)
+ 
     if "pole" in df.columns:
         df["pole"] = df["pole"].apply(normalize_pole)
  
@@ -1048,6 +1214,10 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
     # 🔥 Variations: only rows where variations is NOT 0, plus pivot block
     variations_df = df[df["variations"] != 0].copy()
     write_variations_sheet(wb, variations_df, extra_date_columns=extra_date_columns)
+ 
+    # 🔥 Optional: variations grouped by service code
+    if include_service_code_sheet:
+        write_service_code_sheet(wb, variations_df)
  
     for name, mapping, *_ in categories:
         if normalize_cv_name(name) in cv_groups_norm and normalize_cv_name(name) not in selected_norm:
@@ -1419,17 +1589,29 @@ def apply_filters(df, text_filters, selected_dates, start="", end=""):
     return df, selected_date_filters
 
 
-def export(df_filtered, selected_date_filters, selected_cv_groups, output_path, log=print):
-    """Same as FilterApp.export_excel worker."""
+def export(df_filtered, selected_date_filters, selected_cv_groups, output_path,
+           service_codes_path="", include_service_code_sheet=False, log=print):
+    """Same as FilterApp.export_excel worker.
+    service_codes_path: the miscelaneous file dropped on the page (Column_1 =
+    description, Column_3 = service code). Without it the "service code"
+    column is left blank - the network path can't be reached from the browser."""
     if not selected_cv_groups:
         selected_cv_groups = list(CV_GROUPS.keys())
+    service_codes = {}
+    if service_codes_path:
+        service_codes = load_service_codes(service_codes_path)
+        log(f"Service codes loaded: {len(service_codes)}")
+    else:
+        log("No miscelaneous file given - the service code column will be blank.")
     log(f"Generating Excel for {len(df_filtered)} rows, CV groups: {', '.join(selected_cv_groups)}")
     excel_bytes = generate_excel(
         df_filtered,
         categories,
         CV_GROUPS,
         selected_cv_groups=selected_cv_groups,
-        extra_date_columns=selected_date_filters
+        extra_date_columns=selected_date_filters,
+        service_codes=service_codes,
+        include_service_code_sheet=bool(include_service_code_sheet)
     )
     if not output_path.lower().endswith(".xlsx"):
         output_path += ".xlsx"

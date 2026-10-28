@@ -199,7 +199,8 @@ def outputs_apply(path, filters=None, dates=None, start="", end="", log=print):
 
 
 def outputs_export(path, filters=None, dates=None, start="", end="", cv_groups=None,
-                   output_name="Outputs_Report.xlsx", logo_left="", logo_right="", log=print):
+                   output_name="Outputs_Report.xlsx", logo_left="", logo_right="",
+                   misc="", service_code_sheet=False, log=print):
     import tool_materials_report as M
     df, date_filters = _outputs_filtered(path, filters, dates, start, end)
     # The report puts the Gaeltec / SPEN logos in the top corner. In the
@@ -207,8 +208,19 @@ def outputs_export(path, filters=None, dates=None, start="", end="", cv_groups=N
     # are used instead (and simply left out if none were given).
     M.IMG_LEFT = logo_left if logo_left and os.path.exists(logo_left) else M.IMG_LEFT
     M.IMG_RIGHT = logo_right if logo_right and os.path.exists(logo_right) else M.IMG_RIGHT
+    # Service codes come from the miscelaneous file dropped on the page
+    if misc:
+        _need(misc, "miscelaneous.parquet")
+        cols = _parquet_columns(misc)
+        if not all(c in cols for c in ("column_1", "column_3")):
+            raise UserError(f"The file in the 'miscelaneous.parquet' box ({os.path.basename(misc)}) has no "
+                            f"Column_1 / Column_3 (description / service code) - make sure it's miscelaneous.parquet.")
+    elif service_code_sheet:
+        raise UserError("Drop miscelaneous.parquet to add the 'Variations_service codes' sheet "
+                        "(the service codes come from that file).")
     out = os.path.join(_outdir(), _name(output_name, ".xlsx", "Outputs_Report.xlsx"))
-    return M.export(df, date_filters, cv_groups or [], out, log=log)
+    return M.export(df, date_filters, cv_groups or [], out, service_codes_path=misc or "",
+                    include_service_code_sheet=bool(service_code_sheet), log=log)
 
 
 # ---------------------------------------------------------------------------
