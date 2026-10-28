@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import io
 import re
+import unicodedata
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.drawing.image import Image
@@ -624,12 +625,45 @@ def blank_out_nans(df):
 # =========================================================
 # 🏷️ SERVICE CODES
 # =========================================================
+# Status of the service-code lookup for each row (shown on the
+# Variations_service codes sheet for rows that got no code)
+SC_NO_CODE = "(no code in miscelaneous file)"
+SC_NOT_FOUND = "(description not in miscelaneous file)"
+ 
+# Filled in by generate_excel(): how many rows got a code, and which
+# descriptions didn't (for the log / message after an export)
+LAST_SERVICE_CODE_STATS = {}
+ 
+_PUNCT_TRANS = str.maketrans({
+    "\u2018": "'", "\u2019": "'", "\u00b4": "'", "`": "'",
+    "\u201c": '"', "\u201d": '"',
+    "\u2013": "-", "\u2014": "-", "\u2212": "-",
+})
+ 
+ 
+def loose_item_key(x):
+    """A looser version of normalize_item, used only when the exact text
+    isn't found: ignores case, spacing around punctuation/brackets, a
+    trailing full stop, curly quotes, dashes and characters like '²'.
+    So 'Replace tension insulator, 11kV' finds 'Replace tension insulator, 11kV.'
+    and 'Cable Termination ( incorporating surge arrestors )' finds
+    'Cable Termination (incorporating surge arrestors)'."""
+    s = normalize_item(x)
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s).translate(_PUNCT_TRANS).upper()
+    s = re.sub(r"\s*([,;:/()\[\]\-.'+&])\s*", r"\1", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip(" .,;:")
+ 
+ 
 def load_service_codes(path=None):
     """Reads the service-codes file and returns a dict
     {normalised description: service code}. Descriptions come from
     Column_1 (or the first column) and codes from Column_3 (or a column
-    with 'service' in its name). Codes that are blank or '0' are
-    skipped, so those items simply get no service code."""
+    with 'service' in its name). Descriptions whose code is blank or '0'
+    are kept with code "" so the report can tell "no code in the file"
+    apart from "description not in the file"."""
     path = path or SERVICE_CODES_PATH
     lower = str(path).lower()
     if lower.endswith(".parquet"):
@@ -645,12 +679,64 @@ def load_service_codes(path=None):
         (c for c in cols if "service" in str(c).lower()), cols[2] if len(cols) > 2 else cols[-1]
     )
  
-    desc = codes[desc_col].apply(normalize_item)
-    code = codes[code_col].astype(str).str.strip()
-    code = code.str.replace(r"\.0$", "", regex=True)          # 30980981.0 -> 30980981
-    keep = (desc != "") & ~code.str.lower().isin(BLANK_TEXT | {"0"})
+    out = {}
+    for d, c in zip(codes[desc_col], codes[code_col]):
+        d = normalize_item(d)
+        if not d:
+            continue
+        c = "" if c is None or (isinstance(c, float) and pd.isna(c)) else str(c).strip()
+        c = re.sub(r"\.0$", "", c)                          # 30980981.0 -> 30980981
+        if c.lower() in BLANK_TEXT or c == "0":
+            c = ""
+        if out.get(d):                                     # same description twice:
+            continue                                       # keep the first real code
+        out[d] = c
+    return out
  
-    return dict(zip(desc[keep], code[keep]))
+ 
+def service_code_summary():
+    """One short text about the last export's service codes."""
+    st = LAST_SERVICE_CODE_STATS
+    if not st:
+        return ("Service codes: the miscelaneous file wasn't loaded, so the 'service code' column is blank.\n"
+                f"(Looked for: {SERVICE_CODES_PATH})")
+    lines = [f"Service codes: {st['with_code']:,} of {st['rows']:,} rows have a code."]
+    if st["no_code_in_file"]:
+        lines.append(f"{st['no_code_in_file']:,} rows are items whose code is 0 / blank in the miscelaneous file.")
+    if st["not_in_file"]:
+        lines.append(f"{st['not_in_file']:,} rows have a description that isn't in the miscelaneous file, e.g.:")
+        lines += [f"   - {d}" for d in st["not_in_file_items"][:8]]
+    return "\n".join(lines)
+ 
+ 
+def match_service_codes(item_norms, service_codes):
+    """For each normalised description -> (code or None, status).
+    1st try: the exact text (same matching as Build Master's Man_day).
+    2nd try: loose_item_key - only used when every description in the
+    file with that key has the same code, so a code is never guessed."""
+    loose = {}
+    for d, c in service_codes.items():
+        loose.setdefault(loose_item_key(d), set()).add(c)
+ 
+    cache = {}
+    codes, status = [], []
+    for it in item_norms:
+        if it not in cache:
+            if it in service_codes:
+                c = service_codes[it]
+            else:
+                cands = loose.get(loose_item_key(it)) if it else None
+                c = next(iter(cands)) if cands and len(cands) == 1 else None
+            if c is None:
+                cache[it] = (None, SC_NOT_FOUND)
+            elif c == "":
+                cache[it] = (None, SC_NO_CODE)
+            else:
+                cache[it] = (c, "")
+        c, st = cache[it]
+        codes.append(c)
+        status.append(st)
+    return codes, status
  
  
 # =========================================================
@@ -1008,8 +1094,9 @@ def write_variations_sheet(wb, df, extra_date_columns=None):
 def write_service_code_sheet(wb, df):
     """One row per distinct service code (rows with variations != 0),
     with the description, summed quantities (qty / qsub), Orig, Total
-    and Variation (Total - Orig), plus a GRAND TOTAL row. Items with
-    no service code are grouped under '(no code)'."""
+    and Variation (Total - Orig), plus a GRAND TOTAL row. Items without
+    a service code come last, one row per description, marked either
+    '(no code in miscelaneous file)' or '(description not in miscelaneous file)'."""
  
     ws = wb.create_sheet(SERVICE_CODE_SHEET[:31])
  
@@ -1020,10 +1107,15 @@ def write_service_code_sheet(wb, df):
     p = df.copy()
     code = p[SERVICE_CODE_COL].fillna("").astype(str).str.strip() if SERVICE_CODE_COL in p.columns \
         else pd.Series("", index=p.index)
-    p["_code"] = code.where(code != "", "(no code)")
+    status = p["_sc_status"].fillna("") if "_sc_status" in p.columns else pd.Series("", index=p.index)
+    status = status.where(status != "", SC_NOT_FOUND)
+    has_code = code != ""
+    p["_code"] = code.where(has_code, status)
+    # rows without a code are listed per description, so it's clear which items they are
+    p["_desc"] = p["item_norm"].where(~has_code, "") if "item_norm" in p.columns else ""
  
     agg = (
-        p.groupby("_code", as_index=False)
+        p.groupby(["_code", "_desc"], as_index=False)
          .agg(item=("item", most_common_value),
               quantity_original=("quantity_original", "sum"),
               quantity_used=("quantity_used", "sum"),
@@ -1031,8 +1123,10 @@ def write_service_code_sheet(wb, df):
               total=("total", "sum"))
     )
     agg["variation"] = agg["total"] - agg["orig"]
-    # real codes first (sorted), "(no code)" last
-    agg = agg.sort_values("_code", key=lambda s: s.eq("(no code)").astype(str) + s)
+    # real codes first (sorted), then the rows with no code, then the ones not in the file
+    order = {SC_NO_CODE: "1", SC_NOT_FOUND: "2"}
+    agg["_sort"] = agg["_code"].map(order).fillna("0") + agg["_code"] + "\u0001" + agg["_desc"]
+    agg = agg.sort_values("_sort")
  
     headers = [SERVICE_CODE_COL, "item", "quantity_original", "quantity_used",
                "Orig", "Total", "Variation"]
@@ -1174,9 +1268,22 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
         try:
             service_codes = load_service_codes(SERVICE_CODES_PATH)
         except Exception as e:
-            print(f"Service codes not loaded ({e}) - service code column will be blank")
+            print(f"Service codes not loaded from {SERVICE_CODES_PATH} ({e}) - service code column will be blank")
             service_codes = {}
-    df[SERVICE_CODE_COL] = df["item_norm"].map(service_codes)
+    codes, status = match_service_codes(df["item_norm"].tolist(), service_codes)
+    df[SERVICE_CODE_COL] = pd.Series(codes, index=df.index, dtype=object)
+    df["_sc_status"] = pd.Series(status, index=df.index, dtype=object)
+ 
+    LAST_SERVICE_CODE_STATS.clear()
+    if service_codes:
+        missing = df.loc[df["_sc_status"] == SC_NOT_FOUND, "item"].dropna().astype(str).str.strip()
+        LAST_SERVICE_CODE_STATS.update({
+            "rows": int(len(df)),
+            "with_code": int(df[SERVICE_CODE_COL].notna().sum()),
+            "no_code_in_file": int((df["_sc_status"] == SC_NO_CODE).sum()),
+            "not_in_file": int((df["_sc_status"] == SC_NOT_FOUND).sum()),
+            "not_in_file_items": missing.value_counts().head(15).index.tolist(),
+        })
  
     if "pole" in df.columns:
         df["pole"] = df["pole"].apply(normalize_pole)
@@ -1617,5 +1724,8 @@ def export(df_filtered, selected_date_filters, selected_cv_groups, output_path,
         output_path += ".xlsx"
     with open(output_path, "wb") as f:
         f.write(excel_bytes)
+    if service_codes:
+        for line in service_code_summary().split("\n"):
+            log(line)
     log(f"✅ Excel exported successfully: {output_path}")
     return [output_path]
