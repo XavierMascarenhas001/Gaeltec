@@ -1107,6 +1107,279 @@ if poles_selected and pole_col:
 st.sidebar.divider()
 st.sidebar.metric("Rows after filters", f"{len(f):,}", delta=f"of {len(df):,} total")
 
+# ============================================================
+# VARIATIONS (Totals tab) + PID BREAKDOWN (Pole Position tab)
+# ============================================================
+# The Variations figures come from outputs_core.py - the same code that
+# writes the Variations / Variations_service codes sheets of the Outputs
+# Excel - so the dashboard and the Excel always agree. Keep outputs_core.py
+# next to this script (or in the Gaeltec_Premium folder).
+def _import_outputs_core():
+    import sys
+    try:
+        import outputs_core
+        return outputs_core, None
+    except ImportError:
+        pass
+    candidates = [SCRIPT_DIR, SCRIPT_DIR.parent, SCRIPT_DIR.parent.parent,
+                  Path.home() / "OneDrive - Gaeltec Utilities Ltd" / "Desktop" / "Gaeltec_Premium"]
+    for folder in candidates:
+        if (folder / "outputs_core.py").exists():
+            sys.path.insert(0, str(folder))
+            try:
+                import outputs_core
+                return outputs_core, None
+            except Exception as e:
+                return None, f"outputs_core.py was found in {folder} but couldn't be loaded: {e}"
+    return None, ("outputs_core.py wasn't found - put it in the same folder as this dashboard "
+                  f"({SCRIPT_DIR}) to see the Variations sections.")
+
+
+@st.cache_data(show_spinner=False, max_entries=2)
+def load_service_codes_cached(source_key: str, file_bytes: bytes = None):
+    """Service codes {description: code} from miscelaneous.parquet - either
+    uploaded bytes, or the path in outputs_core.SERVICE_CODES_PATH."""
+    oc, err = _import_outputs_core()
+    if oc is None:
+        return {}, err
+    try:
+        if file_bytes is not None:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            try:
+                return oc.load_service_codes(tmp_path), None
+            finally:
+                os.remove(tmp_path)
+        return oc.load_service_codes(oc.SERVICE_CODES_PATH), None
+    except Exception as e:
+        return {}, str(e)
+
+
+@st.cache_data(show_spinner="Working out the variations…", max_entries=4)
+def variations_for_rows(master_key: str, rows_key: str, codes_key: str, _rows: pd.DataFrame, _codes: dict):
+    """Same data as the Excel Variations sheets, for the rows under the
+    sidebar filters (master_key / rows_key / codes_key only decide when to
+    recalculate)."""
+    oc, err = _import_outputs_core()
+    if oc is None:
+        return None, err
+    sub = oc.clean_dataframe(_rows).rename(columns=oc.NEW_TO_OLD_COLUMNS)
+    sub = sub.rename(columns={"segmentcode": "circuit", "segmentdesc": "project_name"})
+    if "item" not in sub.columns:
+        return None, "The master file has no description column."
+    return oc.variations_report_data(oc.prepare_report_df(sub, service_codes=dict(_codes))), None
+
+
+def _gbp(v):
+    return "—" if v is None or pd.isna(v) else f"{'-' if v < 0 else ''}£{abs(v):,.2f}"
+
+
+def _gbp_signed(v):
+    return "—" if v is None or pd.isna(v) else ("+" if v > 0 else "") + _gbp(v)
+
+
+# ---- PID breakdown: copied from master_control_dashboard.py (Panel 03) ----
+_MC_GREEN, _MC_RED, _MC_NAVY = "#1E9E5A", "#D64545", "#1F3A5F"
+_MC_DARKBLUE, _MC_AMBER, _MC_PURPLE, _MC_MUTED = "#123A6B", "#E0A02A", "#7C5CBF", "#B7BFC9"
+_MC_TEXT_DARK, _MC_TEXT_MUTED, _MC_GRID = "#1B2430", "#5B6B7C", "#E2E7ED"
+
+
+def _mc_fmt_money_short(v):
+    if pd.isna(v):
+        v = 0.0
+    sign = "-" if v < 0 else ""
+    a = abs(v)
+    if a >= 1_000_000:
+        return f"{sign}£{a/1_000_000:.1f}m"
+    if a >= 1_000:
+        return f"{sign}£{a/1_000:.1f}k"
+    return f"{sign}£{a:.0f}"
+
+
+def _mc_metric_row(items):
+    cols_ = st.columns(len(items))
+    for col, (label, value, color, highlight) in zip(cols_, items):
+        with col:
+            if highlight:
+                box_bg, box_border, value_size, label_color = "#EAF3EC", color or _MC_NAVY, "26px", _MC_TEXT_DARK
+                border_style = f"border:1px solid {box_border};border-left:5px solid {box_border};"
+            else:
+                box_bg, value_size, label_color = "#F6F8FA", "18px", _MC_TEXT_MUTED
+                border_style = "border:1px solid #DDE3E9;"
+            val_style = f"color:{color};" if color else f"color:{_MC_TEXT_DARK};"
+            st.markdown(
+                f"""<div style="{border_style}border-radius:6px;padding:10px 14px;background:{box_bg};">
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;
+                              text-transform:uppercase;color:{label_color};margin-bottom:4px;">{label}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:{value_size};font-weight:700;{val_style}">{value}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+
+def _mc_prepare(rows: pd.DataFrame) -> pd.DataFrame:
+    """master_control_dashboard.load_data's cleaning, on the filtered rows."""
+    need = ["job", "plan1", "done", "invoice date", "total", "orig", "district", "project", "project manager", "pid"]
+    df_ = rows[[c for c in need if c in rows.columns]].copy()
+    for c in need:
+        if c not in df_.columns:
+            df_[c] = pd.NA
+    df_["total"] = pd.to_numeric(df_["total"], errors="coerce")
+    df_["orig"] = pd.to_numeric(df_["orig"], errors="coerce")
+    for c in ["plan1", "done", "invoice date"]:
+        df_[c] = pd.to_datetime(df_[c], errors="coerce")
+    for c in ["district", "project", "project manager", "pid", "job"]:
+        df_[c] = df_[c].astype("string").str.strip()
+        df_[c] = df_[c].replace("", pd.NA)
+    job_lower = df_["job"].str.lower()
+    df_["flag"] = "other"
+    df_.loc[job_lower.str.startswith(("m -", "m-"), na=False), "flag"] = "material"
+    df_.loc[job_lower.str.startswith(("c -", "c-"), na=False), "flag"] = "construction"
+    for c in ["plan1", "done"]:
+        df_[c] = df_[c].where(df_[c].dt.year > 1901)
+    return df_[df_["flag"] != "other"]
+
+
+def render_pid_breakdown(rows: pd.DataFrame):
+    """Master Control's 'Panel 03 — PID Breakdown', unchanged, for `rows`."""
+    import numpy as np
+    fdf = _mc_prepare(rows)
+    mc_mode = st.radio("Show", ["All", "Construction", "Material"], horizontal=True, key="nt_pid_mode")
+
+    pdf = fdf.dropna(subset=["pid"]).copy()
+    if mc_mode != "All":
+        pdf = pdf[pdf["flag"] == mc_mode.lower()]
+    if pdf.empty:
+        st.info("No PIDs under these filters.")
+        return
+
+    pdf["has_plan"] = pdf["plan1"].notna()
+    pdf["has_done"] = pdf["done"].notna()
+    pdf["has_inv"] = pdf["invoice date"].notna()
+    pdf["stage"] = np.select([pdf["has_inv"], pdf["has_done"], pdf["has_plan"]], ["invoiced", "done", "planned"], default="remaining")
+
+    def _mode(s):
+        m = s.mode()
+        return m.iloc[0] if not m.empty else None
+
+    base = pdf.groupby("pid", dropna=False).agg(
+        total=("total", "sum"), job=("job", _mode), district=("district", _mode),
+        project=("project", _mode), pm=("project manager", _mode),
+    ).reset_index()
+    stage_sums = pdf.groupby(["pid", "stage"], dropna=False)["total"].sum().unstack("stage", fill_value=0)
+    for s_ in ["remaining", "planned", "done", "invoiced"]:
+        if s_ not in stage_sums.columns:
+            stage_sums[s_] = 0.0
+    stage_sums = stage_sums.reset_index()
+    agg = base.merge(stage_sums, on="pid", how="left")
+    _numeric_fill_cols = ["total", "remaining", "planned", "done", "invoiced"]
+    agg[_numeric_fill_cols] = agg[_numeric_fill_cols].fillna(0)
+
+    var_src = fdf.dropna(subset=["pid"])
+    var_src = var_src[var_src["flag"] == "construction"]
+    var_agg = var_src.groupby("pid", dropna=False).agg(c_total=("total", "sum"), c_orig=("orig", "sum")).reset_index()
+    var_agg["variance"] = var_agg["c_total"] - var_agg["c_orig"]
+    agg = agg.merge(var_agg[["pid", "variance"]], on="pid", how="left").fillna({"variance": 0.0})
+
+    agg["district_total"] = agg.groupby("district")["total"].transform("sum")
+    agg["project_total"] = agg.groupby(["district", "project"])["total"].transform("sum")
+    agg["pm_total"] = agg.groupby(["district", "project", "pm"])["total"].transform("sum")
+    agg = agg.sort_values(["district_total", "project_total", "pm_total", "total"], ascending=[False, False, False, False])
+    agg["pm_label"] = agg["pm"].fillna("Unassigned")
+    agg["district_label"] = agg["district"].fillna("Unassigned")
+    agg["project_label"] = agg["project"].fillna("Unassigned")
+
+    var_sum_all = agg["variance"].sum()
+    _mc_metric_row([
+        ("Total", _gbp(agg["total"].sum()), _MC_NAVY, True),
+        ("Remaining", _gbp(agg["remaining"].sum()), _MC_MUTED, False),
+        ("Planned", _gbp(agg["planned"].sum()), _MC_AMBER, False),
+        ("Done", _gbp(agg["done"].sum()), _MC_DARKBLUE, False),
+        ("Invoiced", _gbp(agg["invoiced"].sum()), _MC_PURPLE, False),
+        ("Variance", _gbp(var_sum_all), _MC_GREEN if var_sum_all >= 0 else _MC_RED, False),
+    ])
+    st.caption(f"{len(agg)} PID(s) in view — Remaining/Planned/Done/Invoiced sum to Total; Variance is total vs. original budget")
+
+    def esc(s_):
+        return str(s_).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    STAGE_COLS = [("invoiced", "Invoiced", _MC_PURPLE), ("done", "Done", _MC_DARKBLUE),
+                  ("planned", "Planned", _MC_AMBER), ("remaining", "Remaining", _MC_MUTED)]
+    st.markdown(f"""<style>
+    .pid-tooltip {{ position: relative; }}
+    .pid-tooltip .tt-box {{ visibility: hidden; opacity: 0; transition: opacity .12s ease; position: absolute; bottom: 130%; left: 50%;
+        transform: translateX(-50%); background: {_MC_TEXT_DARK}; color: #fff; padding: 4px 8px; border-radius: 4px;
+        font-family: "IBM Plex Mono", monospace; font-size: 11px; white-space: nowrap; z-index: 50; pointer-events: none;
+        box-shadow: 0 2px 6px rgba(0,0,0,.25); }}
+    .pid-tooltip:hover .tt-box {{ visibility: visible; opacity: 1; }}
+    .job-name-wrap {{ position: relative; }}
+    .job-name-full {{ font-family: "IBM Plex Sans", sans-serif; font-size: 9.5px; color: {_MC_TEXT_MUTED}; width: 230px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }}
+    .job-name-wrap:hover .job-name-full {{ position: absolute; left: 0; top: 16px; width: 230px; white-space: normal;
+        word-break: break-word; overflow: visible; background: #FFFDE7; border: 1px solid #E6D98A; border-radius: 4px;
+        padding: 4px 6px; box-shadow: 0 3px 10px rgba(0,0,0,.18); z-index: 40; }}
+    </style>""", unsafe_allow_html=True)
+
+    legend = "".join(
+        f"<span style='display:inline-flex;align-items:center;gap:5px;margin-right:16px;font-family:\"IBM Plex Mono\",monospace;"
+        f"font-size:11px;color:{_MC_TEXT_MUTED};'><span style='width:11px;height:11px;border-radius:3px;background:{c};"
+        f"display:inline-block;'></span>{l}</span>" for _, l, c in STAGE_COLS)
+    st.markdown(f"<div style='margin:6px 0 14px;'>{legend}</div>", unsafe_allow_html=True)
+
+    rows_html, last_d, last_p, last_m = [], None, None, None
+    for _, r in agg.iterrows():
+        if r["district_label"] != last_d:
+            d_total = agg.loc[agg["district_label"] == r["district_label"], "total"].sum()
+            rows_html.append(f"<div style='background:{_MC_NAVY};color:#fff;padding:8px 14px;font-family:\"IBM Plex Mono\",monospace;"
+                             f"font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-top:14px;border-radius:4px;"
+                             f"display:flex;justify-content:space-between;'><span>{esc(r['district_label'])}</span><span>{_gbp(d_total)}</span></div>")
+            last_d, last_p, last_m = r["district_label"], None, None
+        if r["project_label"] != last_p:
+            p_total = agg.loc[(agg["district_label"] == r["district_label"]) & (agg["project_label"] == r["project_label"]), "total"].sum()
+            rows_html.append(f"<div style='background:#EEF1F5;color:{_MC_TEXT_DARK};padding:6px 14px 6px 26px;font-family:\"IBM Plex Mono\",monospace;"
+                             f"font-size:11.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;margin-top:6px;border-radius:3px;"
+                             f"display:flex;justify-content:space-between;'><span>{esc(r['project_label'])}</span><span>{_gbp(p_total)}</span></div>")
+            last_p, last_m = r["project_label"], None
+        if r["pm_label"] != last_m:
+            rows_html.append(f"<div style='padding:4px 14px 2px 40px;font-family:\"IBM Plex Sans\",sans-serif;font-size:10.5px;"
+                             f"font-style:italic;color:{_MC_TEXT_MUTED};margin-top:4px;'>{esc(r['pm_label'])}</div>")
+            last_m = r["pm_label"]
+        total = r["total"]
+        pct = {k: (r[k] / total * 100 if total > 0 else 0) for k, _, _ in STAGE_COLS}
+        invoiced_pct = (r["invoiced"] / total * 100) if total > 0 else 0.0
+        var_color = _MC_GREEN if r["variance"] >= 0 else _MC_RED
+        var_sign = "+" if r["variance"] >= 0 else ""
+        var_label = "Over value" if r["variance"] >= 0 else "Under value"
+        seg = []
+        for k, label, color in STAGE_COLS:
+            if k != "remaining" and pct[k] > 0:
+                seg.append(f"<div class='pid-tooltip' style='width:{pct[k]:.3f}%;background:{color};height:100%;'>"
+                           f"<div class='tt-box'>{label}: {_gbp(r[k])}</div></div>")
+        seg.append(f"<div class='pid-tooltip' style='width:6px;flex:none;background:{var_color};height:100%;"
+                   f"border-left:1px solid #fff;border-right:1px solid #fff;'><div class='tt-box'>{var_label}: {var_sign}{_gbp(r['variance'])}</div></div>")
+        if pct["remaining"] > 0:
+            seg.append(f"<div class='pid-tooltip' style='width:{pct['remaining']:.3f}%;background:{_MC_MUTED};height:100%;'>"
+                       f"<div class='tt-box'>Remaining: {_gbp(r['remaining'])}</div></div>")
+        rows_html.append(f"""
+        <div style='display:flex;align-items:center;gap:10px;padding:3px 14px 3px 52px;border-top:1px solid #F0F2F5;'>
+          <div class='job-name-wrap' style='width:230px;flex:none;'>
+            <div style='font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:{_MC_TEXT_DARK};font-weight:600;
+                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title="{esc(r['job'])}">{esc(r['pid'])}</div>
+            <div class='job-name-full'>{esc(r['job'])}</div>
+          </div>
+          <div style='flex:1;height:15px;border-radius:3px;display:flex;background:#F0F2F5;'>{''.join(seg)}</div>
+          <div style='width:230px;flex:none;font-family:"IBM Plex Mono",monospace;font-size:11px;color:{_MC_TEXT_DARK};text-align:right;'>
+            <b>{_mc_fmt_money_short(total)}</b>&nbsp;·&nbsp;<span style='color:{_MC_PURPLE};'>Inv {_mc_fmt_money_short(r["invoiced"])} ({invoiced_pct:.0f}%)</span>
+          </div>
+        </div>""")
+    st.markdown(f"<div style='max-height:900px;overflow-y:auto;border:1px solid {_MC_GRID};border-radius:6px;padding:8px 0;"
+                f"background:#FFFFFF;'>{''.join(rows_html)}</div>", unsafe_allow_html=True)
+    st.caption("Bar order: Invoiced → Done → Planned → variance marker → Remaining (grey). Hover a segment to see its value, "
+               "or hover a job name to read the full text.")
+
+
 tab_overview, tab_jobs, tab_items, tab_forecast, tab_totals = st.tabs(
     ["📊 Overview", "🗂️ Jobs", "📦 Mapped Items", "📈 Pole Position", "💰 Totals"]
 )
@@ -1783,8 +2056,31 @@ with tab_forecast:
                             )
 
 
+    # ---- PID Breakdown (from the Master Control / financial dashboard) ----
+    st.divider()
+    st.subheader("PID Breakdown")
+    st.caption("Same as Master Control › PID Breakdown, for the rows under the sidebar filters "
+               "(District → Project → Project Manager → PID, one bar per PID, highest value first)")
+    render_pid_breakdown(raw_df.loc[f.index])
+
+
 with tab_totals:
     GBP_COLUMN_CONFIG = lambda col_name: {col_name: st.column_config.NumberColumn(col_name, format="£%.2f")}
+    GBP = lambda *names: {n: st.column_config.NumberColumn(n, format="£%.2f") for n in names}
+    SEL_KEY = "nt_var_project"
+
+    def _clicked_project(event, chart_key):
+        """Project of the bar clicked in a chart - only when the click is new,
+        so picking another project in the box below isn't overridden."""
+        try:
+            pts = event.selection.points if hasattr(event, "selection") else event["selection"]["points"]
+        except (KeyError, TypeError, AttributeError):
+            pts = []
+        picked = str(pts[0].get("y")) if pts else None
+        last_key = f"_last_click_{chart_key}"
+        if picked and picked != st.session_state.get(last_key):
+            st.session_state[SEL_KEY] = picked
+        st.session_state[last_key] = picked
 
     total_val = pd.to_numeric(f[cols["total_col"]], errors="coerce").sum() if cols["total_col"] in f.columns else None
     orig_val = pd.to_numeric(f[cols["orig_col"]], errors="coerce").sum() if cols["orig_col"] in f.columns else None
@@ -1792,15 +2088,35 @@ with tab_totals:
     if total_val is not None:
         show_total_banner("Total value (£)", f"£{total_val:,.2f}")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     if total_val is not None:
-        c1.metric("Total value", f"£{total_val:,.2f}")
+        c1.metric("Total", _gbp(total_val))
+    if orig_val is not None:
+        c2.metric("Original", _gbp(orig_val))
     if total_val is not None and orig_val is not None:
-        c2.metric("Difference vs original", f"£{total_val - orig_val:,.2f}")
+        c3.metric("Variation (total − original)", _gbp_signed(total_val - orig_val))
 
+    # ---- Variations data: the same code as the Excel Variations sheets ----
+    oc, oc_err = _import_outputs_core()
+    var_data, var_err, codes, codes_err = None, oc_err, {}, None
+    if oc is not None:
+        with st.expander("🏷️ Service codes file (miscelaneous.parquet)"):
+            up = st.file_uploader("Use this miscelaneous.parquet", type=["parquet"], key="nt_misc_upload")
+            st.caption(f"Without an upload, it's read from: {oc.SERVICE_CODES_PATH}")
+        if up is not None:
+            codes_key = f"upload:{up.name}:{up.size}"
+            codes, codes_err = load_service_codes_cached(codes_key, up.getvalue())
+        else:
+            codes_key = f"path:{oc.SERVICE_CODES_PATH}"
+            codes, codes_err = load_service_codes_cached(codes_key)
+        rows_key = f"{len(f)}:{int(pd.util.hash_pandas_object(f.index.to_series(), index=False).sum())}"
+        var_data, var_err = variations_for_rows(str(latest_master_path), rows_key, codes_key, raw_df.loc[f.index], codes)
+
+    # ---- Total value by project (click a bar to open it below) ----
     if total_val is not None and project_col in f.columns:
         st.divider()
         st.subheader("Total value by Project")
+        st.caption("Click a project's bar to open its source files in the Variations section below")
         f["_total_val_row"] = pd.to_numeric(f[cols["total_col"]], errors="coerce")
         by_project_total = (
             f.groupby(project_col)["_total_val_row"].sum()
@@ -1808,6 +2124,7 @@ with tab_totals:
             .rename(columns={project_col: "Project", "_total_val_row": "Total value (£)"})
             .sort_values("Total value (£)", ascending=False)
         )
+        by_project_total["Project"] = by_project_total["Project"].astype(str)
         st.caption(f"{len(by_project_total):,} projects under the current filters")
 
         fig_proj = px.bar(
@@ -1815,54 +2132,113 @@ with tab_totals:
             x="Total value (£)", y="Project", orientation="h", text="Total value (£)",
         )
         fig_proj.update_traces(marker_color="#2563eb", texttemplate="£%{text:,.0f}")
-        fig_proj.update_layout(height=max(360, 32 * len(by_project_total)), margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_proj, use_container_width=True)
+        fig_proj.update_layout(height=max(360, 32 * len(by_project_total)), margin=dict(l=10, r=10, t=10, b=10),
+                               clickmode="event+select")
+        ev = st.plotly_chart(fig_proj, use_container_width=True, on_select="rerun", selection_mode="points", key="nt_total_by_project")
+        _clicked_project(ev, "total")
 
         st.dataframe(
             by_project_total, height=320, use_container_width=True, hide_index=True,
             column_config=GBP_COLUMN_CONFIG("Total value (£)"),
         )
 
-    if total_val is not None and orig_val is not None:
-        f["_row_variance"] = pd.to_numeric(f[cols["total_col"]], errors="coerce") - pd.to_numeric(f[cols["orig_col"]], errors="coerce")
-        variance_rows = f[f["_row_variance"] != 0]
-
-        st.subheader("Jobs where total ≠ original")
-        variance_table = pd.DataFrame({
-            "District": variance_rows[district_col],
-            "Job": variance_rows["_job_clean"],
-            "Circuit": variance_rows[circuit_col],
-            "Difference (£)": variance_rows["_row_variance"],
-        })
-        st.caption(f"{len(variance_table):,} rows with a variance under the current filters")
-        st.dataframe(
-            variance_table.sort_values("Difference (£)", key=abs, ascending=False),
-            height=320, use_container_width=True, hide_index=True,
-            column_config=GBP_COLUMN_CONFIG("Difference (£)"),
-        )
-
-        st.subheader("Difference by Job")
-        by_job = (
-            variance_rows.assign(Job=variance_rows["_job_clean"])
-            .groupby("Job")["_row_variance"].sum()
-            .reset_index()
-            .rename(columns={"_row_variance": "Difference (£)"})
-            .sort_values("Difference (£)", key=abs, ascending=False)
-        )
-        st.dataframe(
-            by_job, height=280, use_container_width=True, hide_index=True,
-            column_config=GBP_COLUMN_CONFIG("Difference (£)"),
-        )
-
+    # ---- Difference by project (total - original) ----
+    if total_val is not None and orig_val is not None and project_col in f.columns:
         st.subheader("Difference by Project")
-        if project_col in variance_rows.columns:
-            by_project = (
-                variance_rows.groupby(project_col)["_row_variance"].sum()
-                .reset_index()
-                .rename(columns={project_col: "Project", "_row_variance": "Difference (£)"})
-                .sort_values("Difference (£)", key=abs, ascending=False)
-            )
-            st.dataframe(
-                by_project, height=280, use_container_width=True, hide_index=True,
-                column_config=GBP_COLUMN_CONFIG("Difference (£)"),
-            )
+        st.caption("Total − original · click a project's bar to open it below")
+        diff = pd.to_numeric(f[cols["total_col"]], errors="coerce").fillna(0) - pd.to_numeric(f[cols["orig_col"]], errors="coerce").fillna(0)
+        by_project = (
+            diff.groupby(f[project_col].astype(str)).sum().reset_index()
+            .rename(columns={project_col: "Project", 0: "Difference (£)"})
+        )
+        by_project.columns = ["Project", "Difference (£)"]
+        by_project = by_project.sort_values("Difference (£)", key=abs, ascending=False)
+        fig_diff = go.Figure(go.Bar(
+            x=by_project["Difference (£)"], y=by_project["Project"], orientation="h",
+            marker_color=["#1E9E5A" if v >= 0 else "#D64545" for v in by_project["Difference (£)"]],
+            text=[_gbp_signed(v) for v in by_project["Difference (£)"]], textposition="outside",
+            hovertemplate="<b>%{y}</b><br>Difference: £%{x:,.2f}<extra></extra>",
+        ))
+        fig_diff.update_layout(height=max(320, 32 * len(by_project)), margin=dict(l=10, r=60, t=10, b=10),
+                               yaxis=dict(autorange="reversed"), xaxis=dict(tickprefix="£", zeroline=True),
+                               clickmode="event+select")
+        ev2 = st.plotly_chart(fig_diff, use_container_width=True, on_select="rerun", selection_mode="points", key="nt_diff_by_project")
+        _clicked_project(ev2, "diff")
+        st.dataframe(by_project, height=280, use_container_width=True, hide_index=True,
+                     column_config=GBP_COLUMN_CONFIG("Difference (£)"))
+
+    # ---- Variations pivot: Project > Source file > Job (as the Excel sheet) ----
+    st.divider()
+    st.subheader("Variations — Source File › Job")
+    st.caption("Same as the pivot on the Excel Variations sheet (rows where variations ≠ 0). "
+               "Pick or click a project, then open a source file to see its jobs and the reason for the variation.")
+    if var_data is None:
+        st.warning(var_err or "The variations couldn't be worked out.")
+    elif not var_data["projects"]:
+        st.info("No rows with variations under the current filters.")
+    else:
+        vt = var_data["totals"]
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Rows with variations", f"{var_data['rows']:,}")
+        m2.metric("Orig", _gbp(vt["orig"]))
+        m3.metric("Total", _gbp(vt["total"]))
+        m4.metric("Variation", _gbp_signed(vt["variation"]))
+
+        proj_names = [p_["project"] for p_ in var_data["projects"]]
+        options = ["All projects"] + proj_names
+        clicked = st.session_state.get(SEL_KEY)
+        if clicked not in options:
+            if clicked:
+                st.info(f"“{clicked}” has no rows with variations under the current filters.")
+            st.session_state[SEL_KEY] = "All projects"
+        choice = st.selectbox("Project", options, key=SEL_KEY)
+        shown = var_data["projects"] if choice == "All projects" else [p_ for p_ in var_data["projects"] if p_["project"] == choice]
+
+        for p_ in shown:
+            st.markdown(f"#### {p_['project']}  \n"
+                        f"Orig **{_gbp(p_['orig'])}** · Total **{_gbp(p_['total'])}** · Variation **{_gbp_signed(p_['variation'])}**")
+            for s_ in p_["sources"]:
+                label = (f"📄 {s_['source']} — Orig {_gbp(s_['orig'])} · Total {_gbp(s_['total'])} · "
+                         f"Variation {_gbp_signed(s_['variation'])} · {len(s_['jobs'])} job(s)")
+                with st.expander(label, expanded=(choice != "All projects" and len(p_["sources"]) == 1)):
+                    jt = pd.DataFrame(s_["jobs"]).rename(columns={
+                        "job": "Job", "orig": "Orig (£)", "total": "Total (£)", "variation": "Variation (£)", "reason": "Reason"})
+                    st.dataframe(jt[["Job", "Orig (£)", "Total (£)", "Variation (£)", "Reason"]], use_container_width=True,
+                                 hide_index=True, column_config=GBP("Orig (£)", "Total (£)", "Variation (£)"))
+
+    # ---- Variations by service code (as the Variations_service codes sheet) ----
+    st.divider()
+    st.subheader("Variations by service code")
+    st.caption("Same as the Excel 'Variations_service codes' sheet: every service code with qty, qsub, Orig, Total and Variation, "
+               "plus the Traffic Management, Sand / Chips / Miscellaneous Works and Non Free Issue material lines")
+    if var_data is None:
+        st.warning(var_err or "The variations couldn't be worked out.")
+    elif not codes:
+        st.warning("The service codes couldn't be loaded"
+                   + (f" ({codes_err})" if codes_err else "")
+                   + " – upload miscelaneous.parquet under “Service codes file” above.")
+    elif var_data["service_codes"] is None:
+        st.info("No rows with variations under the current filters.")
+    else:
+        sc = var_data["service_codes"]
+        sc_tbl = sc[["_code", "item", "quantity_original", "quantity_used", "orig", "total", "variation"]].copy()
+        sc_tbl.columns = ["Service code", "Item", "qty", "qsub", "Orig (£)", "Total (£)", "Variation (£)"]
+        grand = {"Service code": "GRAND TOTAL", "Item": None,
+                 **{c: sc_tbl[c].sum() for c in ["qty", "qsub", "Orig (£)", "Total (£)", "Variation (£)"]}}
+        sc_tbl = pd.concat([sc_tbl, pd.DataFrame([grand])], ignore_index=True)
+        special = set(oc.SPECIAL_ROWS) | {"GRAND TOTAL"}
+        styled = (sc_tbl.style
+                  .apply(lambda r: ["font-weight:700;background-color:#EAF1FB" if r["Service code"] in special else "" for _ in r], axis=1)
+                  .format({"Orig (£)": "£{:,.2f}", "Total (£)": "£{:,.2f}", "Variation (£)": "£{:+,.2f}",
+                           "qty": "{:,.2f}", "qsub": "{:,.2f}"}, na_rep=""))
+        st.dataframe(styled, use_container_width=True, hide_index=True, height=min(640, 38 + 35 * len(sc_tbl)))
+
+    # ---- Every item in the variations (the rows under the Excel pivot) ----
+    st.divider()
+    st.subheader("Variations — every item")
+    if var_data is not None and var_data["rows"]:
+        st.caption(f"{var_data['rows']:,} row(s) — the same rows and columns as under the pivot on the Excel Variations sheet")
+        st.dataframe(var_data["detail"], use_container_width=True, hide_index=True, height=440,
+                     column_config=GBP("total", "orig"))
+    elif var_data is not None:
+        st.info("No rows with variations under the current filters.")
