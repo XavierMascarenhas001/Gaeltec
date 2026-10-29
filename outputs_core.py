@@ -1089,12 +1089,69 @@ def write_variations_sheet(wb, df, extra_date_columns=None):
 # =========================================================
 # 🏷️ VARIATIONS BY SERVICE CODE (optional sheet)
 # =========================================================
+# Items that get their own line on the Variations_service codes sheet
+# instead of their service code (matched ignoring case / punctuation;
+# a description that starts with one of these also counts, e.g. "... works 1").
+TRAFFIC_MANAGEMENT_ITEMS = [
+    "Diversion up to 20 road signs (in conjunction with rate P6.10 & P6.11)",
+    "Dismanteling and removal of traffic management upon conclusion of the works",
+    "Dismantling and removal of traffic management upon conclusion of the works",
+    "Delivering and setting up traffic management prior to starting the works",
+]
+SAND_CHIPS_MISC_ITEMS = ["Sand", "Chips", "Sand and chips", "Sand & chips",
+                         "Miscellaneous", "Miscellaneous works", "Miscellaneous work", "Misc works"]
+ 
+ROW_TRAFFIC = "Traffic Management"
+ROW_SAND = "Sand, Chips & Miscellaneous Works"
+ROW_NFI = "Non Free Issue material"
+SPECIAL_ROWS = [ROW_TRAFFIC, ROW_SAND, ROW_NFI]
+ 
+ 
+def _starts_with_any(key, prefixes):
+    return any(key == p or key.startswith(p + " ") or key.startswith(p + "(") for p in prefixes)
+ 
+ 
+def service_code_groups(p):
+    """Which line of the Variations_service codes sheet each row goes on:
+       Traffic Management  - the three traffic-management items
+       Sand, Chips & Misc  - sand, chips, miscellaneous works
+       Non Free Issue material - material rows (CAT = Mat) that are charged
+                                 (total or orig not 0)
+       otherwise its service code, or a no-code label (one line per description)."""
+    tm_keys = [loose_item_key(x) for x in TRAFFIC_MANAGEMENT_ITEMS]
+    sand_keys = {loose_item_key(x) for x in SAND_CHIPS_MISC_ITEMS}
+    item_norm = p["item_norm"] if "item_norm" in p.columns else p["item"].apply(normalize_item)
+    keys = item_norm.map(loose_item_key)
+ 
+    is_tm = keys.map(lambda k: _starts_with_any(k, tm_keys))
+    is_sand = keys.isin(sand_keys) & ~is_tm
+ 
+    code = p[SERVICE_CODE_COL].fillna("").astype(str).str.strip() if SERVICE_CODE_COL in p.columns \
+        else pd.Series("", index=p.index)
+    if "cat" in p.columns:
+        is_mat = p["cat"].fillna("").astype(str).str.strip().str.upper().str.startswith("MAT")
+    else:                                   # no CAT column: material codes are the numeric ones
+        is_mat = code.str.fullmatch(r"\d+")
+    charged = (p["total"] != 0) | (p["orig"] != 0)
+    is_nfi = is_mat & charged & ~is_tm & ~is_sand
+ 
+    status = p["_sc_status"].fillna("") if "_sc_status" in p.columns else pd.Series("", index=p.index)
+    status = status.where(status != "", SC_NOT_FOUND)
+    has_code = code != ""
+ 
+    group = code.where(has_code, status)
+    group = group.mask(is_nfi, ROW_NFI).mask(is_sand, ROW_SAND).mask(is_tm, ROW_TRAFFIC)
+    # rows without a code are listed one line per description
+    desc = item_norm.where(~has_code & ~is_tm & ~is_sand & ~is_nfi, "")
+    return group, desc
+ 
+ 
 def write_service_code_sheet(wb, df):
-    """One row per distinct service code (rows with variations != 0),
-    with the description, summed quantities (qty / qsub), Orig, Total
-    and Variation (Total - Orig), plus a GRAND TOTAL row. Items without
-    a service code come last, one row per description, marked either
-    '(no code in miscelaneous file)' or '(description not in miscelaneous file)'."""
+    """Variations_service codes sheet (rows with variations != 0):
+    one line per distinct service code with qty, qsub, Orig, Total and
+    Variation (Total - Orig), then the Traffic Management, Sand / Chips /
+    Miscellaneous Works and Non Free Issue material lines, then the items
+    without a code (one line each), and a GRAND TOTAL."""
  
     ws = wb.create_sheet(SERVICE_CODE_SHEET[:31])
  
@@ -1103,36 +1160,34 @@ def write_service_code_sheet(wb, df):
         return ws
  
     p = df.copy()
-    code = p[SERVICE_CODE_COL].fillna("").astype(str).str.strip() if SERVICE_CODE_COL in p.columns \
-        else pd.Series("", index=p.index)
-    status = p["_sc_status"].fillna("") if "_sc_status" in p.columns else pd.Series("", index=p.index)
-    status = status.where(status != "", SC_NOT_FOUND)
-    has_code = code != ""
-    p["_code"] = code.where(has_code, status)
-    # rows without a code are listed per description, so it's clear which items they are
-    p["_desc"] = p["item_norm"].where(~has_code, "") if "item_norm" in p.columns else ""
+    p["_code"], p["_desc"] = service_code_groups(p)
  
     agg = (
         p.groupby(["_code", "_desc"], as_index=False)
          .agg(item=("item", most_common_value),
+              n_items=("item_norm", "nunique"),
               quantity_original=("quantity_original", "sum"),
               quantity_used=("quantity_used", "sum"),
               orig=("orig", "sum"),
               total=("total", "sum"))
     )
     agg["variation"] = agg["total"] - agg["orig"]
-    # real codes first (sorted), then the rows with no code, then the ones not in the file
-    order = {SC_NO_CODE: "1", SC_NOT_FOUND: "2"}
+    is_special = agg["_code"].isin(SPECIAL_ROWS)
+    # the special lines describe a group of items, not one description
+    agg.loc[is_special, "item"] = agg.loc[is_special, "n_items"].map(
+        lambda n: f"{n} item" + ("" if n == 1 else "s"))
+ 
+    # service codes first (sorted), then the special lines, then no-code items
+    order = {ROW_TRAFFIC: "1a", ROW_SAND: "1b", ROW_NFI: "1c", SC_NO_CODE: "2", SC_NOT_FOUND: "3"}
     agg["_sort"] = agg["_code"].map(order).fillna("0") + agg["_code"] + "\u0001" + agg["_desc"]
     agg = agg.sort_values("_sort")
  
-    headers = [SERVICE_CODE_COL, "item", "quantity_original", "quantity_used",
-               "Orig", "Total", "Variation"]
-    data_cols = ["_code", "item", "quantity_original", "quantity_used",
-                 "orig", "total", "variation"]
+    headers = [SERVICE_CODE_COL, "item", "qty", "qsub", "Orig", "Total", "Variation"]
+    data_cols = ["_code", "item", "quantity_original", "quantity_used", "orig", "total", "variation"]
     money = {"Orig", "Total", "Variation"}
  
     header_fill = PatternFill(start_color="00CCFF", end_color="00CCFF", fill_type="solid")
+    special_fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
     grand_fill = PatternFill(start_color="9DC3E6", end_color="9DC3E6", fill_type="solid")
     header_row = 2
  
@@ -1152,6 +1207,7 @@ def write_service_code_sheet(wb, df):
  
     r = header_row + 1
     for _, row in agg.iterrows():
+        special = row["_code"] in SPECIAL_ROWS
         for c_idx, (h, col) in enumerate(zip(headers, data_cols), 1):
             val = row[col]
             if col == "item" and (val == "" or pd.isna(val)):
@@ -1159,6 +1215,9 @@ def write_service_code_sheet(wb, df):
             cell = ws.cell(row=r, column=c_idx, value=val)
             if h in money:
                 cell.number_format = MONEY_FORMAT
+            if special:
+                cell.fill = special_fill
+                cell.font = Font(bold=True, size=12)
         r += 1
  
     # grand total

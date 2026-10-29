@@ -198,6 +198,26 @@ def outputs_apply(path, filters=None, dates=None, start="", end="", log=print):
     return {"rows": int(len(df))}
 
 
+def _find_loaded_misc():
+    """A miscelaneous.parquet (Column_1 + Column_3) dropped anywhere on the
+    page - files dropped on the page live under /in/<n>/. Files named
+    like 'misc...' are tried first. Returns '' if there is none."""
+    found = []
+    for root, _dirs, files in os.walk("/in"):
+        for fn in files:
+            if fn.lower().endswith(".parquet"):
+                found.append(os.path.join(root, fn))
+    found.sort(key=lambda p: (0 if "misc" in os.path.basename(p).lower() else 1, p))
+    for p in found:
+        try:
+            cols = _parquet_columns(p)
+        except Exception:
+            continue
+        if "column_1" in cols and "column_3" in cols:
+            return p
+    return ""
+
+
 def outputs_export(path, filters=None, dates=None, start="", end="", cv_groups=None,
                    output_name="Outputs_Report.xlsx", logo_left="", logo_right="",
                    misc="", service_code_sheet=False, log=print):
@@ -208,7 +228,13 @@ def outputs_export(path, filters=None, dates=None, start="", end="", cv_groups=N
     # are used instead (and simply left out if none were given).
     M.IMG_LEFT = logo_left if logo_left and os.path.exists(logo_left) else M.IMG_LEFT
     M.IMG_RIGHT = logo_right if logo_right and os.path.exists(logo_right) else M.IMG_RIGHT
-    # Service codes come from the miscelaneous file dropped on the page
+    # Service codes come from the miscelaneous file dropped on the page -
+    # if it wasn't dropped in this tool, use one already loaded anywhere on
+    # the page (e.g. in the Build Master boxes)
+    if not misc:
+        misc = _find_loaded_misc()
+        if misc:
+            log(f"Using the miscelaneous file already loaded on the page: {os.path.basename(misc)}")
     if misc:
         _need(misc, "miscelaneous.parquet")
         cols = _parquet_columns(misc)
