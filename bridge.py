@@ -450,9 +450,11 @@ def nt_load(path, cols=None, log=print):
     return _dash(D.load, _need(path, "Master parquet"), cols)
 
 
-def nt_view(path, cols=None, filters=None, granularity="Month", detail=None, log=print):
+def nt_view(path, cols=None, filters=None, granularity="Month", detail=None, misc="", pid_mode="All", log=print):
     import dash_tracker as D
-    return _dash(D.view, _need(path, "Master parquet"), cols, filters, granularity, detail)
+    # service codes for the Totals tab: the file in the dashboard's slot, or one loaded anywhere on the page
+    misc = misc if misc and os.path.exists(misc) else _find_loaded_misc()
+    return _dash(D.view, _need(path, "Master parquet"), cols, filters, granularity, detail, misc=misc, pid_mode=pid_mode)
 
 
 def nt_outages(outage_path, master_path=None, cols=None, filters=None, log=print, **kw):

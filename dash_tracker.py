@@ -941,7 +941,7 @@ def metric_value(cat_name, total_qty):
     return f"{total_qty:,.0f}"
 
 
-def view(path, cols=None, filters=None, granularity="Month", detail=None):
+def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="", pid_mode="All"):
     df, f, cols, meta = _filtered(path, cols, filters)
     district_col, project_col, circuit_col = cols["district_col"], cols["project_col"], cols["circuit_col"]
     res = dict(meta)
@@ -1071,8 +1071,78 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None):
                 .sort_values("Difference (£)", key=abs, ascending=False)
             )
             tot["variance_by_project"] = _table(by_project)
+    # ---- Variations: the same figures as the Excel Variations sheets ----
+    try:
+        tot["variations"] = _variations(path, f, misc)
+    except Exception as e:                       # never break the rest of the dashboard
+        tot["variations"] = {"error": f"Couldn't build the variations: {e}"}
     res["totals"] = tot
+
+    # ---- PID breakdown (Master Control), for the rows under these filters ----
+    res["pid"], res["pid_error"] = _pid(path, f, pid_mode)
     return res
+
+
+# ---- Variations (Totals tab) - built by the Outputs tool's own code ----
+_VAR_CACHE = {}
+_SC_CACHE = {}
+
+
+def _service_codes(misc):
+    import tool_materials_report as M
+    key = (misc, os.path.getmtime(misc))
+    if key not in _SC_CACHE:
+        _SC_CACHE.clear()
+        _SC_CACHE[key] = M.load_service_codes(misc)
+    return _SC_CACHE[key]
+
+
+def _variations(path, f, misc=""):
+    """Totals tab: Project > Source file > Job pivot (Orig / Total /
+    Variation / Reason), the Variations_service codes lines and the item
+    rows - computed by tool_materials_report exactly as on the Excel
+    Variations sheets, for the rows under the dashboard filters."""
+    import tool_materials_report as M
+    misc = misc if misc and os.path.exists(misc) else ""
+    key = (path, os.path.getmtime(path), misc, len(f), int(pd.util.hash_pandas_object(f.index, index=False).sum()))
+    if key in _VAR_CACHE:
+        return _VAR_CACHE[key]
+    raw = _raw(path).loc[f.index]
+    sub = M.clean_dataframe(raw).rename(columns=M.NEW_TO_OLD_COLUMNS)
+    sub = sub.rename(columns={"segmentcode": "circuit", "segmentdesc": "project_name"})
+    if "item" not in sub.columns:
+        return {"error": "The master file has no description column."}
+    codes = _service_codes(misc) if misc else {}
+    data = M.variations_report_data(M.prepare_report_df(sub, service_codes=codes))
+
+    out = {"rows": data["rows"], "totals": data["totals"], "projects": data["projects"],
+           "misc": os.path.basename(misc) if misc else ""}
+    sc = data["service_codes"]
+    if codes and sc is not None:
+        out["service_codes"] = {
+            "columns": ["Service code", "Item", "qty", "qsub", "Orig (£)", "Total (£)", "Variation (£)"],
+            "rows": [[_s(c), _s(it), _n(qo), _n(qu), _n(o), _n(t), _n(v)]
+                     for c, it, qo, qu, o, t, v in sc[["_code", "item", "quantity_original", "quantity_used",
+                                                      "orig", "total", "variation"]].itertuples(index=False, name=None)],
+            "special": list(M.SPECIAL_ROWS),
+        }
+    detail = data["detail"].rename(columns={"total": "total (£)", "orig": "orig (£)"})
+    out["detail"] = _table(detail)
+    _VAR_CACHE.clear()
+    _VAR_CACHE[key] = out
+    return out
+
+
+def _pid(path, f, pid_mode="All"):
+    """Master Control's PID breakdown (dash_master), on the same rows."""
+    try:
+        import dash_master as DM
+        mdf = DM._df(path)
+    except Exception as e:
+        return None, f"The PID breakdown needs the Master .parquet file ({e})."
+    rows = mdf.loc[mdf.index.intersection(f.index)]
+    rows = rows[rows["flag"] != "other"]
+    return DM._pid_breakdown(rows, pid_mode or "All"), None
 
 
 # ---- Jobs tab: Outages Programme + work instructions for a clicked day ----

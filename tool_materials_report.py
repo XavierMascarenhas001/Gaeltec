@@ -495,8 +495,8 @@ IMG_RIGHT = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Pro
  
 # 🔥 Service codes lookup file (description -> service code).
 # Column_1 = description (same text as the master file's "description"),
-# Column_3 = service code. ⚠️ Change this path to wherever the file lives.
-SERVICE_CODES_PATH = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\miscelaneous.parquet"
+# Column_3 = service code.
+SERVICE_CODES_PATH = r"\\gaeltec-gl\Gaeltec_Network\62.OHLT.UK\03.SPEN\21.Planning\28.Project Tracker\Programs\Program files\miscelaneous.parquet"
  
 # Header used for the service code column in the exported sheets
 SERVICE_CODE_COL = "service code"
@@ -763,6 +763,56 @@ def autofit_columns(ws, start_row=2, max_width=40):
         ws.column_dimensions[col_letter].width = min(max_length + 4, max_width)
  
  
+def export_columns_for(name, extra_date_columns=None):
+    """The columns (in order) of every sheet except Summary."""
+    export_columns = [
+        "segment", "enid", "item", "comment",
+        "quantity_original", "variations", "quantity_used", "type",
+        "plan1", "done", "shire", "project",
+        "circuit", "job", 'sourcefile'
+    ]
+ 
+    # Extra date-filter columns (e.g. "plan2") go right after "done"
+    if extra_date_columns:
+        done_idx = export_columns.index("done")
+        insert_at = done_idx + 1
+        for col in extra_date_columns:
+            if col not in export_columns:
+                export_columns.insert(insert_at, col)
+                insert_at += 1
+ 
+    # 🔥 Outputs + Variations sheets: insert "total" and "orig"
+    # right after "done" and any extra date-filter columns.
+    if name in SHEETS_WITH_MONEY_COLUMNS:
+        done_idx = export_columns.index("done")
+        insert_pos = done_idx + 1
+        while insert_pos < len(export_columns) and export_columns[insert_pos] in (extra_date_columns or []):
+            insert_pos += 1
+        export_columns = export_columns[:insert_pos] + ["total", "orig"] + export_columns[insert_pos:]
+ 
+    # 🔥 "service code": right after "orig" on Outputs/Variations; on
+    # the other sheets (no money columns) it sits in the same place,
+    # right after "done" and any extra date-filter columns.
+    if "orig" in export_columns:
+        sc_pos = export_columns.index("orig") + 1
+    else:
+        sc_pos = export_columns.index("done") + 1
+        while sc_pos < len(export_columns) and export_columns[sc_pos] in (extra_date_columns or []):
+            sc_pos += 1
+    export_columns.insert(sc_pos, SERVICE_CODE_COL)
+    return export_columns
+ 
+ 
+def export_frame(df, name, extra_date_columns=None):
+    """Exactly the cells write_sheet() puts under the header of a normal sheet."""
+    df = blank_out_nans(format_excel_dates(prepare_for_excel(df)))
+    export_columns = export_columns_for(name, extra_date_columns)
+    for c in export_columns:
+        if c not in df.columns:
+            df[c] = ""
+    return df[export_columns]
+ 
+ 
 # =========================================================
 # 📤 WRITE SHEET (FINAL EXPORT LAYER)
 # =========================================================
@@ -889,41 +939,7 @@ def write_sheet(wb, name, df, agg_mode="sum", extra_date_columns=None, header_ro
     # =========================
     else:
  
-        export_columns = [
-            "segment", "enid", "item", "comment",
-            "quantity_original", "variations", "quantity_used", "type",
-            "plan1", "done", "shire", "project",
-            "circuit", "job", 'sourcefile'
-        ]
- 
-        # Extra date-filter columns (e.g. "plan2") go right after "done"
-        if extra_date_columns:
-            done_idx = export_columns.index("done")
-            insert_at = done_idx + 1
-            for col in extra_date_columns:
-                if col not in export_columns:
-                    export_columns.insert(insert_at, col)
-                    insert_at += 1
- 
-        # 🔥 Outputs + Variations sheets: insert "total" and "orig"
-        # right after "done" and any extra date-filter columns.
-        if name in SHEETS_WITH_MONEY_COLUMNS:
-            done_idx = export_columns.index("done")
-            insert_pos = done_idx + 1
-            while insert_pos < len(export_columns) and export_columns[insert_pos] in (extra_date_columns or []):
-                insert_pos += 1
-            export_columns = export_columns[:insert_pos] + ["total", "orig"] + export_columns[insert_pos:]
- 
-        # 🔥 "service code": right after "orig" on Outputs/Variations; on
-        # the other sheets (no money columns) it sits in the same place,
-        # right after "done" and any extra date-filter columns.
-        if "orig" in export_columns:
-            sc_pos = export_columns.index("orig") + 1
-        else:
-            sc_pos = export_columns.index("done") + 1
-            while sc_pos < len(export_columns) and export_columns[sc_pos] in (extra_date_columns or []):
-                sc_pos += 1
-        export_columns.insert(sc_pos, SERVICE_CODE_COL)
+        export_columns = export_columns_for(name, extra_date_columns)
  
         for c in export_columns:
             if c not in df.columns:
@@ -1088,6 +1104,56 @@ def write_variations_sheet(wb, df, extra_date_columns=None):
     return ws
  
 
+def variations_report_data(df, extra_date_columns=None):
+    """Everything on the Variations + Variations_service codes sheets, as
+    plain data (used by the dashboard). df = prepare_report_df() output.
+    Returns:
+      totals   - Orig / Total / Variation of the rows with variations != 0
+      projects - Project > Source file > Job, each with Orig / Total /
+                 Variation, jobs also with the Reason (most common comment)
+      service_codes - the Variations_service codes lines (DataFrame)
+      detail   - the item rows under the Variations pivot (DataFrame)"""
+    var = df[df["variations"] != 0].copy()
+ 
+    def clean_text(col):
+        if col not in var.columns:
+            return pd.Series("(blank)", index=var.index)
+        t = var[col].fillna("").astype(str).str.strip()
+        return t.where(~t.str.lower().isin(BLANK_TEXT), "(blank)")
+ 
+    var["_proj"] = clean_text("project")
+    var["_src"] = clean_text("sourcefile")
+    var["_job"] = clean_text("job")
+    if "comment" not in var.columns:
+        var["comment"] = ""
+ 
+    def money(frame):
+        o, t = float(frame["orig"].sum()), float(frame["total"].sum())
+        return {"orig": round(o, 2), "total": round(t, 2), "variation": round(t - o, 2)}
+ 
+    jobs = (var.groupby(["_proj", "_src", "_job"], as_index=False)
+               .agg(orig=("orig", "sum"), total=("total", "sum"), reason=("comment", most_common_comment))
+               .rename(columns={"_proj": "proj", "_src": "src", "_job": "jobname"}))
+    projects = []
+    for proj, g_p in var.groupby("_proj", sort=True):
+        sources = []
+        for src, g_s in g_p.groupby("_src", sort=True):
+            j = jobs[(jobs["proj"] == proj) & (jobs["src"] == src)].sort_values("jobname")
+            sources.append({"source": src, **money(g_s), "rows": int(len(g_s)),
+                            "jobs": [{"job": r.jobname, "orig": round(float(r.orig), 2), "total": round(float(r.total), 2),
+                                      "variation": round(float(r.total - r.orig), 2), "reason": r.reason or ""}
+                                     for r in j.itertuples(index=False)]})
+        projects.append({"project": proj, **money(g_p), "rows": int(len(g_p)), "sources": sources})
+ 
+    return {
+        "rows": int(len(var)),
+        "totals": money(var),
+        "projects": projects,
+        "service_codes": service_code_table(var) if len(var) else None,
+        "detail": export_frame(var, "Variations", extra_date_columns),
+    }
+ 
+ 
 # =========================================================
 # 🏷️ VARIATIONS BY SERVICE CODE (optional sheet)
 # =========================================================
@@ -1148,19 +1214,9 @@ def service_code_groups(p):
     return group, desc
  
  
-def write_service_code_sheet(wb, df):
-    """Variations_service codes sheet (rows with variations != 0):
-    one line per distinct service code with qty, qsub, Orig, Total and
-    Variation (Total - Orig), then the Traffic Management, Sand / Chips /
-    Miscellaneous Works and Non Free Issue material lines, then the items
-    without a code (one line each), and a GRAND TOTAL."""
- 
-    ws = wb.create_sheet(SERVICE_CODE_SHEET[:31])
- 
-    if df is None or df.empty:
-        ws.append(["No Data"])
-        return ws
- 
+def service_code_table(df):
+    """The lines of the Variations_service codes sheet (df = rows with
+    variations != 0), in sheet order."""
     p = df.copy()
     p["_code"], p["_desc"] = service_code_groups(p)
  
@@ -1183,6 +1239,23 @@ def write_service_code_sheet(wb, df):
     order = {ROW_TRAFFIC: "1a", ROW_SAND: "1b", ROW_NFI: "1c", SC_NO_CODE: "2", SC_NOT_FOUND: "3"}
     agg["_sort"] = agg["_code"].map(order).fillna("0") + agg["_code"] + "\u0001" + agg["_desc"]
     agg = agg.sort_values("_sort")
+    return agg
+ 
+ 
+def write_service_code_sheet(wb, df):
+    """Variations_service codes sheet (rows with variations != 0):
+    one line per distinct service code with qty, qsub, Orig, Total and
+    Variation (Total - Orig), then the Traffic Management, Sand / Chips /
+    Miscellaneous Works and Non Free Issue material lines, then the items
+    without a code (one line each), and a GRAND TOTAL."""
+ 
+    ws = wb.create_sheet(SERVICE_CODE_SHEET[:31])
+ 
+    if df is None or df.empty:
+        ws.append(["No Data"])
+        return ws
+ 
+    agg = service_code_table(df)
  
     headers = [SERVICE_CODE_COL, "item", "qty", "qsub", "Orig", "Total", "Variation"]
     data_cols = ["_code", "item", "quantity_original", "quantity_used", "orig", "total", "variation"]
@@ -1272,26 +1345,10 @@ def process_cv(df, mapping, cv7_poles):
     return tmp
  
  
-# =========================================================
-# 📊 EXCEL GENERATOR
-# =========================================================
-def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_date_columns=None,
-                   service_codes=None, include_service_code_sheet=False):
-    """service_codes: dict {description: code} from load_service_codes().
-    If None, it is loaded from SERVICE_CODES_PATH (if that fails, the
-    service code column is just left blank).
-    include_service_code_sheet: add the optional 'Variations_service codes' sheet."""
- 
-    output = io.BytesIO()
-    wb = Workbook()
-    wb.remove(wb.active)
- 
-    if selected_cv_groups is None:
-        selected_cv_groups = list(cv_groups.keys())
- 
-    cv_groups_norm = {normalize_cv_name(k) for k in cv_groups.keys()}
-    selected_norm = {normalize_cv_name(s) for s in selected_cv_groups}
- 
+def prepare_report_df(df, service_codes=None):
+    """The data preparation generate_excel() does before writing any sheet
+    (numbers, service codes, "job", HV pole multiplier). Shared with the
+    dashboard so its Variations figures are exactly the Excel ones."""
     # =========================
     # CLEAN INPUT
     # =========================
@@ -1370,6 +1427,31 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
  
     for col in ["quantity_original", "variations", "quantity_used"]:
         df.loc[hv_pole_mask, col] = df.loc[hv_pole_mask, col] * HV_POLE_MULTIPLIER
+ 
+    return df
+ 
+ 
+# =========================================================
+# 📊 EXCEL GENERATOR
+# =========================================================
+def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_date_columns=None,
+                   service_codes=None, include_service_code_sheet=False):
+    """service_codes: dict {description: code} from load_service_codes().
+    If None, it is loaded from SERVICE_CODES_PATH (if that fails, the
+    service code column is just left blank).
+    include_service_code_sheet: add the optional 'Variations_service codes' sheet."""
+ 
+    output = io.BytesIO()
+    wb = Workbook()
+    wb.remove(wb.active)
+ 
+    if selected_cv_groups is None:
+        selected_cv_groups = list(cv_groups.keys())
+ 
+    cv_groups_norm = {normalize_cv_name(k) for k in cv_groups.keys()}
+    selected_norm = {normalize_cv_name(s) for s in selected_cv_groups}
+ 
+    df = prepare_report_df(df, service_codes)
  
     # =========================
     # SHEETS
