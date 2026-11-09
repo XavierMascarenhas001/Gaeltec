@@ -308,7 +308,7 @@ def load(master_path, control_path):
         "master_name": os.path.basename(master_path), "control_name": os.path.basename(control_path),
         "counts": {"poles": len(poles), "free_issue": len(free_issue), "guk_items": len(guk_items),
                    "guk_subitems": len(guk_subitems), "aliases": len(aliases), "control_rows": len(control_df)},
-        "date_fields": [k for k, c in eng.DATE_FIELDS.items() if c in control_df.columns], "default_date_field": "DateToUse",
+        "date_fields": [k for k, c in eng.DATE_FIELDS.items() if c in control_df.columns], "default_date_field": eng.COMBINED_LABEL,
         "options": {k: opts[k] for k in ("district", "project", "pid", "sourcefile")},
         "network_root": eng.NETWORK_ROOT,
     }
@@ -319,11 +319,11 @@ def _distinct(series: pd.Series) -> list[str]:
     return sorted({v for v in vals if v and v.lower() != "nan"})
 
 
-def _filtered(control_df, date_field_label="DateToUse", date_from=None, date_to=None, districts=None,
+def _filtered(control_df, date_field_label=None, date_from=None, date_to=None, districts=None,
               projects=None, pids=None, sourcefiles=None, circuits=None, enids=None):
     """Same filter_control result as before; options now cascade District > Project > PID >
     Source file > Circuit > Pole (each narrowed by the ones above it)."""
-    date_field = eng.DATE_FIELDS[date_field_label]
+    date_field = eng.DATE_FIELDS.get(date_field_label) or eng.DATE_FIELDS[eng.COMBINED_LABEL]   # old "DateToUse" -> Combined date
     date_from = date_from or None
     date_to = date_to or None
     scope = eng.filter_control(control_df, date_field=date_field, date_from=date_from, date_to=date_to)
@@ -494,7 +494,7 @@ def export(master_path, control_path, out_path, filters=None, scope="All poles m
     control_df = _control(control_path)
     filters = filters or {}
     filtered, _c, _e, date_field = _filtered(control_df, **filters)
-    date_field_label = filters.get("date_field_label", "DateToUse")
+    date_field_label = filters.get("date_field_label") if filters.get("date_field_label") in eng.DATE_FIELDS else eng.COMBINED_LABEL
     st_ = _map_state(control_df, pdf_entries, filtered, log=log) if pdf_entries else None
     matched_on_maps = st_["matched"] if st_ else set()
     pole_summary_df = st_["pole_summary"] if st_ else pd.DataFrame(columns=["Pole (enid)", "On Scanned Map"])

@@ -4,11 +4,11 @@
    ====================================================================== */
 const DASHES = [
   {key: "tracker", c: "c2", icon: "grid", title: "Planning Dashboard",
-   desc: "Network jobs from the Master file, the Outages Programme calendar, mapped items, pole position and totals."},
+   desc: "Jobs, High level planning calendar, mapped items, pole position and totals."},
   {key: "master", c: "c1", icon: "pound", title: "Financial Dashboard",
-   desc: "Job costing: totals by date and team leader, PID breakdown and financial health."},
+   desc: "Totals by date and team leader, PID breakdown and finance."},
   {key: "materials", c: "c3", icon: "box3", title: "Materials Breakdown",
-   desc: "Poles, Free Issue and GUK materials for the filtered Control File, with the maps check and Excel export."},
+   desc: "Poles, Free Issue and GUK for the filtered Control File."},
 ];
 const DST = {};            // per-dashboard state, kept while you switch between them
 let PYSTAT = ["Starting Python…", "busy"];
@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 16-Oct-2026</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 09-Nov-2026</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -26,7 +26,7 @@ function dashBar(key){
   const nav = $(".nav", el);
   const tb = h(`<button class="btn sm themebtn" title="Colour theme"></button>`); tb.textContent = Theme.label();
   tb.onclick = () => { Theme.next(); tb.textContent = Theme.label(); };
-  nav.append(pyPill(), tb);
+  nav.append(guideBtn("dash/" + key, true), pyPill(), tb);
   return el;
 }
 const spinner = text => { const s = h(`<div class="dspin"><i></i><span></span></div>`); $("span", s).textContent = text; return s; };
@@ -47,7 +47,7 @@ function pageDashboard(key){
   const onFile = slot => {
     if (!P.alive()) { fileListeners.delete(onFile); return; }
     if (!def.slots.some(x => x[0] === slot)) return;
-    if (def.loadSlots.includes(slot)) P.start(); else if (P.v) P.renderTab();
+    if (def.loadSlots.includes(slot)) P.start(); else if (P.v && (def.viewSlots || []).includes(slot)) P.refresh(); else if (P.v) P.renderTab();
   };
   fileListeners.add(onFile);
 
@@ -72,18 +72,28 @@ function pageDashboard(key){
     P.fbar = filterBar(P, def.filters(P));
     const tabs = h(`<div class="dtabs" role="tablist"></div>`);
     def.tabs.forEach(t => { const b = tabBtn(t.icon, t.label); b.classList.toggle("on", t.id === st.tab);
-      b.onclick = () => { st.tab = t.id; tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); P.renderTab(); }; tabs.append(b); });
+      b.onclick = () => { st.tab = t.id; tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); P.showTab(); }; tabs.append(b); });
     P.panel = h(`<div class="dpanel"></div>`);
     P.body.append(tabs, P.fbar, P.panel);
     P.refresh();
+  };
+  /* dashboards with lazyTabs work out only the tab on screen; each tab's result is
+     kept until a filter changes, so going back to a tab is instant */
+  P.sig = () => { const a = {...def.viewArgs(P)}; delete a.tab; return JSON.stringify(a); };
+  P.showTab = () => {
+    if (!def.lazyTabs) return P.renderTab();
+    const hit = P.vc && P.vcSig === P.sig() && P.vc[st.tab];
+    if (hit){ P.v = hit; P.renderTab(); } else P.refresh();
   };
   P.refresh = async () => {
     const my = ++P.seq;
     P.panel.classList.add("loading"); P.panel.querySelectorAll(".dspin").forEach(n => n.remove()); P.panel.prepend(spinner("Updating…"));
     try {
-      const v = (await PY.call(def.viewFn, def.viewArgs(P), {needs: def.needs})).result;
+      const args = def.viewArgs(P), sig = P.sig(), tab = st.tab;
+      const v = (await PY.call(def.viewFn, args, {needs: def.needs})).result;
       if (my !== P.seq || !P.alive()) return;
       P.v = v;
+      if (def.lazyTabs){ if (P.vcSig !== sig){ P.vc = {}; P.vcSig = sig; } P.vc[tab] = v; }
       /* cascading filters: drop picks that the other filters have made impossible */
       let dropped = false;
       (def.cascade || []).forEach(([k, optKey]) => { const ok = new Set((v.options && v.options[k]) || v[optKey] || []); const keep = (st.f[k] || []).filter(x => ok.has(x)); if (keep.length !== (st.f[k] || []).length){ st.f[k] = keep; dropped = true; } });
@@ -112,9 +122,9 @@ function pageDashboard(key){
 
 function landing(P){
   const d = DASHES.find(x => x.key === P.key), def = P.def;
-  const el = h(`<div class="dland"><div><h2></h2><p>Drop the files below. They're read here in your browser – nothing is uploaded anywhere, and the files you drop are shared by all three dashboards, so a Master file dropped once works everywhere.</p><ul></ul></div><div class="zones"></div></div>`);
+  const el = h(`<div class="dland"><div><h2></h2><p>Drop the file(s) here – they stay in your browser and are shared by all three dashboards.</p><p class="lg"></p></div><div class="zones"></div></div>`);
   $("h2", el).textContent = "Load the data for " + d.title;
-  const ul = $("ul", el); (def.about || []).forEach(t => { const li = document.createElement("li"); li.textContent = t; ul.append(li); });
+  const lg = $(".lg", el); lg.append(document.createTextNode("Optional files go in the strip above. What each file is for: ")); lg.append(guideBtn("dash/" + P.key));
   const z = $(".zones", el);
   def.slots.forEach(([s, req]) => { if (req || def.landingOptional) z.append(slotZone(s, req, def.slotNotes && def.slotNotes[s])); });
   return el;
@@ -195,15 +205,16 @@ function filterBar(P, spec){
 }
 const capHTML = parts => parts.filter(Boolean).map(p => Array.isArray(p) ? `<b>${esc(p[0])}</b> ${esc(p[1] || "")}` : esc(p)).join(" · ");
 
-/* ---------- Plan2: most repeated comments in the Master for the Plan2 dates in view ---------- */
-function plan2CommentsCard(c, v){
+/* ---------- most repeated comments in the Master for the Plan2 / Plan1 dates in view ---------- */
+function plan2CommentsCard(c, v){ return planCommentsCard(c, v, "Plan2"); }
+function planCommentsCard(c, v, field){
   const wrap = h(`<div class="dgrid" style="margin-top:16px"></div>`);
-  const card = dcard("Plan2 comments — most repeated", "", 12); wrap.append(card);
-  const range = v.date_from ? `${fmtDate(v.date_from)} → ${fmtDate(v.date_to)}` : "all Plan2 dates";
+  const card = dcard(`${field} comments — most repeated`, "", 12); wrap.append(card);
+  const range = v.date_from ? `${fmtDate(v.date_from)} → ${fmtDate(v.date_to)}` : `all ${field} dates`;
   if (!c.available){ card.body.append(emptyMsg("This Master file has no comment column.")); return wrap; }
   $("p", card) || $(".tt", card).append(h(`<p></p>`));
-  $(".tt p", card).textContent = `Comments on the rows with a Plan2 date in ${range} (same filters as above) · ${intf(c.with_comment)} of ${intf(c.rows)} rows have a comment · ${intf(c.distinct)} different comments`;
-  if (!c.top.length){ card.body.append(emptyMsg("No comments on the rows with a Plan2 date in this range.")); return wrap; }
+  $(".tt p", card).textContent = `Comments on the rows with a ${field} date in ${range} (same filters as above) · ${intf(c.with_comment)} of ${intf(c.rows)} rows have a comment · ${intf(c.distinct)} different comments`;
+  if (!c.top.length){ card.body.append(emptyMsg(`No comments on the rows with a ${field} date in this range.`)); return wrap; }
   const [tc, tn, tj] = c.top[0];
   const call = h(`<div class="ctop"><div class="cq">“<span></span>”</div><div class="cm"><b></b><span></span></div></div>`);
   $(".cq span", call).textContent = tc; $(".cm b", call).textContent = `${intf(tn)} times`;
@@ -215,12 +226,12 @@ function plan2CommentsCard(c, v){
   card.body.append(holder);
   function draw(){
     holder.textContent = "";
-    if (mode === "table"){ holder.append(dtable({name: "Plan2 comments", columns: ["Comment", "Times", "Jobs", "First Plan2", "Last Plan2"], rows: c.top, height: 460})); return; }
+    if (mode === "table"){ holder.append(dtable({name: `${field} comments`, columns: ["Comment", "Times", "Jobs", `First ${field}`, `Last ${field}`], rows: c.top, height: 460})); return; }
     const host = h(`<div class="viz"></div>`); holder.append(host);
     Viz.bars(host, {labels: top.map(x => x[0]), labelMax: 420, rowH: 30, fmt: intf, valueLabel: i => `${intf(top[i][1])}×`,
       series: [{name: "Times", values: top.map(x => x[1]), color: "var(--s1)"}],
       tip: i => ({title: top[i][0], rows: [{color: "var(--s1)", name: "Times written", value: intf(top[i][1])}, {name: "Jobs", value: intf(top[i][2])},
-        {name: "Plan2 dates", value: `${fmtDate(top[i][3])} → ${fmtDate(top[i][4])}`}]})});
+        {name: `${field} dates`, value: `${fmtDate(top[i][3])} → ${fmtDate(top[i][4])}`}]})});
   }
   requestAnimationFrame(draw);
   return wrap;
@@ -244,9 +255,10 @@ DASHDEF.master = {
     if (!L.date_fields.includes(f.date_field)) f.date_field = L.default_date_field;
     f.preset = f.preset || "All time"; f.granularity = f.granularity || "Auto"; f.pid_mode = f.pid_mode || "All"; },
   viewFn: "mc_view",
+  lazyTabs: true,
   viewArgs(P){ const f = P.st.f; return {path: FILES.master.path, date_field: f.date_field, preset: f.preset, custom_from: f.custom_from || null, custom_to: f.custom_to || null,
     districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], pms: f.pms || [], sourcefiles: f.sourcefiles || [],
-    circuits: f.circuits || [], poles: f.poles || [], granularity: f.granularity, pid_mode: f.pid_mode}; },
+    circuits: f.circuits || [], poles: f.poles || [], granularity: f.granularity, pid_mode: f.pid_mode, tab: P.st.tab}; },
   cascade: [["districts"], ["projects"], ["pids"], ["pms"], ["sourcefiles"], ["circuits", "circuit_options"], ["poles", "pole_options"]],
   pre(P){
     const L = P.st.L; if (!L.other_count) return null;
@@ -403,39 +415,30 @@ function mcFinance(P, panel){
    Planning Dashboard (was Network Job Tracker)
    ====================================================================== */
 DASHDEF.tracker = {
-  slots: [["master", true], ["outages", false], ["forecast", false], ["ics", false]], loadSlots: ["master"], needs: NEED_NT,
-  about: ["Master file (.parquet or .csv) – required. The other three are optional and can be dropped any time in the strip at the top:",
-          "Outages Programme (High-level_planning_2026.xlsx) → the Jobs tab calendar with the poles & tasks for each day.",
-          "Service Partner Workbank → Pole Position.  Outage calendar (.ics) → the events list."],
+  slots: [["master", true], ["outages", false], ["forecast", false], ["ics", false], ["misc", false]], loadSlots: ["master"], viewSlots: ["misc"], needs: NEED_NT,
+  lazyTabs: true,
+  about: ["Master file (.parquet or .csv) – required. The others are optional and can be dropped any time in the strip at the top:",
+          "High level planning (High-level_planning_2026.xlsx) → the Jobs tab calendar with the poles & tasks for each day.",
+          "Service Partner Workbank → Pole Position.  Outage calendar (.ics) → the events list.",
+          "Service codes (miscelaneous.parquet) → the service codes in Totals – remembered in this browser once dropped."],
   loadFn: "nt_load", loadArgs: P => ({path: FILES.master.path, cols: P.st.cols}),
   init(P){ const st = P.st, L = st.L, f = st.f; st.cols = L.cols;
     if (L.date_fields && !L.date_fields.includes(f.date_field)) f.date_field = L.default_date_field;
-    f.preset = f.preset || "All time"; st.gran = st.gran || "Month"; st.o = st.o || {view: "calendar"}; st.fc = st.fc || {}; },
-  pre(P){
-    const L = P.st.L, wrap = h(`<div></div>`);
-    const d = h(`<details class="dmap"><summary>⚙ Column mapping – confirm each field maps to the right column in your file</summary><div class="frm"></div></details>`);
-    if (L.missing_required.length) d.open = true;
-    L.col_fields.forEach(fl => {
-      const miss = !L.cols[fl.key];
-      const fe = h(`<div class="field${miss ? " miss" : ""}"><label></label><select></select></div>`);
-      $("label", fe).textContent = fl.label + (miss ? " – pick one" : "");
-      const sel = $("select", fe); [["", "(none)"], ...L.columns.map(c => [c, c])].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); });
-      sel.value = L.cols[fl.key] || "";
-      sel.onchange = () => { P.st.cols = {...P.st.cols, [fl.key]: sel.value || null}; P.start(); };
-      $(".frm", d).append(fe);
-    });
-    const cols = h(`<p class="muted" style="font-size:12.5px;margin:10px 0 0"></p>`); cols.textContent = `Detected columns (${L.columns.length}): ${L.columns.join(", ")}`; d.append(cols);
-    wrap.append(d);
-    if (L.missing_required.length) wrap.append(note(`Couldn't guess a column for: ${L.missing_required.map(k => (L.col_fields.find(x => x.key === k) || {}).label || k).join(", ")}. Pick them under Column mapping above.`, "warn", "warn"));
-    else if (L.warn_no_pole) wrap.append(note("No pole column mapped – pole de-duplication and the pole filter are off until you pick one under Column mapping.", "warn", "warn"));
-    return wrap;
+    f.preset = f.preset || "All time"; st.gran = st.gran || "Month"; st.o = st.o || {view: "calendar"}; st.fc = st.fc || {};
+    f.pid_mode = f.pid_mode || "All"; restoreMisc(); },
+  pre(P){   /* the columns are found automatically; only say so when one can't be found */
+    const L = P.st.L;
+    if (L.missing_required.length) return note(`This Master file has no column for: ${L.missing_required.map(k => (L.col_fields.find(x => x.key === k) || {}).label || k).join(", ")}. Check it's the Master_DD-MM-YYYY file from Build Master.`, "warn", "warn");
+    if (L.warn_no_pole) return note("This Master file has no pole (enid) column – pole de-duplication and the pole filter are off.", "warn", "warn");
+    return null;
   },
   ready: P => !P.st.L.missing_required.length,
   noComments: ["forecast"],
   viewFn: "nt_view",
   ntFilters(P){ const f = P.st.f; return {date_field: f.date_field, preset: f.preset, custom_from: f.custom_from || null, custom_to: f.custom_to || null,
     districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], jobs: f.jobs || [], sourcefiles: f.sourcefiles || [], circuits: f.circuits || [], poles: f.poles || []}; },
-  viewArgs(P){ return {path: FILES.master.path, cols: P.st.cols, filters: DASHDEF.tracker.ntFilters(P), granularity: P.st.gran, detail: P.st.detail || null}; },
+  viewArgs(P){ return {path: FILES.master.path, cols: P.st.cols, filters: DASHDEF.tracker.ntFilters(P), granularity: P.st.gran, detail: P.st.detail || null,
+    misc: FILES.misc ? FILES.misc.path : "", pid_mode: P.st.f.pid_mode || "All", tab: P.st.tab}; },
   cascade: [["districts"], ["projects"], ["pids"], ["jobs"], ["sourcefiles"], ["circuits", "circuit_options"], ["poles", "pole_options"]],
   filters(P){ const L = P.st.L, o = L.options;
     const hint = "Narrowed to what the filters to its left allow.";
@@ -451,7 +454,7 @@ DASHDEF.tracker = {
     {id: "overview", label: "Overview", icon: "trend", render: ntOverview},
     {id: "jobs", label: "Jobs", icon: "cal", render: ntJobs},
     {id: "items", label: "Mapped Items", icon: "grid", render: ntItems},
-    {id: "forecast", label: "Pole Position", icon: "chart", render: ntForecast},
+    {id: "forecast", label: "Pole Position", icon: "chart", render: ntForecastAndPid},
     {id: "totals", label: "Totals", icon: "pound", render: ntTotals},
   ],
 };
@@ -488,6 +491,7 @@ function ntOverview(P, panel){
   else g.append(vizCard({title: "All pole categories (erect only)", sub: "Count by pole type", span: 12,
     draw: host => Viz.bars(host, {labels: o.poles.map(p => p.type), series: [{name: "Count", values: o.poles.map(p => p.count), color: "var(--s1)"}], fmt: intf, labelMax: 200}),
     table: () => ({name: "Pole categories", columns: ["Pole type", "Count"], rows: o.poles.map(p => [p.type, p.count])})}));
+  if (P.v.plan1_comments) panel.append(planCommentsCard(P.v.plan1_comments, P.v, "Plan1"));
 }
 const GROUP_ICON = {"Poles": "pole", "Transformers": "tx", "Conductor": "cable", "Switch gear": "switch"};
 const GROUP_IMAGE = {"Poles": "Poles", "Transformers": "Transformer", "Conductor": "Cable", "Switch gear": "Switchgear"};
@@ -516,35 +520,137 @@ function ntItems(P, panel){
     c.acts.append(sel); c.body.append(dtable(tbl(it.detail, "Details - " + chosen, {height: 380}))); g.append(c);
   }
 }
+/* the miscelaneous file dropped earlier (here or in the Outputs tool) is put back in its slot */
+function restoreMisc(){
+  if (FILES.misc || restoreMisc.tried) return;
+  restoreMisc.tried = true;
+  const saved = store.get("outputs_misc", null);
+  if (!saved || !saved.data) return;
+  fetch(saved.data).then(r => r.blob()).then(b => setSlotFile("misc", new File([b], saved.name))).catch(() => {});
+}
+/* Pole Position, with Master Control's PID breakdown underneath */
+function ntForecastAndPid(P, panel){
+  const top = h(`<div></div>`), bottom = h(`<div style="margin-top:22px"></div>`);
+  panel.append(top, bottom);
+  ntForecast(P, top);
+  bottom.append(h(`<div class="vsec"><h2>PID breakdown</h2><p>Same as Master Control › PID Breakdown, for the rows under the filters above</p></div>`));
+  if (P.v.pid_error){ bottom.append(note(P.v.pid_error, "warn", "warn")); return; }
+  P.st.f.pid_mode = P.st.f.pid_mode || "All";
+  const pid = P.v.pid || {rows: [], kpis: {}};
+  mcPid({v: {pid}, st: P.st, refresh: P.refresh}, bottom);
+}
 function ntTotals(P, panel){
   const t = P.v.totals;
-  if (t.total == null){ panel.append(note("The mapped Total column isn't in the file – pick it under Column mapping.", "warn", "warn")); return; }
-  const items = [{label: "Total value", value: money(t.total), hero: true}];
-  if (t.orig != null){ const d = t.total - t.orig; items.push({label: "Difference vs original", value: signed(d), tone: d >= 0 ? "up" : "down", note: d >= 0 ? "▲ above the original" : "▼ below the original"}, {label: "Original value", value: money(t.orig)}); }
+  if (t.total == null){ panel.append(note("The Master file has no 'total' column, so there are no totals to show.", "warn", "warn")); return; }
+  const items = [{label: "Total", value: money(t.total), hero: true}];
+  if (t.orig != null){ const d = t.total - t.orig;
+    items.push({label: "Original", value: money(t.orig)},
+               {label: "Variation", value: signed(d), tone: d >= 0 ? "up" : "down", note: d >= 0 ? "▲ total above the original" : "▼ total below the original"}); }
   const kk = kpis(items); $(".kpi.hero", kk).append(imageEl("Pound", "", "heroimg")); panel.append(kk);
+
+  const vr = t.variations || null;
+  const pivot = vr && !vr.error ? ntVarPivot(P, vr) : null;
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
+  /* click a project's bar -> open it in the Variations pivot */
+  const clickable = (card, rows) => {
+    if (!pivot) return card;
+    card.classList.add("clickrows");
+    card.body.addEventListener("click", e => { const hit = e.target.closest(".viz [data-i]"); if (hit) pivot.openProject(String(rows[+hit.dataset.i][0])); });
+    return card;
+  };
   if (t.by_project){ const r = t.by_project.rows;
-    g.append(vizCard({title: "Total value by project", sub: `${r.length} project(s) under the current filters`, span: 6,
+    g.append(clickable(vizCard({title: "Total value by project", sub: `${r.length} project(s) · click a project to open its source files below`, span: 6,
       draw: host => Viz.bars(host, {labels: r.map(x => String(x[0])), series: [{name: "Total value", values: r.map(x => x[1]), color: "var(--s1)"}], fmt: money, axis: moneyS, valueLabel: i => moneyS(r[i][1])}),
-      table: () => tbl(t.by_project, "Total value by project")})); }
+      table: () => tbl(t.by_project, "Total value by project")}), r)); }
   if (t.variance_by_project){ const r = t.variance_by_project.rows;
-    g.append(vizCard({title: "Difference by project", sub: "Total − original", span: 6,
+    g.append(clickable(vizCard({title: "Difference by project", sub: "Total − original · click a project to open it below", span: 6,
       draw: host => Viz.diverging(host, {labels: r.map(x => String(x[0])), values: r.map(x => x[1]), fmt: money, axis: moneyS, valueLabel: i => signed(r[i][1], moneyS),
         tip: i => ({title: String(r[i][0]), rows: [{color: r[i][1] >= 0 ? "var(--s1)" : "var(--s8)", name: "Difference", value: signed(r[i][1])}]})}),
-      table: () => tbl(t.variance_by_project, "Difference by project")})); }
-  if (t.variance) g.append(tableCard("Jobs where total ≠ original", `${intf(t.variance.rows.length)} rows with a variance under the current filters`, tbl(t.variance, "Jobs where total differs from original")));
-  if (t.by_job){ const r = t.by_job.rows;
-    if (r.length && r.length <= 60) g.append(vizCard({title: "Difference by job", sub: `${r.length} job(s), largest difference first`, span: 12,
-      draw: host => { const sc = h(`<div class="scrollv"></div>`); host.append(sc); Viz.diverging(sc, {labels: r.map(x => String(x[0])), values: r.map(x => x[1]), fmt: money, axis: moneyS, labelMax: 360, valueLabel: i => signed(r[i][1], moneyS),
-        tip: i => ({title: String(r[i][0]), rows: [{color: r[i][1] >= 0 ? "var(--s1)" : "var(--s8)", name: "Difference", value: signed(r[i][1])}]})}); },
-      table: () => tbl(t.by_job, "Difference by job")}));
-    else g.append(tableCard("Difference by job", `${intf(r.length)} job(s)`, tbl(t.by_job, "Difference by job")));
+      table: () => tbl(t.variance_by_project, "Difference by project")}), r)); }
+
+  if (!vr) return;
+  if (vr.error){ g.append(note(vr.error, "warn", "warn")); return; }
+  g.append(pivot);
+
+  /* Variations by service code - the Variations_service codes sheet */
+  const sc = dcard("Variations by service code", "Same as the Excel 'Variations_service codes' sheet: every service code with qty, qsub, Orig, Total and Variation, plus the Traffic Management, Sand / Chips / Miscellaneous Works and Non Free Issue material lines", 12);
+  if (vr.service_codes){
+    const s = vr.service_codes, sum = i => s.rows.reduce((a, r) => a + (r[i] || 0), 0);
+    sc.acts.append(h(`<span class="muted" style="font-size:12.5px">Codes from ${esc(vr.misc || "miscelaneous.parquet")}</span>`));
+    sc.body.append(dtable({name: "Variations by service code", columns: s.columns, rows: s.rows, signed: ["Variation (£)"], height: 520}));
+    const v = sum(6);
+    sc.body.append(h(`<div class="vgt"><b>GRAND TOTAL</b><span>qty ${esc(qty(sum(2)))}</span><span>qsub ${esc(qty(sum(3)))}</span><span>Orig ${esc(money(sum(4)))}</span><span>Total ${esc(money(sum(5)))}</span><span class="${v >= 0 ? "pos" : "neg"}">Variation ${esc(signed(v))}</span></div>`));
+  } else {
+    sc.body.append(note("Drop miscelaneous.parquet below (or in the Service codes slot at the top) to see the service codes – it's remembered in this browser, so you only drop it once."),
+                   slotZone("misc", false, "miscelaneous.parquet – Column_1 = description, Column_3 = service code"));
   }
+  g.append(sc);
+
+  /* every item - the rows under the Excel pivot */
+  const allRows = vr.detail_rows || vr.detail.rows.length, shown = vr.detail.rows.length;
+  const ec = tableCard("Variations — every item", (allRows > shown ? `Showing the first ${intf(shown)} of ${intf(allRows)} rows` : `${intf(allRows)} row(s)`) +
+    " · the same rows and columns as under the pivot on the Excel Variations sheet", tbl(vr.detail, "Variations - every item", {height: 460}));
+  if (allRows > shown){
+    const b = h(`<button class="btn sm">${ICON2.csv}<span></span></button>`); $("span", b).textContent = `Download all ${intf(allRows)} rows (CSV)`;
+    b.onclick = async () => { const lab = $("span", b), was = lab.textContent; b.disabled = true; lab.textContent = "Preparing the CSV…";
+      try { const r = await PY.call("nt_variations_csv", {path: FILES.master.path, cols: P.st.cols, filters: DASHDEF.tracker.ntFilters(P), misc: FILES.misc ? FILES.misc.path : ""}, {needs: NEED_NT});
+            (r.files || []).forEach(f => downloadBlob(f.name, f.data)); }
+      catch(e){ alert(e.message); }
+      b.disabled = false; lab.textContent = was; };
+    ec.acts.append(b);
+  }
+  g.append(ec);
 }
-/* ---- Jobs: Outages Programme calendar + .ics ---- */
+/* Project › Source file › Job, like the pivot on the Excel Variations sheet */
+function ntVarPivot(P, vr){
+  const st = P.st.vp || (P.st.vp = {open: {}});
+  const c = dcard("Variations — Project › Source file › Job",
+    `Same as the pivot on the Excel Variations sheet (rows where variations ≠ 0) · ${intf(vr.rows)} row(s) · click a project to see its source files, a source file to see its jobs and the reason`, 12);
+  const box = h(`<div class="vpiv" role="tree"></div>`);
+  const allBtn = h(`<button class="btn sm">Expand all</button>`), noneBtn = h(`<button class="btn sm">Collapse all</button>`);
+  c.acts.append(allBtn, noneBtn);
+  c.body.append(box);
+  const keyP = p => "p\u0001" + p.project, keyS = (p, s) => "s\u0001" + p.project + "\u0001" + s.source;
+  const cls = v => (v || 0) > 0 ? "pos" : (v || 0) < 0 ? "neg" : "";
+  const row = (lvl, key, label, o, reason, open, kids, extra) =>
+    `<div class="vr l${lvl}${open ? " open" : ""}${extra || ""}"${key ? ` data-k="${esc(key)}" role="treeitem" tabindex="0" aria-expanded="${open}"` : ""}>` +
+    `<span class="c0">${kids ? `<i class="tw">▸</i>` : ""}<span title="${esc(label)}">${esc(label)}</span></span>` +
+    `<span class="vn">${esc(money(o.orig))}</span><span class="vn">${esc(money(o.total))}</span>` +
+    `<span class="vn ${cls(o.variation)}">${esc(signed(o.variation))}</span><span class="reason" title="${esc(reason || "")}">${esc(reason || "")}</span></div>`;
+  function draw(){
+    const parts = [`<div class="vr vh"><span>Job</span><span class="vn">Orig</span><span class="vn">Total</span><span class="vn">Variation</span><span>Reason</span></div>`];
+    vr.projects.forEach(p => {
+      const po = !!st.open[keyP(p)];
+      parts.push(row(0, keyP(p), p.project, p, `${p.sources.length} source file${p.sources.length === 1 ? "" : "s"}`, po, true));
+      if (!po) return;
+      p.sources.forEach(s => {
+        const so = !!st.open[keyS(p, s)];
+        parts.push(row(1, keyS(p, s), s.source, s, `${s.jobs.length} job${s.jobs.length === 1 ? "" : "s"}`, so, true));
+        if (so) s.jobs.forEach(j => parts.push(row(2, "", j.job, j, j.reason, false, false)));
+      });
+    });
+    parts.push(row(9, "", "GRAND TOTAL", vr.totals, "", false, false, " vt"));
+    box.innerHTML = vr.projects.length ? parts.join("") : `<div class="empty">No rows with variations under the current filters.</div>`;
+  }
+  const toggle = k => { st.open[k] = !st.open[k]; draw(); const el = [...box.querySelectorAll("[data-k]")].find(x => x.dataset.k === k); if (el) el.focus(); };
+  box.addEventListener("click", e => { const r = e.target.closest("[data-k]"); if (r) toggle(r.dataset.k); });
+  box.addEventListener("keydown", e => { const r = e.target.closest("[data-k]"); if (r && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); toggle(r.dataset.k); } });
+  allBtn.onclick = () => { vr.projects.forEach(p => { st.open[keyP(p)] = true; p.sources.forEach(s => { st.open[keyS(p, s)] = true; }); }); draw(); };
+  noneBtn.onclick = () => { st.open = {}; draw(); };
+  c.openProject = name => {
+    const p = vr.projects.find(x => x.project === name);
+    if (!p){ box.querySelectorAll(".vmsg").forEach(n => n.remove()); const m = h(`<div class="vmsg"></div>`); m.textContent = `“${name}” has no rows with variations under the current filters.`; box.prepend(m); c.scrollIntoView({behavior: "smooth", block: "start"}); return; }
+    st.open[keyP(p)] = true; draw();
+    const el = [...box.querySelectorAll("[data-k]")].find(x => x.dataset.k === keyP(p));
+    if (el){ el.classList.add("flash"); el.scrollIntoView({behavior: "smooth", block: "center"}); setTimeout(() => el.classList.remove("flash"), 1600); }
+  };
+  draw();
+  return c;
+}
+/* ---- Jobs: High level planning calendar + .ics ---- */
 function ntJobs(P, panel){
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
-  const oc = dcard("Outages Programme 2026", "High-level_planning_2026.xlsx, sheet '2026' · click a day to see its outages and the poles & MD Poling tasks from the Master file", 12);
+  const oc = dcard("High level planning 2026", "High-level_planning_2026.xlsx, sheet '2026' · click a day to see its outages and the poles & MD Poling tasks from the Master file", 12);
   g.append(oc);
   if (!FILES.outages){ oc.body.append(slotZone("outages", false, "Drop High-level_planning_2026.xlsx – the calendar shows here")); }
   else ntOutages(P, oc);
@@ -557,7 +663,7 @@ function ntJobs(P, panel){
 }
 function ntOutages(P, card){
   const o = P.st.o, body = card.body;
-  body.append(spinner("Reading the Outages Programme…"));
+  body.append(spinner("Reading the High level planning…"));
   P.tabCall("nt_outages", {outage_path: FILES.outages.path, master_path: FILES.master.path, cols: P.st.cols, filters: DASHDEF.tracker.ntFilters(P),
     o_districts: o.districts || [], o_pms: o.pms || [], o_from: o.from || null, o_to: o.to || null, selected_date: o.date || null}, NEED_NT)
   .then(r => {
@@ -571,7 +677,7 @@ function ntOutages(P, card){
     bar.append(segc([["calendar", "Calendar"], ["table", "Table"]], o.view || "calendar", v => { o.view = v; redo(); }));
     const cnt = h(`<span class="muted" style="margin-left:auto;font-size:13px"></span>`); cnt.textContent = `${intf(r.rows)} of ${intf(r.rows_total)} outage rows`; bar.append(cnt);
     body.append(bar);
-    if ((o.view || "calendar") === "table"){ body.append(dtable({columns: r.table.columns, rows: r.table.rows, name: "Outages Programme", height: 460})); return; }
+    if ((o.view || "calendar") === "table"){ body.append(dtable({columns: r.table.columns, rows: r.table.rows, name: "High level planning", height: 460})); return; }
     const districts = [...new Set(r.events.map(e => e.district).filter(Boolean))].sort();
     const col = P.ck.assign(districts);
     if (districts.length > 1) body.append(legendEl(districts.map(d => ({name: d, color: col(d)}))));
@@ -823,7 +929,7 @@ DASHDEF.materials = {
   slotNotes: {master: "The control file: Master_DD-MM-YYYY (vN).parquet"},
   noComments: ["maps", "export"],
   loadFn: "mb_load", loadArgs: () => ({master_path: FILES.materials.path, control_path: FILES.master.path}),
-  init(P){ const f = P.st.f, L = P.st.L; if (!L.date_fields.includes(f.date_field_label)) f.date_field_label = L.default_date_field || "DateToUse";
+  init(P){ const f = P.st.f, L = P.st.L; if (!L.date_fields.includes(f.date_field_label)) f.date_field_label = L.default_date_field || "Combined date";
     P.st.scope = P.st.scope || "All poles matching filters"; P.st.pdf = P.st.pdf || []; P.st.mapsMode = P.st.mapsMode || "Manual folder(s)"; },
   viewFn: "mb_view",
   mbFilters(P){ const f = P.st.f; return {date_field_label: f.date_field_label, date_from: f.date_from || null, date_to: f.date_to || null, districts: f.districts || [], projects: f.projects || [],

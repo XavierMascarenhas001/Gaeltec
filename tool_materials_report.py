@@ -575,6 +575,22 @@ def normalize_item(x):
     return re.sub(r"\s+", " ", s)
  
  
+def _norm_items(series):
+    """Same as series.apply(normalize_item), but each distinct value is worked
+    out once (descriptions repeat a lot) - faster, identical result."""
+    cache, out = {}, []
+    for v in series.tolist() if series.dtype == object else series.astype(object).tolist():
+        k = (type(v), v)
+        try:
+            r = cache[k]
+        except KeyError:
+            r = cache[k] = normalize_item(v)
+        except TypeError:                     # unhashable value - no caching
+            r = normalize_item(v)
+        out.append(r)
+    return pd.Series(out, index=series.index, dtype=object)
+
+
 def normalise_mapping_keys(mapping):
     return {normalize_item(k): v for k, v in mapping.items()}
  
@@ -615,10 +631,16 @@ def blank_out_nans(df):
     """Replace NaN / 'nan' / 'None' style values with None so they come
     through as empty cells in Excel."""
     df = df.astype(object).where(pd.notna(df), None)
+    is_blank = lambda v: None if isinstance(v, str) and v.strip().lower() in BLANK_TEXT else v
     for col in df.columns:
-        df[col] = df[col].map(
-            lambda v: None if isinstance(v, str) and v.strip().lower() in BLANK_TEXT else v
-        )
+        s = df[col]
+        try:   # same test, once per distinct value (much faster on big sheets)
+            codes, uniq = pd.factorize(s, use_na_sentinel=True)
+            blank_u = np.fromiter((isinstance(u, str) and u.strip().lower() in BLANK_TEXT for u in uniq), dtype=bool, count=len(uniq))
+            mask = np.append(blank_u, False)[codes]
+            df[col] = s.where(~mask, None)
+        except TypeError:
+            df[col] = s.map(is_blank)
     return df
 
 
@@ -1188,7 +1210,7 @@ def service_code_groups(p):
        otherwise its service code, or a no-code label (one line per description)."""
     tm_keys = [loose_item_key(x) for x in TRAFFIC_MANAGEMENT_ITEMS]
     sand_keys = {loose_item_key(x) for x in SAND_CHIPS_MISC_ITEMS}
-    item_norm = p["item_norm"] if "item_norm" in p.columns else p["item"].apply(normalize_item)
+    item_norm = p["item_norm"] if "item_norm" in p.columns else _norm_items(p["item"])
     keys = item_norm.map(loose_item_key)
  
     is_tm = keys.map(lambda k: _starts_with_any(k, tm_keys))
@@ -1318,7 +1340,7 @@ def write_service_code_sheet(wb, df):
 def cv7_set(df, mapping):
     tmp = df.copy()
  
-    tmp["item_norm"] = tmp["item"].apply(normalize_item)
+    tmp["item_norm"] = _norm_items(tmp["item"])
     tmp["pole"] = tmp["pole"].apply(normalize_pole)
  
     keys = set(normalize_item(k) for k in mapping.keys())
@@ -1330,7 +1352,7 @@ def cv7_set(df, mapping):
 def process_cv(df, mapping, cv7_poles):
     tmp = df.copy()
  
-    tmp["item_norm"] = tmp["item"].apply(normalize_item)
+    tmp["item_norm"] = _norm_items(tmp["item"])
     tmp["pole"] = tmp["pole"].apply(normalize_pole)
  
     keys = set(normalize_item(k) for k in mapping.keys())
@@ -1375,7 +1397,7 @@ def prepare_report_df(df, service_codes=None):
     df["total"] = get_numeric_col(df, "total")
     df["orig"] = get_numeric_col(df, "orig")
  
-    df["item_norm"] = df["item"].apply(normalize_item)
+    df["item_norm"] = _norm_items(df["item"])
  
     # =========================
     # 🏷️ SERVICE CODE (looked up from the description)

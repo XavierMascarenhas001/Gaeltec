@@ -1,0 +1,25 @@
+Gaeltec Tools page - version 09-Nov-2026
+
+QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
+index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
+The header should say "version 09-Nov-2026".
+
+TO KEEP BUILDING IT YOURSELF: copy every other file in this folder into your page
+folder (next to build_page.py), replacing the old ones, then run:
+    python build_page.py
+
+These files are based on your last built page (28-Oct) - the page_template.html,
+dash_pages.js, dashboards.css and dash_core.js you had were older (16-Oct), which
+is why building from them lost features. patch_dashboard.py, patch_page_template.py
+and patch_generators.py are already included - running them again does nothing.
+
+What changed
+  - Dashboards much faster: only the tab on screen is worked out; filter changes
+    take well under a second on a 150,000-row Master.
+  - "Combined date" replaces DateToUse in all three dashboards: Done when it's today
+    or in the past, otherwise Plan1 when it's today or later.
+  - Planning > Overview: "Plan1 comments - most repeated" when Plan1 is the date field.
+  - "Outages Programme" is now "High level planning" (the High-level_planning file).
+  - Column mapping panel removed from the Planning dashboard.
+  - ? Guide button (header and dashboard bar): steps, files and tips per page.
+  - Shorter descriptions; the four intro texts on the home page are gone.

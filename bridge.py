@@ -450,11 +450,27 @@ def nt_load(path, cols=None, log=print):
     return _dash(D.load, _need(path, "Master parquet"), cols)
 
 
-def nt_view(path, cols=None, filters=None, granularity="Month", detail=None, misc="", pid_mode="All", log=print):
+def nt_view(path, cols=None, filters=None, granularity="Month", detail=None, misc="", pid_mode="All", tab=None, log=print):
     import dash_tracker as D
     # service codes for the Totals tab: the file in the dashboard's slot, or one loaded anywhere on the page
+    misc = misc if misc and os.path.exists(misc) else (_find_loaded_misc() if tab in (None, "totals") else "")
+    return _dash(D.view, _need(path, "Master parquet"), cols, filters, granularity, detail, misc=misc, pid_mode=pid_mode, tab=tab)
+
+
+def nt_variations_csv(path, cols=None, filters=None, misc="", log=print):
+    """Totals tab: every row of 'Variations - every item' as a CSV download."""
+    import dash_tracker as D
     misc = misc if misc and os.path.exists(misc) else _find_loaded_misc()
-    return _dash(D.view, _need(path, "Master parquet"), cols, filters, granularity, detail, misc=misc, pid_mode=pid_mode)
+    out = os.path.join(_outdir(), f"Variations_every_item_{datetime.now():%Y-%m-%d_%H%M}.csv")
+    return _dash(D.variations_csv, _need(path, "Master parquet"), cols, filters, misc, out)
+
+
+def warmup(log=print):
+    """Called by the page once Python is up: loads pandas' parquet reader and the
+    dashboard modules in the background, so the first file you open is quicker."""
+    import pyarrow.parquet  # noqa: F401
+    import dash_tracker, dash_master  # noqa: F401
+    return True
 
 
 def nt_outages(outage_path, master_path=None, cols=None, filters=None, log=print, **kw):
@@ -471,3 +487,179 @@ def nt_ics(ics_path, log=print):
 def nt_forecast(path, log=print, **kw):
     import dash_tracker as D
     return _dash(D.forecast, _need(path, "Service Partner Workbank"), **kw)
+
+
+# ---------------------------------------------------------------------------
+# Generators <-> High-level planning (tool_generator_sync.py - the same file
+# that runs in Jupyter). The page calls these one after the other:
+#   gs_probe -> gs_load -> gs_days -> gs_preview -> gs_apply
+# The two workbooks stay decrypted in memory between calls; after an Apply
+# the updated copy is kept, so a second run continues from it (dropping a
+# new file replaces it).
+# ---------------------------------------------------------------------------
+_GS = {}
+
+
+def _gs_is_encrypted(path):
+    with open(path, "rb") as f:
+        return f.read(4) != b"PK\x03\x04"
+
+
+def gs_probe(tracker="", planning="", log=print):
+    """Which of the dropped workbooks are password protected (the page then
+    loads the decryption package only when it's actually needed)."""
+    out = {}
+    for key, path in (("tracker", tracker), ("planning", planning)):
+        out[key] = {"encrypted": bool(path and os.path.exists(path) and _gs_is_encrypted(path))}
+    return out
+
+
+def _gs_status():
+    import tool_generator_sync as G
+    s = {}
+    t = _GS.get("trk")
+    if t:
+        s["tracker"] = (f"{_GS['trk_name']}{' (protected)' if _GS['trk_enc'] else ''} – {len(t['rows'])} rows, "
+                        f"next free row {t['last_used_row'] + 1}")
+    p = _GS.get("plan")
+    if p:
+        s["planning"] = (f"{_GS['plan_name']}{' (protected)' if _GS['plan_enc'] else ''} – {len(p['rows'])} outages "
+                         f"on sheets {', '.join(p['sheets'])}")
+    return s
+
+
+def gs_load(tracker="", planning="", password="", log=print):
+    import tool_generator_sync as G
+    _need(tracker, "Generator Tracker")
+    _need(planning, "High-level planning workbook")
+    for key, path, reader in (("trk", tracker, G.read_tracker), ("plan", planning, G.read_planning)):
+        stamp = (path, os.path.getmtime(path), password if _gs_is_encrypted(path) else "")
+        if _GS.get(key + "_stamp") == stamp:
+            continue  # same file (and password) as last time - keep it, incl. any applied changes
+        label = "Generator Tracker" if key == "trk" else "High-level planning"
+        raw = open(path, "rb").read()
+        if raw[:4] != b"PK\x03\x04" and not password:
+            raise UserError(f"The {label} ({os.path.basename(path)}) is password protected – type the password and click Read files.")
+        try:
+            plain, enc = G.decrypt_if_needed(raw, password)
+            data = reader(plain)
+        except RuntimeError as e:
+            raise UserError(f"{label}: {e}")
+        log(f"Read {label}: {os.path.basename(path)}")
+        _GS.update({key: data, key + "_plain": plain, key + "_enc": enc, key + "_name": os.path.basename(path),
+                    key + "_stamp": stamp})
+    _GS["password"] = password
+    _GS.pop("plan_res", None)
+    return _gs_status()
+
+
+def _gs_ready():
+    if not (_GS.get("trk") and _GS.get("plan")):
+        raise UserError("Drop both workbooks and click Read files first.")
+
+
+def gs_days(task=1, date_from="", date_to="", log=print):
+    import tool_generator_sync as G
+    _gs_ready()
+    try:
+        a = datetime.strptime(date_from[:10], "%Y-%m-%d").date()
+        b = datetime.strptime(date_to[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise UserError("Choose both dates (From and To).")
+    a, b = min(a, b), max(a, b)
+    task = int(task)
+    cands = G.candidates_task1(_GS["plan"], a, b) if task == 1 else G.candidates_task2(_GS["trk"], a, b)
+    _GS["cands"] = {c["_id"]: c for c in cands}
+    _GS["task"] = task
+    _GS.pop("plan_res", None)
+    days = {}
+    for c in cands:
+        d = days.setdefault(c["_date"], {"date": c["_date"].isoformat(), "label": c["_date"].strftime("%a %d %b %Y"), "items": []})
+        d["items"].append({"id": c["_id"], "label": c["_label"]})
+    return {"days": list(days.values())}
+
+
+def gs_preview(task=1, ids=None, log=print):
+    import tool_generator_sync as G
+    _gs_ready()
+    if int(task) != _GS.get("task"):
+        raise UserError("The task was changed – click Show days & outages again.")
+    items = [_GS["cands"][i] for i in ids or [] if i in _GS.get("cands", {})]
+    if not items:
+        raise UserError("Tick at least one day (and outage).")
+    res = G.plan_task1(items, _GS["trk"]) if _GS["task"] == 1 else G.plan_task2(items, _GS["plan"])
+    _GS["plan_res"] = res
+    df = G.preview_frame(res)
+    df = df.astype(object).where(df.notna(), "")
+    conflicts = []
+    for i, it in enumerate(res["items"]):
+        if not it["conflict"]:
+            continue
+        if res["task"] == 1:
+            conflicts.append({"i": i, "where": it["where"], "current": it["current"], "new": it["new"]})
+        else:
+            conflicts.append({"i": i, "where": f"{it['sheet']}!{it['col']}{it['row']} ({it['field']}) · {it['date']} "
+                                                f"{it['outage']} {it['circuit']}".strip(),
+                              "current": it["current"], "new": it["new"]})
+    n_conf = len(conflicts)
+    if res["task"] == 1:
+        n_new = len(res["items"]) - n_conf
+        summary = (f"{n_new} outage(s) will be added to the Generators table starting at row "
+                   f"{_GS['trk']['last_used_row'] + 1}; {n_conf} already in the tracker.")
+        choices = G.T1_CHOICES
+    else:
+        n_w = sum(1 for it in res["items"] if not it["conflict"] and not it["same"])
+        summary = (f"{n_w} empty cell(s) will be filled; {n_conf} cell(s) already have information; "
+                   f"{len(res['unmatched'])} outage(s) could not be matched.")
+        choices = G.T2_CHOICES
+    return {
+        "summary": summary,
+        "columns": [str(c) for c in df.columns],
+        "rows": [[str(v).replace("\n", "  ⏎  ") for v in r] for r in df.values.tolist()],
+        "conflicts": conflicts,
+        "choices": [{"label": l, "value": v} for l, v in choices],
+        "can_apply": any(not it.get("same") for it in res["items"]),
+    }
+
+
+def gs_apply(choices=None, log=print):
+    import tool_generator_sync as G
+    res = _GS.get("plan_res")
+    if not res:
+        raise UserError("Click Preview first.")
+    choices = {int(k): v for k, v in (choices or {}).items() if v}
+    undecided = [it for i, it in enumerate(res["items"]) if it["conflict"] and i not in choices]
+    if undecided:
+        raise UserError(f"Choose what to do for the {len(undecided)} item(s) that already have information "
+                        f"(or use 'Set all to').")
+    pwd = _GS.get("password", "")
+    if res["task"] == 1:
+        edits, summary = G.build_edits_task1(res, choices, _GS["trk"])
+        if not edits:
+            raise UserError("Nothing to write – everything was kept as it is.")
+        plain, wlog = G.apply_task1(_GS["trk_plain"], edits)
+        final = G.encrypt(plain, pwd) if _GS["trk_enc"] else plain
+        name = _GS["trk_name"]
+        _GS.update(trk_plain=plain, trk=G.read_tracker(plain))
+    else:
+        edits, summary = G.build_edits_task2(res, choices)
+        if not edits:
+            raise UserError("Nothing to write – everything was kept as it is.")
+        plain, wlog = G.apply_task2(_GS["plan_plain"], edits)
+        final = G.encrypt(plain, pwd) if _GS["plan_enc"] else plain
+        name = _GS["plan_name"]
+        _GS.update(plan_plain=plain, plan=G.read_planning(plain))
+    _GS.pop("plan_res", None)
+    for line in wlog:
+        log("• " + line)
+    for s in summary:
+        log(" · ".join(f"{v}" for v in s.values()).replace("\n", "  ⏎  "))
+    stem, ext = os.path.splitext(name)
+    out = os.path.join(_outdir(), f"{stem}_updated_{datetime.now():%Y-%m-%d_%H%M}{ext or '.xlsx'}")
+    with open(out, "wb") as f:
+        f.write(final)
+    return [out]
+
+
+def gs_status(log=print):
+    return _gs_status()

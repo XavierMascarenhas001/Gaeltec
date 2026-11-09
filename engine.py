@@ -24,11 +24,25 @@ except ImportError:
     fitz = None
 
 DATE_FIELDS = {
+    "Combined date": "combined",
     "Plan1": "plan1",
     "Plan2": "plan2",
     "Done": "done",
-    "DateToUse": "datetouse",
 }
+COMBINED_LABEL = "Combined date"
+
+
+def combined_date(done, plan1, today=None):
+    """'Combined date' (replaces DateToUse in the dashboards): the Done date when
+    it's today or in the past, otherwise the Plan1 date when it's today or in the
+    future. A row with neither (e.g. Plan1 already passed but not done yet) has
+    no combined date. Placeholder ~1900 dates count as no date."""
+    t = pd.Timestamp(today if today is not None else pd.Timestamp.today()).normalize()
+    d = pd.to_datetime(done, errors="coerce")
+    p = pd.to_datetime(plan1, errors="coerce")
+    d = d.where(d.dt.year > 1901)
+    p = p.where(p.dt.year > 1901)
+    return d.where(d.dt.normalize() <= t).combine_first(p.where(p.dt.normalize() >= t))
 
 # ---------------------------------------------------------------------------
 # Default network locations
@@ -126,6 +140,9 @@ def load_control_file(path: str | Path) -> pd.DataFrame:
     for col in ("district", "project", "circuit", "cat"):
         if col in df.columns:
             df[col] = df[col].astype("string")
+    if "done" in df.columns or "plan1" in df.columns:
+        df["combined"] = combined_date(df.get("done", pd.Series(pd.NaT, index=df.index)),
+                                       df.get("plan1", pd.Series(pd.NaT, index=df.index)))
     return df
 
 

@@ -204,6 +204,35 @@ body.dashmode main{max-width:1560px;padding:0 22px 70px}
 .dt td.pos{color:var(--up)}.dt td.neg{color:var(--down)}
 .dt .foot{display:flex;justify-content:center}
 
+/* Totals: Variations pivot (Project > Source file > Job) */
+.clickrows .viz .hit{cursor:pointer}
+.vpiv{border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:720px}
+.vpiv .vr{display:grid;grid-template-columns:minmax(220px,1.4fr) 118px 118px 118px minmax(160px,1.2fr);gap:12px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line);font-size:13px;min-width:720px}
+.vpiv .vr:last-child{border-bottom:0}
+.vpiv .vh{position:sticky;top:0;z-index:1;background:var(--card);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.vpiv .c0{display:flex;gap:6px;align-items:center;min-width:0}
+.vpiv .c0 span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vpiv .tw{font-style:normal;display:inline-block;width:12px;color:var(--muted);transition:transform .12s}
+.vpiv .open > .c0 .tw{transform:rotate(90deg)}
+.vpiv .l0{background:var(--acc-soft);font-weight:700;cursor:pointer}
+.vpiv .l1{font-weight:650;cursor:pointer}
+.vpiv .l1 .c0{padding-left:20px}
+.vpiv .l2 .c0{padding-left:46px}
+.vpiv .l2{color:var(--ink2)}
+.vpiv .l0:hover,.vpiv .l1:hover{background:color-mix(in srgb,var(--acc2) 14%,var(--card))}
+.vpiv [data-k]:focus-visible{outline:2px solid var(--acc2);outline-offset:-2px}
+.vpiv .vt{background:var(--acc);color:#fff;font-weight:700}
+.vpiv .vt .vn.pos,.vpiv .vt .vn.neg{color:#fff}
+.vpiv .vn{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.vpiv .vn.pos,.vgt .pos{color:var(--up)}
+.vpiv .vn.neg,.vgt .neg{color:var(--down)}
+.vpiv .reason{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.vpiv .vr.flash{box-shadow:inset 4px 0 0 var(--acc2);background:color-mix(in srgb,var(--acc2) 22%,var(--card))}
+.vpiv .vmsg{padding:10px 12px;background:color-mix(in srgb,var(--warning) 16%,var(--card));font-size:13px}
+.vgt{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-top:10px;padding:9px 12px;border-radius:10px;background:var(--acc-soft);font-size:13.5px;font-variant-numeric:tabular-nums}
+.vsec h2{margin:0;font-size:20px}
+.vsec p{margin:2px 0 14px;color:var(--muted);font-size:13.5px}
+
 /* PID breakdown */
 .pidlist{display:flex;flex-direction:column;gap:2px}
 .pidg1{background:var(--acc);color:#fff;border-radius:9px;padding:8px 14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;font-size:13px;display:flex;justify-content:space-between;margin-top:12px}

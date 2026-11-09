@@ -540,12 +540,20 @@ def build_pole_task_table(day_df: pd.DataFrame, item_col: str, qsub_col: str, po
     out["Pole"] = out["Pole"].astype(str)
     return out
 
+def _per_unique(s: pd.Series, fn) -> pd.Series:
+    """fn(s) worked out once per distinct value and copied back - same result as
+    fn(s) (fn treats every value on its own), far fewer regex calls."""
+    codes, uniq = pd.factorize(s, use_na_sentinel=True)
+    done_ = fn(pd.Series(list(uniq) + [None], dtype=object)).to_numpy(dtype=object)
+    return pd.Series(done_[codes], index=s.index, dtype=object)   # code -1 (blank) -> fn(None)
+
+
 def process_data(df: pd.DataFrame, cols: dict) -> pd.DataFrame:
     df = df.copy()
     item_col = cols["item_col"]
     qsub_col = cols["qsub_col"]
 
-    df["_item_norm"] = normalize_item_series(df[item_col])
+    df["_item_norm"] = _per_unique(df[item_col], normalize_item_series)
 
     df["_qsub_raw"] = pd.to_numeric(df[qsub_col], errors="coerce").fillna(0).astype("float32")
 
@@ -562,13 +570,13 @@ def process_data(df: pd.DataFrame, cols: dict) -> pd.DataFrame:
 
     pole_col = cols.get("pole_col")
     if pole_col and pole_col in df.columns:
-        df["_pole_norm"] = normalize_pole_series(df[pole_col])
+        df["_pole_norm"] = _per_unique(df[pole_col], normalize_pole_series)
     else:
         df["_pole_norm"] = ""
 
     job_col = cols.get("job_col")
     if job_col and job_col in df.columns:
-        df["_job_clean"] = clean_job_series(df[job_col])
+        df["_job_clean"] = _per_unique(df[job_col], clean_job_series)
     else:
         df["_job_clean"] = ""
 
@@ -644,22 +652,27 @@ def load_forecast_workbook(file_bytes: bytes, sheet_name: str):
 # drawing widgets.
 # ============================================================
 PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month", "This year", "Last year", "Custom range"]
-DATE_FIELD_OPTIONS = {"Plan1": "plan1", "Plan2": "plan2", "Done": "done", "DateToUse": "datetouse"}
+# "Combined date" replaces DateToUse: Done when it's today/past, otherwise Plan1 when it's today/future
+# (engine.combined_date). The column is added to the Master when it's read.
+COMBINED = "Combined date"
+DATE_FIELD_OPTIONS = {COMBINED: "combined", "Plan1": "plan1", "Plan2": "plan2", "Done": "done"}
 UNPLANNED = "Unplanned"   # rows with no Plan1 and no Done date
+COMMENT_FIELDS = {"Plan1", "Plan2"}   # date fields that show the "most repeated comments" card
 
 # ---- Cascading filters: each one only offers what the filters before it allow ----
 _BLANK_OPT = {"", "nan", "none", "<na>", "nat"}
 
 
-def cascade_options(df, base_mask, order, selections):
-    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level)."""
+def cascade_options(df, base_mask, order, selections, strs=None):
+    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level).
+    strs(col), when given, returns df[col].astype(str).str.strip() from a cache."""
     mask = base_mask.copy()
     opts = {}
     for key, col in order:
         if not col or col not in df.columns:
             opts[key] = []
             continue
-        col_s = df[col].astype(str).str.strip()
+        col_s = strs(col) if strs else df[col].astype(str).str.strip()
         opts[key] = sorted({v for v in col_s[mask].unique() if isinstance(v, str) and v.lower() not in _BLANK_OPT})
         sel = selections.get(key) or []
         if sel:
@@ -721,7 +734,7 @@ COL_FIELDS = [  # (key, label, guesses)
     ("total_col", "Total value", ("total",)),
     ("orig_col", "Original value", ("orig", "original")),
     ("job_col", "Job", ("job", "sourcefile")),
-    ("date_col", "Date", ("datetouse", "date", "plan1", "done")),
+    ("date_col", "Date", ("combined", "datetouse", "date", "plan1", "done")),
 ]
 REQUIRED = ["item_col", "qsub_col", "district_col", "circuit_col"]
 
@@ -759,8 +772,22 @@ def _cell(v):
     return _s(v)
 
 
+def _col_cells(s):
+    """One column -> the same values _cell() gives, a whole column at a time
+    (plain numbers and dates are converted in bulk; anything else cell by cell)."""
+    dt = s.dtype
+    if dt.kind in "iuf" and not isinstance(dt, pd.api.extensions.ExtensionDtype):
+        return [None if x != x else round(float(x), 2) for x in s.tolist()]
+    if dt.kind == "M" and getattr(dt, "tz", None) is None:
+        txt = s.dt.strftime("%Y-%m-%d")
+        return ["" if x is None or x != x else x for x in txt.tolist()]
+    vals = s.tolist() if dt == object else list(s)
+    return [v if type(v) is str else _cell(v) for v in vals]   # plain text is already what _cell gives
+
+
 def _table(df):
-    return {"columns": [str(c) for c in df.columns], "rows": [[_cell(v) for v in r] for r in df.itertuples(index=False)]}
+    cols = [_col_cells(df.iloc[:, i]) for i in range(df.shape[1])]
+    return {"columns": [str(c) for c in df.columns], "rows": [list(r) for r in zip(*cols)] if cols else []}
 
 
 def load_master_from_network(path_str: str):
@@ -780,12 +807,28 @@ def load_master_from_network(path_str: str):
 def _raw(path):
     key = (path, os.path.getmtime(path))
     if key not in _RAW:
-        _RAW.clear(); _PROC.clear()
+        _RAW.clear(); _PROC.clear(); _DERIVED.clear()
         df, err = load_master_from_network(path)
         if err:
             raise ValueError(f"Couldn't read {os.path.basename(path)} - it may be corrupted.\n\nDetails: {err}")
+        if ("done" in df.columns or "plan1" in df.columns) and "combined" not in df.columns:
+            from engine import combined_date
+            df["combined"] = combined_date(df["done"] if "done" in df.columns else pd.Series(pd.NaT, index=df.index),
+                                           df["plan1"] if "plan1" in df.columns else pd.Series(pd.NaT, index=df.index))
         _RAW[key] = df
     return _RAW[key]
+
+
+# Per-file results that every filter change re-used to recompute (parsed date
+# fields, stripped text of the filter columns) - worked out once, then reused.
+_DERIVED = {}
+
+
+def _derived(df, kind, name, make):
+    key = (id(df), kind, name)
+    if key not in _DERIVED:
+        _DERIVED[key] = make()
+    return _DERIVED[key]
 
 
 def _clean_cols(raw_df, cols):
@@ -800,12 +843,14 @@ def _clean_cols(raw_df, cols):
 
 
 def _proc(path, cols):
+    """The processed Master (cached). Not copied any more - nothing below
+    changes it in place; the filtered rows are copied instead."""
     raw_df = _raw(path)
     key = (path, tuple(sorted((k, v or "") for k, v in cols.items())))
     if key not in _PROC:
-        _PROC.clear()
+        _PROC.clear(); _DERIVED.clear()
         _PROC[key] = process_data(raw_df, cols)
-    return _PROC[key].copy()
+    return _PROC[key]
 
 
 def load(path, cols=None):
@@ -822,15 +867,9 @@ def load(path, cols=None):
     if missing_required:
         return res
     df = _proc(path, cols)
-    available = []
-    for label, col in DATE_FIELD_OPTIONS.items():
-        if col in df.columns:
-            parsed = pd.to_datetime(df[col], errors="coerce")
-            parsed = parsed.where(parsed.dt.year > 1901)
-            if parsed.notna().any():
-                available.append(label)
+    available = [label for label in _available_dates(df)]
     res["date_fields"] = available + ([UNPLANNED] if "plan1" in df.columns or "done" in df.columns else [])
-    res["default_date_field"] = "DateToUse" if "DateToUse" in available else (available[0] if available else None)
+    res["default_date_field"] = COMBINED if COMBINED in available else (available[0] if available else None)
 
     def opts(col):
         return sorted(df[col].dropna().astype(str).unique()) if col and col in df.columns else []
@@ -839,17 +878,25 @@ def load(path, cols=None):
     return res
 
 
+def _available_dates(frame):
+    """{label: parsed dates} for the date fields that have at least one real date
+    (placeholder ~1900 dates count as none) - parsed once per file."""
+    def make():
+        out = {}
+        for label, col in DATE_FIELD_OPTIONS.items():
+            if col in frame.columns:
+                parsed = pd.to_datetime(frame[col], errors="coerce")
+                parsed = parsed.where(parsed.dt.year > 1901)
+                if parsed.notna().any():
+                    out[label] = parsed
+        return out
+    return _derived(frame, "dates", "", make)
+
+
 def _date_pick(frame, date_field, preset, custom_from, custom_to):
     """pick_date_field_and_range - same field/preset/clip logic."""
-    field_options = DATE_FIELD_OPTIONS
     fallback_series = frame["_date"]
-    available = {}
-    for label, col in field_options.items():
-        if col in frame.columns:
-            parsed = pd.to_datetime(frame[col], errors="coerce")
-            parsed = parsed.where(parsed.dt.year > 1901)
-            if parsed.notna().any():
-                available[label] = parsed
+    available = _available_dates(frame)
     if not available:
         if fallback_series is None or fallback_series.isna().all():
             return fallback_series, None, None
@@ -860,7 +907,7 @@ def _date_pick(frame, date_field, preset, custom_from, custom_to):
         except ValueError:
             return fallback_series, col_min.date(), col_max.date()
     labels = list(available.keys())
-    chosen_label = date_field if date_field in labels else ("DateToUse" if "DateToUse" in labels else labels[0])
+    chosen_label = date_field if date_field in labels else (COMBINED if COMBINED in labels else labels[0])
     dates = available[chosen_label]
     if preset in CAL_PRESETS:
         return (dates, *calendar_range(preset))
@@ -910,22 +957,23 @@ def _filtered(path, cols, filters):
     pole_col, pid_col, job_col = cols.get("pole_col"), cols.get("pid_col"), cols.get("job_col")
     unplanned = fl.get("date_field") == UNPLANNED
     if unplanned:
-        base = _real_dates(df, "plan1").isna() & _real_dates(df, "done").isna()
-        df["_date"] = pd.Series(pd.NaT, index=df.index)
+        base = _derived(df, "unplanned", "", lambda: _real_dates(df, "plan1").isna() & _real_dates(df, "done").isna())
+        dates = pd.Series(pd.NaT, index=df.index)
         date_range = None
     else:
-        _dates_active, _date_from_picked, _date_to_picked = _date_pick(
+        dates, _date_from_picked, _date_to_picked = _date_pick(
             df, fl.get("date_field"), fl.get("preset", "All time"), fl.get("custom_from"), fl.get("custom_to"))
-        df["_date"] = _dates_active
         date_range = (_date_from_picked, _date_to_picked) if _date_from_picked is not None and _date_to_picked is not None else None
         base = pd.Series(True, index=df.index)
         if date_range:
             _start, _end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-            base &= df["_date"].between(_start, _end)
+            base &= dates.between(_start, _end)
     order = [("districts", district_col), ("projects", project_col), ("pids", pid_col), ("jobs", job_col),
              ("sourcefiles", "sourcefile"), ("circuits", circuit_col), ("poles", pole_col)]
-    options, mask = cascade_options(df, base, order, fl)
+    options, mask = cascade_options(df, base, order, fl,
+                                    strs=lambda col: _derived(df, "str", col, lambda: df[col].astype(str).str.strip()))
     f = df[mask].copy()
+    f["_date"] = dates[mask]
     return df, f, cols, {"options": options, "circuit_options": options["circuits"], "pole_options": options["poles"],
                          "unplanned": unplanned,
                          "date_from": _s(date_range[0]) if date_range else "", "date_to": _s(date_range[1]) if date_range else "",
@@ -941,12 +989,40 @@ def metric_value(cat_name, total_qty):
     return f"{total_qty:,.0f}"
 
 
-def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="", pid_mode="All"):
+# Which parts of the page each tab needs. The page asks only for the tab on
+# screen, so a filter change no longer rebuilds every tab (the Totals
+# variations report alone was ~85% of the time).
+TAB_SECTIONS = {"overview": {"overview"}, "jobs": set(), "items": {"items"},
+                "totals": {"totals"}, "forecast": {"pid"}}
+ALL_SECTIONS = {"overview", "items", "totals", "pid"}
+
+
+def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="", pid_mode="All", tab=None):
     df, f, cols, meta = _filtered(path, cols, filters)
     district_col, project_col, circuit_col = cols["district_col"], cols["project_col"], cols["circuit_col"]
     res = dict(meta)
+    want = TAB_SECTIONS.get(tab, ALL_SECTIONS) if tab else ALL_SECTIONS   # no tab = everything, as before
+    res["tab"], res["sections"] = tab, sorted(want)
+    date_field = (filters or {}).get("date_field")
 
-    # ---- Overview ----
+    # ---- Most repeated comments: Plan2 on every tab, Plan1 on the Overview ----
+    job_for_comments = "_job_clean" if "_job_clean" in f.columns else cols["job_col"]
+    res["plan2_comments"] = plan2_comments(f, "_date", "comment", job_for_comments) if date_field == "Plan2" else None
+    res["plan1_comments"] = (plan2_comments(f, "_date", "comment", job_for_comments)
+                             if date_field == "Plan1" and "overview" in want else None)
+    if "overview" in want:
+        _overview(res, f, cols, filters, granularity, meta)
+    if "items" in want:
+        _items(res, f, cols, detail)
+    if "totals" in want:
+        _totals(res, path, f, cols, misc)
+    if "pid" in want:
+        res["pid"], res["pid_error"] = _pid(path, f, pid_mode)
+    return res
+
+
+def _overview(res, f, cols, filters, granularity, meta):
+    district_col, project_col, circuit_col = cols["district_col"], cols["project_col"], cols["circuit_col"]
     recover_keys = {normalize_item(k) for k in CV7_recover}
     recover_df = f[f["_item_norm"].isin(recover_keys)]
     recover_total = recover_df["_qsub_adj"].sum()
@@ -966,8 +1042,6 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
             pole_rows.append({"Pole type": POLE_DISPLAY_NAMES.get(cat_name, cat_name), "Count": sub["_qsub_adj"].sum()})
     pole_summary = pd.DataFrame(pole_rows)
     pole_total = pole_summary["Count"].sum() if not pole_summary.empty else 0
-    res["plan2_comments"] = (plan2_comments(f, "_date", "comment", "_job_clean" if "_job_clean" in f.columns else cols["job_col"])
-                             if (filters or {}).get("date_field") == "Plan2" else None)
     if meta.get("unplanned"):
         by_col = circuit_col if (filters or {}).get("projects") else project_col
         by_name = "Circuit" if (filters or {}).get("projects") else "Project"
@@ -991,7 +1065,9 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
     res["overview"] = {"recover_total": _n(recover_total), "trend": trend, "pole_total": _n(pole_total),
                        "poles": [{"type": r["Pole type"], "count": _n(r["Count"])} for r in pole_rows]}
 
-    # ---- Mapped items ----
+
+def _items(res, f, cols, detail):
+    district_col, circuit_col = cols["district_col"], cols["circuit_col"]
     cv7_poles = cv7_dedupe_poles(f)
     all_card_data = []
     grouped_cat_names = {c for group in CARD_GROUPS for c in group.get("categories", [])}
@@ -1034,7 +1110,9 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
     res["items"] = {"groups": groups, "other": [{"name": c, "label": c, "value": metric_value(c, q)} for c, q, _s2 in remaining_cards],
                     "detail_names": names, "detail": detail_table}
 
-    # ---- Totals ----
+
+def _totals(res, path, f, cols, misc):
+    district_col, project_col, circuit_col = cols["district_col"], cols["project_col"], cols["circuit_col"]
     tot = {"total": None, "orig": None}
     total_val = pd.to_numeric(f[cols["total_col"]], errors="coerce").sum() if cols["total_col"] in f.columns else None
     orig_val = pd.to_numeric(f[cols["orig_col"]], errors="coerce").sum() if cols["orig_col"] in f.columns else None
@@ -1050,20 +1128,8 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
     if total_val is not None and orig_val is not None:
         f["_row_variance"] = pd.to_numeric(f[cols["total_col"]], errors="coerce") - pd.to_numeric(f[cols["orig_col"]], errors="coerce")
         variance_rows = f[f["_row_variance"] != 0]
-        variance_table = pd.DataFrame({
-            "District": variance_rows[district_col],
-            "Job": variance_rows["_job_clean"],
-            "Circuit": variance_rows[circuit_col],
-            "Difference (£)": variance_rows["_row_variance"],
-        })
-        tot["variance"] = _table(variance_table.sort_values("Difference (£)", key=abs, ascending=False))
-        by_job = (
-            variance_rows.assign(Job=variance_rows["_job_clean"])
-            .groupby("Job")["_row_variance"].sum().reset_index()
-            .rename(columns={"_row_variance": "Difference (£)"})
-            .sort_values("Difference (£)", key=abs, ascending=False)
-        )
-        tot["by_job"] = _table(by_job)
+        # (the old "Jobs where total ≠ original" / "Difference by job" tables were
+        # replaced on the page by the Variations pivot below - no longer built/sent)
         if project_col in variance_rows.columns:
             by_project = (
                 variance_rows.groupby(project_col)["_row_variance"].sum().reset_index()
@@ -1078,14 +1144,12 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
         tot["variations"] = {"error": f"Couldn't build the variations: {e}"}
     res["totals"] = tot
 
-    # ---- PID breakdown (Master Control), for the rows under these filters ----
-    res["pid"], res["pid_error"] = _pid(path, f, pid_mode)
-    return res
-
 
 # ---- Variations (Totals tab) - built by the Outputs tool's own code ----
 _VAR_CACHE = {}
+_VAR_DETAIL = {}    # the full "every item" table, for the Download all rows (CSV) button
 _SC_CACHE = {}
+DETAIL_LIMIT = 2000  # rows of "Variations - every item" sent to the page (the rest via the CSV download)
 
 
 def _service_codes(misc):
@@ -1127,10 +1191,24 @@ def _variations(path, f, misc=""):
             "special": list(M.SPECIAL_ROWS),
         }
     detail = data["detail"].rename(columns={"total": "total (£)", "orig": "orig (£)"})
-    out["detail"] = _table(detail)
-    _VAR_CACHE.clear()
+    out["detail"] = _table(detail.head(DETAIL_LIMIT))
+    out["detail_rows"] = int(len(detail))
+    _VAR_CACHE.clear(); _VAR_DETAIL.clear()
     _VAR_CACHE[key] = out
+    _VAR_DETAIL[key] = detail
     return out
+
+
+def variations_csv(path, cols, filters, misc, out_path):
+    """Every row of 'Variations - every item' for the current filters, as a CSV
+    (the page shows the first DETAIL_LIMIT rows)."""
+    _df, f, _cols, _meta = _filtered(path, cols, filters)
+    _variations(path, f, misc)
+    detail = next(iter(_VAR_DETAIL.values()), None)
+    if detail is None:
+        raise ValueError("No variations for the current filters.")
+    detail.to_csv(out_path, index=False, encoding="utf-8-sig")
+    return [out_path]
 
 
 def _pid(path, f, pid_mode="All"):
@@ -1160,7 +1238,7 @@ def outages(outage_path, master_path=None, cols=None, filters=None, o_districts=
             o_from=None, o_to=None, selected_date=None):
     outage_df, outage_err = load_outage_programme(_bytes(outage_path))
     if outage_err:
-        raise ValueError("Couldn't read the outages workbook - check it has a sheet named '2026' with headers on row 7.\n\n"
+        raise ValueError("Couldn't read the High level planning workbook - check it has a sheet named '2026' with headers on row 7.\n\n"
                          f"Details: {outage_err}")
     res = {"rows_total": int(len(outage_df)),
            "districts": sorted(str(v) for v in outage_df["District"].dropna().unique()),
@@ -1190,8 +1268,8 @@ def outages(outage_path, master_path=None, cols=None, filters=None, o_districts=
         if master_path:
             _df, f, cols_, _meta = _filtered(master_path, cols, filters)
             if cols_.get("date_col") is None or f["_date"].isna().all():
-                day["note"] = ("No usable dates in the main dataset's mapped 'Date' column - pick one under "
-                               "'Column mapping' to enable this breakdown.")
+                day["note"] = ("No usable dates in the Master file for the selected date field - "
+                               "pick another date field in the filter bar to see this breakdown.")
             else:
                 day_job_rows = f[f["_date"].dt.date == sel]
                 pole_task_df = build_pole_task_table(day_job_rows, cols_["item_col"], cols_["qsub_col"], cols_.get("pole_col"))

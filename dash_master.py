@@ -18,22 +18,26 @@ COLUMNS_NEEDED = [
     "district", "project", "project manager", "team", "team lider", "pid",
     "circuit", "enid", "sourcefile",
 ]
-DATE_FIELDS = {"Plan1": "plan1", "Plan2": "plan2", "Done": "done", "DateToUse": "datetouse"}
+# "Combined date" replaces DateToUse: Done when it's today/past, otherwise Plan1 when
+# it's today/future (engine.combined_date) - added to the Master when it's read.
+COMBINED = "Combined date"
+DATE_FIELDS = {COMBINED: "combined", "Plan1": "plan1", "Plan2": "plan2", "Done": "done"}
 PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month", "This year", "Last year", "Custom range"]
 
 # ---- Cascading filters: each one only offers what the filters before it allow ----
 _BLANK_OPT = {"", "nan", "none", "<na>", "nat"}
 
 
-def cascade_options(df, base_mask, order, selections):
-    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level)."""
+def cascade_options(df, base_mask, order, selections, strs=None):
+    """order = [(filter key, column)], top to bottom. Returns ({key: options}, mask after every level).
+    strs(col), when given, returns df[col].astype(str).str.strip() from a cache."""
     mask = base_mask.copy()
     opts = {}
     for key, col in order:
         if not col or col not in df.columns:
             opts[key] = []
             continue
-        col_s = df[col].astype(str).str.strip()
+        col_s = strs(col) if strs else df[col].astype(str).str.strip()
         opts[key] = sorted({v for v in col_s[mask].unique() if isinstance(v, str) and v.lower() not in _BLANK_OPT})
         sel = selections.get(key) or []
         if sel:
@@ -97,7 +101,7 @@ def load_data(path_str: str):
             _have = set(_pq.read_schema(path_str).names)
         except Exception:
             _have = set(COLUMNS_NEEDED)
-        df = pd.read_parquet(path_str, columns=[c for c in COLUMNS_NEEDED if c in _have or c not in ("plan2", "comment")])
+        df = pd.read_parquet(path_str, columns=[c for c in COLUMNS_NEEDED if c in _have or c not in ("plan2", "comment", "datetouse")])
     except Exception as e:
         return None, str(e)
 
@@ -122,6 +126,8 @@ def load_data(path_str: str):
         if c in df.columns:
             df[c] = df[c].where(df[c].dt.year > 1901)
 
+    from engine import combined_date
+    df["combined"] = combined_date(df["done"], df["plan1"])
     return df, None
 
 
@@ -196,12 +202,23 @@ def resolve_date_range(frame, active_col, preset, custom_from=None, custom_to=No
 # Session cache (the file is read once, then every filter change is fast)
 # --------------------------------------------------------------------------
 _CACHE = {}
+_STRS = {}
+
+
+def _strs(df):
+    """df[col].astype(str).str.strip() for the cascading filters - worked out once per file."""
+    def get(col):
+        k = (id(df), col)
+        if k not in _STRS:
+            _STRS[k] = df[col].astype(str).str.strip()
+        return _STRS[k]
+    return get
 
 
 def _df(path):
     key = (path, os.path.getmtime(path))
     if key not in _CACHE:
-        _CACHE.clear()
+        _CACHE.clear(); _STRS.clear()
         df, err = load_data(path)
         if err:
             raise ValueError(
@@ -228,7 +245,7 @@ def load(path):
         "rows": int(len(df)),
         "name": os.path.basename(path),
         "date_fields": list(available.keys()),
-        "default_date_field": "DateToUse" if "DateToUse" in available else (list(available)[0] if available else None),
+        "default_date_field": COMBINED if COMBINED in available else (list(available)[0] if available else None),
         "presets": PRESETS,
         "other_count": int((df["flag"] == "other").sum()),
         "other_sample": [_s(x) for x in other],
@@ -245,11 +262,13 @@ def load(path):
 # --------------------------------------------------------------------------
 # One call per filter change -> everything the page shows
 # --------------------------------------------------------------------------
-def view(path, date_field="DateToUse", preset="All time", custom_from=None, custom_to=None,
+def view(path, date_field=COMBINED, preset="All time", custom_from=None, custom_to=None,
          districts=None, projects=None, pids=None, pms=None, sourcefiles=None,
-         circuits=None, poles=None, granularity="Auto", pid_mode="All"):
+         circuits=None, poles=None, granularity="Auto", pid_mode="All", tab=None):
+    """tab = the tab on screen ("trends", "pid", "finance"): only that one is worked out.
+    No tab = all three, as before."""
     df = _df(path)
-    active_date_col = DATE_FIELDS.get(date_field, "datetouse")
+    active_date_col = DATE_FIELDS.get(date_field, "combined")
     if active_date_col not in df.columns or not df[active_date_col].notna().any():
         raise ValueError(f"The master file has no usable '{date_field}' dates.")
     date_from, date_to = resolve_date_range(df, active_date_col, preset, custom_from, custom_to)
@@ -267,7 +286,7 @@ def view(path, date_field="DateToUse", preset="All time", custom_from=None, cust
     options, _m = cascade_options(df, _scope, [("districts", "district"), ("projects", "project"), ("pids", "pid"), ("pms", "project manager"),
                                                ("sourcefiles", "sourcefile"), ("circuits", "circuit"), ("poles", "enid")],
                                   {"districts": districts, "projects": projects, "pids": pids, "pms": pms, "sourcefiles": sourcefiles,
-                                   "circuits": circuits, "poles": poles_selected})
+                                   "circuits": circuits, "poles": poles_selected}, strs=_strs(df))
     circuit_options, pole_options = options["circuits"], options["poles"]
 
     # Apply filters (unchanged)
@@ -299,9 +318,13 @@ def view(path, date_field="DateToUse", preset="All time", custom_from=None, cust
         "records": int(len(fdf_dated)), "granularity": gran, "granularity_auto": granularity == "Auto",
         "plan2_comments": plan2_comments(fdf_dated, active_date_col) if active_date_col == "plan2" else None,
     }
-    out["trends"] = _trends(fdf_dated, active_date_col, gran)
-    out["pid"] = _pid_breakdown(fdf, pid_mode)
-    out["finance"] = _finance(fdf_dated)
+    out["tab"] = tab
+    if tab in (None, "trends"):
+        out["trends"] = _trends(fdf_dated, active_date_col, gran)
+    if tab in (None, "pid"):
+        out["pid"] = _pid_breakdown(fdf, pid_mode)
+    if tab in (None, "finance"):
+        out["finance"] = _finance(fdf_dated)
     return out
 
 
@@ -380,17 +403,21 @@ def _pid_breakdown(fdf, mc_mode):
         default="remaining",
     )
 
-    def _mode(s):
-        m = s.mode()
-        return m.iloc[0] if not m.empty else None
+    def _group_mode(col):
+        """Per PID, the same value as s.mode().iloc[0] (most frequent; ties -> the
+        smallest, as mode() sorts; blanks ignored; None if there are none) - worked
+        out with one grouped count instead of a Python call per PID."""
+        sub = pdf[["pid", col]].dropna(subset=[col])
+        if sub.empty:
+            return pd.Series(dtype=object)
+        cnt = sub.groupby(["pid", col], observed=True).size().reset_index(name="_n")
+        cnt = cnt.sort_values(["pid", "_n", col], ascending=[True, False, True], kind="mergesort")
+        return cnt.drop_duplicates("pid").set_index("pid")[col]
 
-    base = pdf.groupby("pid", dropna=False).agg(
-        total=("total", "sum"),
-        job=("job", _mode),
-        district=("district", _mode),
-        project=("project", _mode),
-        pm=("project manager", _mode),
-    ).reset_index()
+    base = pdf.groupby("pid", dropna=False).agg(total=("total", "sum")).reset_index()
+    for out_col, src_col in (("job", "job"), ("district", "district"), ("project", "project"), ("pm", "project manager")):
+        m = _group_mode(src_col)
+        base[out_col] = base["pid"].map(m).astype(object).where(base["pid"].isin(m.index), None)
     stage_sums = pdf.groupby(["pid", "stage"], dropna=False)["total"].sum().unstack("stage", fill_value=0)
     for s in ["remaining", "planned", "done", "invoiced"]:
         if s not in stage_sums.columns:

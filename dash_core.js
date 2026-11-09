@@ -20,9 +20,10 @@ const FILES = {};
 const SLOTS = {
   master:    {label: "Master file", hint: "Master_DD-MM-YYYY.parquet", types: [".parquet", ".csv"], icon: "db"},
   materials: {label: "Materials master", hint: "materials_all.parquet", types: [".parquet"], icon: "box3"},
-  outages:   {label: "Outages Programme", hint: "High-level_planning_2026.xlsx", types: [".xlsx", ".xlsm"], icon: "grid"},
+  outages:   {label: "High level planning", hint: "High-level_planning_2026.xlsx", types: [".xlsx", ".xlsm"], icon: "grid"},
   forecast:  {label: "Service Partner Workbank", hint: "Workbank .xlsx", types: [".xlsx", ".xlsm"], icon: "chart"},
   ics:       {label: "Outage calendar", hint: "outage_calendar_2026 (vN).ics", types: [".ics"], icon: "file"},
+  misc:      {label: "Service codes", hint: "miscelaneous.parquet", types: [".parquet"], icon: "file"},
 };
 const fileListeners = new Set();
 async function setSlotFile(slot, file){
@@ -33,6 +34,9 @@ async function setSlotFile(slot, file){
   FILES[slot] = {name: file.name, size: file.size, dir, path: dir + "/" + file.name, v: Date.now()};
   if (old) PY.unmount(old.dir);
   fileListeners.forEach(cb => cb(slot));
+  if (slot === "misc" && file.size < 3e6){   /* remembered, like the logos - shared with the Outputs tool */
+    const rd = new FileReader(); rd.onload = () => store.set("outputs_misc", {name: file.name, data: rd.result}); rd.readAsDataURL(file);
+  }
   return true;
 }
 function clearSlot(slot){

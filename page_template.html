@@ -56,6 +56,7 @@ main{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
 .c1{background:linear-gradient(135deg,#1F4E78,#2E86C1)}.c2{background:linear-gradient(135deg,#0E7C86,#1ABC9C)}
 .c3{background:linear-gradient(135deg,#6C3FB5,#9B59B6)}.c4{background:linear-gradient(135deg,#C0762B,#E6A23C)}
 .c5{background:linear-gradient(135deg,#B03A48,#E4606D)}
+.c6{background:linear-gradient(135deg,#1E6B52,#3DAA6E)}
 
 /* ---------- tool page ---------- */
 .toolhead{display:flex;align-items:center;gap:14px;margin-bottom:18px}
@@ -249,6 +250,53 @@ code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-
 .lcard .lt b{font-size:14.5px}
 .lcard .lt small{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lcard > svg{width:16px;height:16px;color:var(--muted);flex:none}
+/* ---------- Guide (side panel) ---------- */
+.gbtn{gap:6px}.gbtn svg{width:16px;height:16px}
+header .gbtn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.28);color:#fff}
+header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.55)}
+.gd-bg{position:fixed;inset:0;z-index:150;background:rgba(8,18,35,0);transition:background .18s}
+.gd-bg.on{background:rgba(8,18,35,.35)}
+.gd{position:absolute;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--card);color:var(--ink);box-shadow:-12px 0 40px rgba(0,0,0,.25);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .2s ease-out}
+.gd-bg.on .gd{transform:none}
+@media (prefers-reduced-motion: reduce){.gd,.gd-bg{transition:none}}
+.gd-top{display:flex;gap:8px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.gd-pick{flex:1;min-width:0}
+.gd-x{padding:6px 8px}.gd-x svg{width:16px;height:16px}
+.gd-body{flex:1;overflow:auto;padding:18px 20px 32px}
+.gd-head{display:flex;gap:14px;align-items:center}
+.gd-head .ico{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;color:#fff;flex:none}
+.gd-head h2{margin:0;font-size:19px}.gd-head p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+.gd-sec{margin-top:20px}
+.gd-sec h3{margin:0 0 9px;font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.gd-need{display:flex;flex-wrap:wrap;gap:8px}
+.gd-file,.gd-tab{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--bg);min-width:0}
+.gd-file{flex:1 1 180px}
+.gd-file b,.gd-tab b{display:block;font-size:13.5px}
+.gd-file small,.gd-tab small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
+.gd .gi{width:30px;height:30px;border-radius:8px;background:var(--sky-soft);color:var(--blue);display:grid;place-items:center;flex:none}
+:root[data-theme=dark] .gd .gi{color:#7FD3F0}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]) .gd .gi{color:#7FD3F0}}
+.gd-steps{list-style:none;margin:0;padding:0}
+.gd-steps li{display:flex;gap:12px;position:relative;padding-bottom:14px}
+.gd-steps li:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:2px;width:2px;background:var(--line)}
+.gd .gn{width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.gd .gt b{display:flex;gap:6px;align-items:center;font-size:14px;margin-top:4px}
+.gd .gsi{color:var(--sky);display:inline-flex}
+.gd .gt p{margin:2px 0 0;color:var(--muted);font-size:13px;line-height:1.4}
+.gd-result{display:flex;gap:10px;align-items:center;background:var(--ok-soft);border-radius:10px;padding:9px 12px;font-size:13.5px;font-weight:600}
+.gd .gd-result .gi{background:var(--ok);color:#fff}
+.gd-flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.gd-flow .gc{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:4px 10px;font-size:12.5px}
+.gd-flow .ga{color:var(--muted);display:inline-flex}
+.gd-tabs{display:flex;flex-direction:column;gap:7px}
+.gd-dates{display:flex;flex-direction:column;gap:7px}
+.gd-dates div{display:grid;grid-template-columns:10px 132px 1fr;gap:9px;align-items:baseline;font-size:13px}
+.gd-dates i{width:10px;height:10px;border-radius:3px;align-self:center}
+.gd-dates span{color:var(--muted)}
+.gd-tips{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.gd-tips li{display:flex;gap:8px;font-size:13px;line-height:1.4}
+.gd-tips svg{color:var(--ok);flex:none;margin-top:2px}
+@media (max-width:560px){header .gbtn span{display:none}}
 /*__DASH_CSS__*/
 </style>
 </head>
@@ -257,7 +305,7 @@ code{font-family:Consolas,monospace;background:var(--bg);padding:1px 5px;border-
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 16-Oct-2026</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 09-Nov-2026</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -389,6 +437,8 @@ I.grid = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-widt
 I.pound = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 6.5A4 4 0 0 0 9 8v12"/><path d="M6 13h8"/><path d="M6 20h12"/></svg>';
 I.box3 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m21 8-9-5-9 5v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>';
 I.ext = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
+
+I.generator = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7V4h12v3"/><rect x="2.5" y="7" width="19" height="11" rx="2"/><path d="m12.8 9.2-2.6 3.3h3.6l-2.6 3.3"/><circle cx="6.5" cy="20.5" r="1.5"/><circle cx="17.5" cy="20.5" r="1.5"/><path d="M5.5 10.5v4"/><path d="M18.5 10.5v4"/></svg>';
 
 function box(n, title, hint){
   const b = h(`<section class="box"><h4>${n ? `<span class="num">${n}</span>` : ""}${title}</h4>${hint ? `<p class="hint">${hint}</p>` : ""}</section>`);
@@ -644,30 +694,29 @@ function tableEl(columns, rows){
    ====================================================================== */
 const TOOLS = [
   {id:"tp", n:1, c:"c1", icon:"target", title:"Target Price → Control File",
-   desc:"Copy a Template_CF and fill Auxiliar, Block1 and PA CONTROL from a Target Price (.xlsm), reviewing similar line names first."},
+   desc:"Fill a Template_CF from a Target Price."},
   {id:"build", n:2, c:"c2", icon:"db", title:"Build Master File",
-   desc:"Control Files → Master in one go: aggregates Block1 + PA CONTROL, then joins the Project Tracker (PID / PO) and the miscelaneous file (MD Poling, Man_day). Downloads Master_DD-MM-YYYY .parquet + .xlsx."},
+   desc:"Control Files → Master file (.parquet + .xlsx)."},
   {id:"outputs", n:3, c:"c4", icon:"chart", title:"Outputs (CV Excel Report)",
-   desc:"The Outputs workbook: filter the master by district, project, circuit, category and dates, pick CV groups and export Summary, Combined, category and CV8 / CV31 sheets."},
+   desc:"The CV Excel report from the Master file."},
   {id:"wi", n:4, c:"c5", icon:"map", title:"Work Instructions & Map Check",
-   desc:"Generate the Work Instructions Word document and cross-check WorkPack maps (PDF) against the Control File."},
+   desc:"Work Instructions document and the WorkPack map check."},
+  {id:"gens", n:5, c:"c6", icon:"generator", tag:"Planning", noflow:true, title:"Generators ⇄ High level planning",
+   desc:"High level planning ⇄ Generator Tracker, both ways."},
 ];
 const app = $("#app");
 
 function home(){
   app.innerHTML = "";
-  app.append(h(`<p class="intro">Pick a tool, then drag your files onto it. Everything runs here in your browser – files never leave your PC, and nothing needs installing.</p>`));
-  app.append(h(`<div class="flow">Usual order: ${TOOLS.map(t=>`<span class="step">${t.n}. ${esc(t.title)}</span>`).join(` ${I.arrow} `)}</div>`));
   app.append(sharedFilesPanel());
   const g = h(`<div class="grid"></div>`);
   TOOLS.forEach(t => {
-    const tile = h(`<button class="tile"><div class="ico ${t.c}">${I[t.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag">Step ${t.n}</span><h3>${esc(t.title)}</h3><p>${esc(t.desc)}</p><span class="go">Open ${I.arrow}</span></button>`);
+    const tile = h(`<button class="tile"><div class="ico ${t.c}">${I[t.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag">${t.tag ? esc(t.tag) : "Step " + t.n}</span><h3>${esc(t.title)}</h3><p>${esc(t.desc)}</p><span class="go">Open ${I.arrow}</span></button>`);
     tile.onclick = () => { location.hash = t.id; };
     g.append(tile);
   });
   app.append(g);
   app.append(h(`<h2 class="section">Dashboards</h2>`));
-  app.append(h(`<p class="intro">Built into this page now – no Streamlit needed. Open one and drop your files; each dashboard has its own space, filters and tabs.</p>`));
   const dg = h(`<div class="grid"></div>`);
   DASHES.forEach(d => {
     const tile = h(`<button class="tile"><div class="ico ${d.c}">${I[d.icon].replace("<svg","<svg width=28 height=28")}</div><span class="tag">Dashboard</span><h3>${esc(d.title)}</h3><p>${esc(d.desc)}</p><span class="go">Open dashboard ${I.arrow}</span></button>`);
@@ -676,7 +725,6 @@ function home(){
   });
   app.append(dg);
   app.append(h(`<h2 class="section">Useful links</h2>`));
-  app.append(h(`<p class="intro">The websites used day to day in the workflow – they open in a new tab.</p>`));
   const lg = h(`<div class="lgroups"></div>`);
   LINKS.forEach(g => {
     const box = h(`<section class="lgroup"><h3>${I[g.icon]}<span></span></h3><div class="lgrid"></div></section>`);
@@ -753,12 +801,12 @@ let dashToken = 0;
 
 /* ---------------- Tool 1: Target Price -> Control File ---------------- */
 function pageTP(t){
-  const b1 = box(1, "Drop the files", "Same two files the program used to ask for: the Template_CF, then the Target Price file.");
+  const b1 = box(1, "Drop the files", "Template_CF and the Target Price (.xlsm).");
   const ctrl = dropField({label: "Template_CF Excel (Control File)", kind: "file", types: [["Excel files", ".xlsx,.xlsm"]]});
   const tp = dropField({label: "Target Price Excel (.xlsm)", kind: "file", types: [["Excel Macro-Enabled Workbook", ".xlsm"], ["All files", ""]], hint: ".xlsm (other files allowed)", onChange: () => { pairs = null; pairsBox.innerHTML = ""; }});
   const r = h(`<div class="row"></div>`); r.append(ctrl, tp); b1.append(r);
 
-  const b2 = box(2, "Review similar line names", "Lines ≥ 90% alike in 'Pole Materials' are listed so you can keep line 1, line 2, or both (was the “Choose Line” pop-up).");
+  const b2 = box(2, "Review similar line names", "Lines ≥ 90% alike – pick which one to keep.");
   const pairsBox = h(`<div></div>`);
   const check = runArea("Check for similar lines", "search");
   b2.append(check, pairsBox);
@@ -776,7 +824,7 @@ function pageTP(t){
       <div class="seg"><label><input type="radio" name="pc${i}" value="1" checked><span>Use line 1</span></label><label><input type="radio" name="pc${i}" value="2"><span>Use line 2</span></label><label><input type="radio" name="pc${i}" value="keep_both"><span>Keep both</span></label></div></div>`)));
   };
 
-  const b3 = box(3, "Write into the Control File", "Creates “&lt;Control File&gt;_&lt;Scheme Title&gt;” with formulas and macros kept, and downloads it.");
+  const b3 = box(3, "Write into the Control File", "Downloads “&lt;Control File&gt;_&lt;Scheme Title&gt;”.");
   const go = runArea("Write to Control File");
   b3.append(go);
   go.button.onclick = () => {
@@ -790,10 +838,10 @@ function pageTP(t){
 
 /* ---------------- Tool 2: Aggregate Control Files ---------------- */
 function pageAggregate(t){
-  const b1 = box(1, "Drop the Control Files to aggregate", "Drop as many as you like, in one go or a few at a time. You can also drop a whole folder – the Excel files inside are picked up.");
+  const b1 = box(1, "Drop the Control Files to aggregate", "Files or a whole folder.");
   const files = dropField({label: "Control Files", kind: "files", types: [["Excel files", ".xlsx,.xlsm,.xls,.xlsb"]]});
   b1.append(files);
-  const b2 = box(2, "Output name", "Downloads the Excel file plus <i>name</i>_aggregated.parquet and <i>name</i>_resume.parquet.");
+  const b2 = box(2, "Output name", "Also gives _aggregated and _resume .parquet files.");
   const nm = nameField("Aggregated Excel file name", "CF_aggregated.xlsx"); b2.append(nm);
   const b3 = box(3, "Run");
   const run = runArea("Aggregate Control Files");
@@ -807,17 +855,17 @@ function pageAggregate(t){
 
 /* ---------------- Steps 2 + 3 together: Control Files -> Master ---------------- */
 function pageBuild(t){
-  const b1 = box(1, "Drop the Control Files", "As many as you like, in one go or a few at a time. Dropping a whole folder picks up the Excel files inside.");
+  const b1 = box(1, "Drop the Control Files", "Files or a whole folder.");
   const files = dropField({label: "Control Files", kind: "files", types: [["Excel files", ".xlsx,.xlsm,.xls,.xlsb"]]});
   b1.append(files);
-  const b2 = box(2, "Drop the Project Tracker and the miscelaneous file", "Same two files Build Master used: PID / PO come from the Project Tracker, MD Poling and Man_day from the miscelaneous file.");
+  const b2 = box(2, "Drop the Project Tracker and the miscelaneous file", "PID / PO, MD Poling and Man_day come from these.");
   const pq = [["Parquet", ".parquet"]];
   const trk = dropField({label: "Project Tracker.parquet", kind: "file", types: pq});
   const misc = dropField({label: "miscelaneous.parquet", kind: "file", types: pq});
   const r = h(`<div class="row"></div>`); r.append(trk, misc); b2.append(r);
   const md = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" checked> Also add <b>Man_day</b> (from the miscelaneous file's “man_day” column)</label>`);
   b2.append(md);
-  const b3 = box(3, "Output", "Downloads <b>Master_DD-MM-YYYY.parquet</b> and the matching <b>.xlsx</b>, with the same columns and order as before.");
+  const b3 = box(3, "Output", "Master_DD-MM-YYYY .parquet + .xlsx.");
   const nm = nameField("Master parquet file name", "Master_" + new Date().toLocaleDateString("en-GB").replace(/\//g, "-") + ".parquet");
   const keep = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox"> Also download the intermediate CF_aggregated files (.xlsx, _aggregated.parquet, _resume.parquet)</label>`);
   b3.append(nm, keep);
@@ -845,7 +893,7 @@ function pageMaster(t){
   const r = h(`<div class="row"></div>`); r.append(agg, trk, misc); b1.append(r);
   const md = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" checked> Also add <b>Man_day</b> (from the miscelaneous file's “man_day” column)</label>`);
   b1.append(md);
-  const b2 = box(2, "Output name", "An .xlsx copy with the same name is downloaded too.");
+  const b2 = box(2, "Output name", "An .xlsx copy is downloaded too.");
   const nm = nameField("Master parquet file name", "Master_" + new Date().toLocaleDateString("en-GB").replace(/\//g, "-") + ".parquet"); b2.append(nm);
   const b3 = box(3, "Run");
   const run = runArea("Build Master");
@@ -894,7 +942,7 @@ function pageOutputs(t){
                               "Master .parquet or .csv – shared with the other tools and dashboards");
   b1.append(src, loadStat);
 
-  const b2 = box(2, "Filters", "Leave a box on “All” for no restriction. Each box also lets you type in your own value.");
+  const b2 = box(2, "Filters", "“All” = no restriction.");
   const cols = ["shire", "project", "circuit", "project_name", "cat"];
   const labels = {cat: "Category"};
   const boxes = {};
@@ -934,17 +982,38 @@ function pageOutputs(t){
     catch(e){ applyStat.className = "status err"; applyStat.textContent = e.message; }
   };
 
-  const b3 = box(3, "Export Excel", "Summary, Combined, one sheet per category and the CV8 / CV31 resumes. Drop the two logos once to have them in the top corner, as before.");
+  const b3 = box(3, "Export Excel", "Summary, Outputs, Variations, one sheet per category, CV8 / CV31.");
   const lr = h(`<div class="row"></div>`);
   const logoL = logoField("Gaeltec logo (GaeltecImage.png)", "logo_left", "GaeltecImage.png");
   const logoR = logoField("SPEN logo (SPEN.png)", "logo_right", "SPEN.png");
   lr.append(logoL, logoR);
+  const scr = h(`<div class="row" style="margin-top:12px"></div>`);
+  const scFile = dropField({label: "miscelaneous.parquet – service codes", kind: "file", types: [["Parquet", ".parquet"]],
+                            hint: "fills the “service code” column (Column_1 = description, Column_3 = code) – remembered in this browser",
+    onChange: (v) => {
+      if (!v) { store.set("outputs_misc", null); scFile._lastFile = null; return; }
+      const f = scFile._lastFile; if (!f || f.size > 3e6) return;
+      const rd = new FileReader(); rd.onload = () => store.set("outputs_misc", {name: f.name, data: rd.result}); rd.readAsDataURL(f);
+    }});
+  {
+    /* remember the miscelaneous file like the logos, so it's only dropped once */
+    const inp = $("input", scFile), dz = $(".dz", scFile);
+    inp.addEventListener("change", () => { if (inp.files[0]) scFile._lastFile = inp.files[0]; }, true);
+    dz.addEventListener("drop", (e) => { if (e.dataTransfer.files[0]) scFile._lastFile = e.dataTransfer.files[0]; }, true);
+    const saved = store.get("outputs_misc", null);
+    if (saved && saved.data) fetch(saved.data).then(r => r.blob()).then(b => {
+      const dt = new DataTransfer(); dt.items.add(new File([b], saved.name)); inp.files = dt.files; inp.dispatchEvent(new Event("change"));
+    }).catch(() => {});
+  }
+  scr.append(scFile);
+  const scSheet = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox"> Also add the <b>Variations_service codes</b> sheet (every service code with qty, qsub, Orig, Total and Variation, plus Traffic Management, Sand / Chips / Miscellaneous Works and Non Free Issue material lines)</label>`);
   const nm = nameField("Output file name", "Outputs_Report.xlsx");
   const run = runArea("Export Excel", "save");
-  b3.append(lr, h(`<div style="height:12px"></div>`), nm, h(`<div style="height:12px"></div>`), run);
+  b3.append(lr, scr, scSheet, h(`<div style="height:12px"></div>`), nm, h(`<div style="height:12px"></div>`), run);
   run.button.onclick = () => {
     if (!path) { run.fail("Load a file first (step 1)."); return; }
-    run.run("outputs_export", {...payload(), cv_groups: cvBox.get(), output_name: nm.get(), logo_left: logoL.get(), logo_right: logoR.get()}, {needs: NEED_OUTPUTS, busy: "Generating the Excel file…"});
+    run.run("outputs_export", {...payload(), cv_groups: cvBox.get(), output_name: nm.get(), logo_left: logoL.get(), logo_right: logoR.get(),
+                               misc: scFile.get(), service_code_sheet: $("input", scSheet).checked}, {needs: NEED_OUTPUTS, busy: "Generating the Excel file…"});
   };
   app.append(b1, b2, b3);
 }
@@ -987,13 +1056,13 @@ function pageWI(t){
       path = v; load();
     }, "Master .parquet – shared with the other tools and dashboards");
   a1.append(src, loadStat);
-  const a2 = box(null, `${I.filter.replace("<svg","<svg width=18 height=18")} Filters`, "Search to narrow a list, click items to toggle, leave a filter empty = no restriction on that field.");
+  const a2 = box(null, `${I.filter.replace("<svg","<svg width=18 height=18")} Filters`, "Click to tick · empty = no restriction.");
   const dr = h(`<div class="row" style="margin-bottom:12px"></div>`);
   const dFrom = h(`<div class="field"><label>Date from</label><input type="date"></div>`);
   const dTo = h(`<div class="field"><label>Date to</label><input type="date"></div>`);
   dr.append(dFrom, dTo, h(`<span class="status">(this range also drives the map scan on tab 3)</span>`));
   a2.append(dr);
-  const fdefs = [["shires","District"],["projects","Project"],["circuits","Circuit"],["sourcefiles","Sourcefile"],["poles","Pole"]];
+  const fdefs = [["shires","District"],["projects","Project"],["circuits","Circuit"],["sourcefiles","Sourcefile"],["poles","Pole"],["categories","Category (Const / Mat)"]];
   const lf = {}; const grid = h(`<div class="lfilters"></div>`);
   fdefs.forEach(([k, l]) => { lf[k] = listFilter(l); grid.append(lf[k]); });
   a2.append(grid);
@@ -1018,7 +1087,7 @@ function pageWI(t){
     loadStat.className = "status"; loadStat.textContent = PY.ready ? "Loading…" : "Starting Python and loading the file (first time ~30–60 s)…";
     try {
       const o = (await PY.call("wi_options", {path}, {needs: NEED_WI})).result;
-      o.fields.forEach(f => lf[f.key].setValues(f.values));
+      o.fields.forEach(f => lf[f.key] && lf[f.key].setValues(f.values));
       loadStat.className = "status ok"; loadStat.textContent = `${(FILES.master || {}).name || ""}  (${o.rows} rows)`;
       preview();
     } catch(e){ loadStat.className = "status err"; loadStat.textContent = e.message; }
@@ -1044,7 +1113,7 @@ function pageWI(t){
   }
 
   /* --- Tab 2 --- */
-  const w1 = box(1, `Work Instructions document`, "Built from the CURRENTLY FILTERED rows (tab 1): one header block per date + sourcefile, poles bulleted with their MD Poling instructions in workflow order, Times New Roman 12pt double-spaced. Joint items show red/underlined; a quantity of 1 is never shown.");
+  const w1 = box(1, `Work Instructions document`, "Built from the rows filtered on tab 1.");
   const useMap = h(`<label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" checked> Order poles per the map sequence (uses the maps added on tab 3, if any)</label>`);
   const mapRow = h(`<div class="row" style="margin-bottom:12px"></div>`); mapRow.append(mapLabel());
   const nmW = nameField("Output file name", "Work_Instructions.docx");
@@ -1057,8 +1126,7 @@ function pageWI(t){
   };
 
   /* --- Tab 3 --- */
-  const p1 = box(1, "Scan an Outages Programme folder for Workpack zones",
-    "Drop year or month folders from “1 - Outages Programme” (e.g. <b>2026</b> or <b>09 - September</b>), or single outage folders. The same scan as before runs on them using the date range from tab 1 – every outage folder in range is searched for “Workpack zones” folders (or its deepest folders with PDFs).");
+  const p1 = box(1, "Scan an Outages Programme folder for Workpack zones", "Year, month or outage folders from “1 - Outages Programme”.");
   const scanStat = runArea("", "search"); $(".runbar .btn", scanStat).classList.add("hidden");
   const scanDrop = folderDrop({label: "Outages folder(s)", hint: "tip: drop the month folder – dropping the whole programme works too but reads more",
     onFolders: async (groups) => {
@@ -1105,7 +1173,7 @@ function pageWI(t){
   p2.append(r2, r2b, manStat);
   $(".btn", r2b).onclick = () => { pdfEntries = []; refreshMaps(); manStat.textContent = ""; };
 
-  const p3 = box(3, "Cross-reference report", "Excel workbook with 4 sheets: Control File Vs maps · Pole Summary · Poles not found in maps · Poles without dates on CF. Map names from the scan are hyperlinked to the real PDFs on the share.");
+  const p3 = box(3, "Cross-reference report", "4 sheets · map names link to the real PDFs.");
   const thr = h(`<div class="field"><label>Similarity threshold (%)</label><input type="number" min="0" max="100" value="85" style="width:110px"></div>`);
   const realRoot = h(`<div class="field grow"><label>Real location of the Outages Programme (for the map links)</label><input type="text"></div>`);
   $("input", realRoot).value = store.get("wi_real_root", NETWORK_ROOT);
@@ -1125,17 +1193,355 @@ function pageWI(t){
   panes[2].append(p1, p2, p3);
 }
 
+/* ---------------- Generators ⇄ High-level planning ---------------- */
+const NEED_GS_CRYPT = ["cryptography"];   // only loaded when a workbook is password protected
+function pageGen(t){
+  let loaded = false, needCrypt = false, preview = null, choiceEls = new Map(), days = [], run = null;
+
+  /* 1 - files + password */
+  const b1 = box(1, "Drop the two workbooks", "Type the password if a file is protected.");
+  const xl = [["Excel files", ".xlsx,.xlsm"]];
+  const onFiles = () => { loaded = false; resetDays(); readFiles(); };
+  const trk = dropField({label: "Generator Tracker", kind: "file", types: xl, onChange: onFiles});
+  const pln = dropField({label: "High-level planning", kind: "file", types: xl, onChange: onFiles});
+  const r1 = h(`<div class="row"></div>`); r1.append(trk, pln); b1.append(r1);
+  const pw = h(`<div class="row" style="margin-top:12px;align-items:flex-end"><div class="field"><label>Password (if protected)</label><input type="password" autocomplete="off" placeholder="file password" style="width:220px"></div><button class="btn">${I.folder} Read files</button></div>`);
+  const pwIn = $("input", pw);
+  const fStat = h(`<div class="status" style="margin-top:10px;white-space:pre-line"></div>`);
+  b1.append(pw, fStat);
+  $(".btn", pw).onclick = () => readFiles(true);
+  pwIn.addEventListener("keydown", e => { if (e.key === "Enter") readFiles(true); });
+
+  async function readFiles(explicit){
+    if (!trk.get() || !pln.get()){ fStat.className = "status"; fStat.textContent = "Drop both workbooks."; return; }
+    fStat.className = "status"; fStat.textContent = PY.ready ? "Reading the workbooks…" : "Starting Python and reading the workbooks (first time ~30 s)…";
+    try {
+      const p = (await PY.call("gs_probe", {tracker: trk.get(), planning: pln.get()})).result;
+      needCrypt = p.tracker.encrypted || p.planning.encrypted;
+      if (needCrypt && !pwIn.value){
+        const which = [p.tracker.encrypted && "Generator Tracker", p.planning.encrypted && "High-level planning"].filter(Boolean).join(" and ");
+        fStat.className = "status err"; fStat.textContent = `🔒 The ${which} is password protected – type the password and click Read files.`;
+        pwIn.focus(); return;
+      }
+      const s = (await PY.call("gs_load", {tracker: trk.get(), planning: pln.get(), password: pwIn.value},
+                               {needs: needCrypt ? NEED_GS_CRYPT : []})).result;
+      loaded = true;
+      fStat.className = "status ok"; fStat.textContent = `✔ ${s.tracker}\n✔ ${s.planning}`;
+    } catch(e){
+      loaded = false;
+      fStat.className = "status err";
+      fStat.textContent = /cryptography|loadPackage|Failed to fetch/i.test(e.message)
+        ? "Couldn't load the decryption package (cryptography) – check the internet connection, or remove the password from the file and drop it again."
+        : e.message;
+    }
+  }
+
+  /* 2 - task + dates */
+  const b2 = box(2, "Choose the task and the dates");
+  const tasks = h(`<div class="seg" style="margin-bottom:14px">
+      <label><input type="radio" name="gstask" value="1" checked><span>1 · Planning → Generator Tracker</span></label>
+      <label><input type="radio" name="gstask" value="2"><span>2 · Generator Tracker → Planning</span></label></div>`);
+  const taskHint = h(`<p class="hint" style="margin:0 0 12px"></p>`);
+  const task = () => +$("input[name=gstask]:checked", tasks).value;
+  const setHint = () => { taskHint.innerHTML = task() === 1
+    ? "Adds <b>District, Date, Weekday, Outage, Circuit and PM</b> of the chosen outages to the first free rows of the Generators table."
+    : "Writes the <b>Generator</b> rows into the planning <b>Generators</b> column (e.g. <i>No Access, (x1) Generator from GWF, 3 phase 10 kVa, Setubal, 30 m of cable needed.</i>) and the <b>Battery pod</b> multipliers into <b>Battery Pods</b>."; };
+  setHint();
+  tasks.querySelectorAll("input").forEach(i => i.onchange = () => { setHint(); resetDays(); });
+  const today = new Date(), iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 10);
+  const dr = h(`<div class="row" style="align-items:flex-end"><div class="field"><label>From</label><input type="date"></div><div class="field"><label>To</label><input type="date"></div><button class="btn primary">${I.cal} Show days &amp; outages</button><span class="status"></span></div>`);
+  const [dFrom, dTo] = dr.querySelectorAll("input");
+  dFrom.value = iso(today); dTo.value = iso(new Date(today.getTime() + 7 * 864e5));
+  [dFrom, dTo].forEach(i => i.onchange = resetDays);
+  const dStat = $(".status", dr);
+  b2.append(tasks, taskHint, dr);
+
+  /* 3 - days and outages */
+  const b3 = box(3, "Tick the days, then the outages", "Tick a day, then untick the outages you don't want.");
+  const dBtns = h(`<div class="row" style="margin-bottom:10px"><button class="btn sm">Tick all days</button><button class="btn sm">Clear all</button><span class="status"></span></div>`);
+  const [bAll, bNone] = dBtns.querySelectorAll(".btn"); const selStat = $(".status", dBtns);
+  const list = h(`<div style="max-height:460px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:10px;padding:8px 12px"></div>`);
+  b3.append(dBtns, list);
+
+  function resetDays(){
+    days = []; list.innerHTML = `<p class="hint" style="margin:6px 0">Click <b>Show days &amp; outages</b>.</p>`;
+    selStat.textContent = ""; clearPreview();
+  }
+  function countSel(){
+    const n = ids().length; selStat.className = "status"; selStat.textContent = n ? `${n} outage(s) selected` : "";
+    clearPreview();
+  }
+  function ids(){
+    return days.flatMap(d => d.cb.checked ? d.items.filter(x => x.cb.checked).map(x => x.id) : []);
+  }
+  $(".btn", dr).onclick = async () => {
+    clearPreview();
+    if (!loaded){ dStat.className = "status err"; dStat.textContent = "Read both workbooks first (step 1)."; return; }
+    dStat.className = "status"; dStat.textContent = "Listing outages…";
+    try {
+      const r = (await PY.call("gs_days", {task: task(), date_from: dFrom.value, date_to: dTo.value})).result;
+      list.innerHTML = ""; days = [];
+      if (!r.days.length){
+        list.innerHTML = `<p class="hint" style="margin:6px 0">No outages in this date range${task() === 2 ? " with Type of supply = Generator / Battery pod" : ""}.</p>`;
+        dStat.textContent = ""; return;
+      }
+      r.days.forEach(d => {
+        const day = h(`<div style="padding:4px 0;border-bottom:1px solid var(--line,#eee)">
+            <label style="display:flex;gap:8px;align-items:center;font-weight:700;cursor:pointer"><input type="checkbox"><span></span></label>
+            <div class="hidden" style="padding:4px 0 6px 28px"></div></div>`);
+        $("span", day).textContent = `${d.label}  (${d.items.length} outage${d.items.length > 1 ? "s" : ""})`;
+        const dayCb = $("input", day), inner = $("div", day);
+        const entry = {cb: dayCb, items: []};
+        d.items.forEach(it => {
+          const row = h(`<label style="display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer;font-size:13px"><input type="checkbox" checked><span></span></label>`);
+          $("span", row).textContent = it.label;
+          const cb = $("input", row); cb.onchange = countSel;
+          entry.items.push({id: it.id, cb}); inner.append(row);
+        });
+        dayCb.onchange = () => { inner.classList.toggle("hidden", !dayCb.checked); if (dayCb.checked) entry.items.forEach(x => x.cb.checked = true); countSel(); };
+        days.push(entry); list.append(day);
+      });
+      dStat.className = "status ok"; dStat.textContent = `${r.days.length} day(s)`;
+    } catch(e){ dStat.className = "status err"; dStat.textContent = e.message; }
+  };
+  bAll.onclick = () => { days.forEach(d => { if (!d.cb.checked){ d.cb.checked = true; d.cb.onchange(); } }); };
+  bNone.onclick = () => { days.forEach(d => { if (d.cb.checked){ d.cb.checked = false; d.cb.onchange(); } }); };
+
+  /* 4 - preview + decisions */
+  const b4 = box(4, "Preview", "Anything already filled in: choose keep or replace.");
+  const pv = h(`<div class="runbar"><button class="btn">${I.search} Preview</button><span class="status"></span></div>`);
+  const pvStat = $(".status", pv);
+  const pvOut = h(`<div style="margin-top:12px"></div>`);
+  const conf = h(`<div style="margin-top:12px"></div>`);
+  b4.append(pv, pvOut, conf);
+  function clearPreview(){ preview = null; choiceEls = new Map(); pvOut.innerHTML = ""; conf.innerHTML = ""; pvStat.textContent = ""; if (run) run.button.disabled = true; }
+  $(".btn", pv).onclick = async () => {
+    clearPreview();
+    const sel = ids();
+    if (!days.length){ pvStat.className = "status err"; pvStat.textContent = "Click Show days & outages first (step 2)."; return; }
+    if (!sel.length){ pvStat.className = "status err"; pvStat.textContent = "Tick at least one day (and outage)."; return; }
+    pvStat.className = "status"; pvStat.textContent = "Working out what will change…";
+    try {
+      const r = (await PY.call("gs_preview", {task: task(), ids: sel})).result;
+      preview = r;
+      pvStat.className = "status ok"; pvStat.textContent = r.summary;
+      pvOut.append(tableEl(r.columns, r.rows));
+      if (r.conflicts.length){
+        const opts = `<option value="">— choose —</option>` + r.choices.map(c => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join("");
+        const head = h(`<div class="row" style="align-items:center;margin:4px 0 10px"><b style="color:#b26a00">${r.conflicts.length} item(s) already have information in the file – what do you want to do?</b>
+            <div class="field"><label>Set all to</label><select style="min-width:260px">${opts}</select></div></div>`);
+        const all = $("select", head);
+        conf.append(head);
+        r.conflicts.forEach(c => {
+          const card = h(`<div style="display:flex;gap:14px;align-items:center;border-left:3px solid #e69500;background:rgba(230,149,0,.08);border-radius:6px;padding:8px 10px;margin:6px 0">
+              <div style="flex:1;font-size:13px;line-height:1.45"><b></b><div class="cur"></div><div class="new"></div></div><select style="min-width:260px">${opts}</select></div>`);
+          $("b", card).textContent = c.where;
+          $(".cur", card).innerHTML = "Current: " + esc(c.current).replace(/\n/g, "<br>");
+          $(".new", card).innerHTML = "New: " + esc(c.new).replace(/\n/g, "<br>");
+          const s = $("select", card); choiceEls.set(c.i, s);
+          conf.append(card);
+        });
+        all.onchange = () => { if (all.value) choiceEls.forEach(s => s.value = all.value); };
+      }
+      run.button.disabled = !r.can_apply;
+    } catch(e){ pvStat.className = "status err"; pvStat.textContent = e.message; }
+  };
+
+  /* 5 - apply */
+  const b5 = box(5, "Apply & download", "Downloads an updated copy – the original isn't touched.");
+  run = runArea("Apply & download", "save");
+  run.button.disabled = true;
+  b5.append(run);
+  run.button.onclick = async () => {
+    if (!preview){ run.fail("Click Preview first (step 4)."); return; }
+    const choices = {};
+    let missing = 0;
+    choiceEls.forEach((s, i) => { if (s.value) choices[i] = s.value; else missing++; });
+    if (missing){ run.fail(`Choose keep / replace for the ${missing} item(s) that already have information (or use 'Set all to').`); return; }
+    const r = await run.run("gs_apply", {choices}, {needs: needCrypt ? NEED_GS_CRYPT : [], busy: "Writing the workbook…"});
+    if (!r) return;
+    preview = null; choiceEls = new Map(); conf.innerHTML = ""; pvOut.innerHTML = ""; run.button.disabled = true;
+    pvStat.className = "status ok"; pvStat.textContent = "Applied – click Show days & outages / Preview again for another run (it continues from the updated copy).";
+    try { const s = (await PY.call("gs_status", {})).result; fStat.textContent = `✔ ${s.tracker}\n✔ ${s.planning}`; } catch(e){}
+  };
+
+  resetDays();
+  app.append(b1, b2, b3, b4, b5);
+}
+
+/* ======================================================================
+   Guide - a side panel that explains the page you're on (? Guide button
+   in the header and in each dashboard bar). Steps, files and tips per page.
+   ====================================================================== */
+I.help = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.4-2.7 4"/><path d="M12 17.3h.01"/></svg>';
+I.check = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+I.x = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg>';
+
+const DATE_GUIDE = [
+  ["var(--s1)", "Combined date", "Done when it's today or in the past, otherwise Plan1 when it's today or later. The default."],
+  ["var(--s4)", "Plan1 · Plan2 · Done", "Only that date. Plan2 adds a “most repeated comments” card."],
+];
+const GUIDES = {
+  home: {title: "Using Gaeltec Tools", icon: "grid", c: "c1", intro: "Everything runs here in your browser – your files never leave your PC.",
+    steps: [["drop", "Drop your files once", "In “Your files” at the top – every tool and dashboard picks them up."],
+            ["grid", "Open a tool or a dashboard", "Click a tile. Each one has its own page."],
+            ["play", "Follow the numbered boxes", "Top to bottom: files, options, then the Run button."],
+            ["down", "Get the result", "It downloads by itself – “Save to a folder…” is under each result too."]],
+    flow: ["Target Price → Control File", "Build Master File", "Outputs (CV Excel Report)", "Work Instructions & Map Check"],
+    tips: ["Every page has this ? Guide button for its own steps.",
+           "The first start downloads Python (about 30 s) – after that it's quick.",
+           "If the page is left alone for 30 minutes you're asked, and then the files are cleared."]},
+  tp: {title: "Target Price → Control File", icon: "target", c: "c1",
+    need: [["file", "Template_CF", ".xlsx / .xlsm"], ["file", "Target Price", ".xlsm"]],
+    steps: [["drop", "Drop both files", "Box 1 – Template_CF first, then the Target Price."],
+            ["search", "Check for similar lines", "Lines ≥ 90% alike are listed – pick Use line 1, Use line 2 or Keep both."],
+            ["play", "Write to Control File", "Box 3. Formulas and macros are kept."]],
+    result: "“<Control File>_<Scheme Title>” – downloads automatically",
+    tips: ["Skipping the check is allowed – similar lines then default to line 1."]},
+  build: {title: "Build Master File", icon: "db", c: "c2",
+    need: [["file", "Control Files", ".xlsb .xlsx .xlsm – or a whole folder"], ["db", "Project Tracker.parquet", "PID / PO"], ["db", "miscelaneous.parquet", "MD Poling, Man_day"]],
+    steps: [["drop", "Drop the Control Files", "As many as you like, or a folder."],
+            ["drop", "Drop the Project Tracker and miscelaneous", "Box 2. A file in the wrong box is caught before anything runs."],
+            ["play", "Build Master File", "Box 4 – aggregates, then builds the Master."],
+            ["db", "Use it everywhere", "Click “Use this Master in the tools & dashboards” under the result."]],
+    result: "Master_DD-MM-YYYY.parquet + .xlsx",
+    tips: ["Need only one step? Links under box 4: Aggregate only, or Master from a CF_aggregated."]},
+  gens: {title: "Generators ⇄ High level planning", icon: "generator", c: "c6",
+    need: [["file", "Generator Tracker", ".xlsx"], ["grid", "High level planning", "High-level_planning_2026.xlsx"], ["help", "Password", "only if a file is protected"]],
+    steps: [["drop", "Drop both workbooks", "Type the password if asked, then Read files."],
+            ["cal", "Task and dates", "1 · Planning → Tracker, or 2 · Tracker → Planning. Then Show days & outages."],
+            ["check", "Tick days, then outages", "A ticked day shows its outages – untick any you don't want."],
+            ["search", "Preview", "Anything already filled in: choose keep or replace (or “Set all to”)."],
+            ["save", "Apply & download", "An updated copy downloads – the original isn't touched."]],
+    result: "<name>_updated_<date>.xlsx – pivots, charts and the password kept",
+    tips: ["Task 2 writes e.g. “No Access, (x1) Generator from GWF, 3 phase 10 kVa, Setubal, 30 m of cable needed.”",
+           "Battery pods: the multiplier goes into the Battery Pods column.",
+           "A second run continues from the updated copy – drop a file again to start fresh."]},
+  outputs: {title: "Outputs (CV Excel Report)", icon: "chart", c: "c4",
+    need: [["db", "Master file", ".parquet / .csv – from Your files"], ["file", "Logos (optional)", "remembered"], ["db", "miscelaneous.parquet (optional)", "service codes – remembered"]],
+    steps: [["db", "Load the Master", "Picked up from Your files, or drop it in box 1."],
+            ["filter", "Set the filters", "“All” = no restriction. Date Filter + Start / End for dates."],
+            ["search", "Apply Filters", "Shows how many rows are left."],
+            ["save", "Export Excel", "Pick CV groups (All = every group), then export."]],
+    result: "Outputs_Report.xlsx – Summary, Outputs, Variations, a sheet per category, CV8 / CV31",
+    tips: ["Tick “Variations_service codes” for that extra sheet (needs miscelaneous.parquet)."]},
+  wi: {title: "Work Instructions & Map Check", icon: "map", c: "c5",
+    need: [["db", "Master .parquet", "from Your files"], ["folder", "Maps", "Outages Programme folders, or PDFs"]],
+    steps: [["filter", "Tab 1 · Load & filter", "Set the dates and filters – the dates also drive the map scan."],
+            ["folder", "Tab 3 · Add maps", "Drop year / month / outage folders, or add PDFs by hand."],
+            ["word", "Tab 2 · Work Instructions", "Generate the Word document from the filtered rows."],
+            ["chart", "Tab 3 · Cross-reference", "Generate the report: Control File vs maps."]],
+    result: "Work_Instructions.docx · Pole_PDF_CrossReference_Report.xlsx",
+    tips: ["Set a date range before scanning – otherwise every outage folder is read.",
+           "Map names in the report link to the real network folder (or your drive letter)."]},
+  aggregate: {title: "Aggregate Control Files", icon: "layers", c: "c2",
+    need: [["file", "Control Files", "or a whole folder"]],
+    steps: [["drop", "Drop the Control Files", "Box 1."], ["play", "Aggregate", "Box 3."]],
+    result: "CF_aggregated.xlsx + _aggregated.parquet + _resume.parquet"},
+  master: {title: "Build Master Parquet", icon: "db", c: "c3",
+    need: [["db", "CF_aggregated.parquet", ""], ["db", "Project Tracker.parquet", ""], ["db", "miscelaneous.parquet", ""]],
+    steps: [["drop", "Drop the three files", "Box 1."], ["play", "Build Master", "Box 3."]],
+    result: "Master_DD-MM-YYYY.parquet + .xlsx"},
+  "dash/tracker": {title: "Planning Dashboard", icon: "grid", c: "c2",
+    need: [["db", "Master file", "required"], ["grid", "High level planning", "optional · Jobs calendar"], ["chart", "Service Partner Workbank", "optional · Pole Position"],
+           ["file", "Outage calendar .ics", "optional"], ["file", "miscelaneous.parquet", "optional · service codes in Totals"]],
+    steps: [["drop", "Drop the Master", "In the strip at the top – the optional files can be added any time."],
+            ["cal", "Date field and range", "Combined date is the default. Unplanned = no Plan1 and no Done."],
+            ["filter", "Filters, left to right", "Each one narrows the next. × on a chip removes it; Reset filters clears all."],
+            ["table", "Open a tab", "Only the tab on screen is worked out, so switching tabs is quick."]],
+    tabs: [["trend", "Overview", "CV7 recover over time, pole categories – plus the most repeated Plan1 comments when Plan1 is picked."],
+           ["cal", "Jobs", "The High level planning calendar – click a day for its outages, poles and tasks."],
+           ["grid", "Mapped Items", "Item cards – click one to see its rows."],
+           ["chart", "Pole Position", "Gantt from the Workbank, and the PID breakdown under it."],
+           ["pound", "Totals", "Totals, the Variations pivot, service codes and every item (CSV)."]],
+    dates: DATE_GUIDE.concat([["var(--neutral)", "Unplanned", "Rows with no Plan1 and no Done date."]]),
+    tips: ["Hover a chart for its numbers; the Chart / Table switch shows them as a table, CSV downloads it."]},
+  "dash/master": {title: "Financial Dashboard", icon: "pound", c: "c1",
+    need: [["db", "Master file", "required"]],
+    steps: [["drop", "Drop the Master", "In the strip at the top (or Your files on the home page)."],
+            ["cal", "Date field, range and Group by", "Group by Auto picks Day / Week / Month / Year for the range."],
+            ["filter", "Filters, left to right", "Circuit and Pole narrow to what the others allow."],
+            ["table", "Open a tab", "Only the tab on screen is worked out."]],
+    tabs: [["trend", "Trends", "Total by date (construction + materials) and by team leader."],
+           ["table", "PID Breakdown", "Remaining / planned / done / invoiced per PID – Show All, Construction or Material."],
+           ["pound", "Finance", "Billing pipeline, invoicing speed, variance by project, top overruns and underspends."]],
+    dates: DATE_GUIDE,
+    tips: ["Rows whose job doesn't start with M - or C - are left out of the charts (listed at the top)."]},
+  "dash/materials": {title: "Materials Breakdown", icon: "box3", c: "c3",
+    need: [["box3", "materials_all.parquet", "required"], ["db", "Master file", "required"]],
+    steps: [["drop", "Drop both files", "In the strip at the top."],
+            ["cal", "Date field and From / To", "Blank From / To = no limit."],
+            ["filter", "Filters", "District, Project, PID, Source file, Circuit, Pole."],
+            ["table", "Open a tab", "Poles, Free Issue, GUK – then Maps and Export if you need them."]],
+    tabs: [["pole", "Poles", "Pole quantities by size."], ["box3", "Free Issue", "By commodity code – narrow by type or material."],
+           ["layers", "GUK", "Assemblies and their components."], ["map", "Maps (optional)", "Which filtered poles are on scanned maps."],
+           ["csv", "Export", "Materials_Breakdown.xlsx for the current filters."]],
+    dates: DATE_GUIDE},
+};
+const GUIDE_ORDER = ["home", "tp", "build", "outputs", "wi", "gens", "dash/tracker", "dash/master", "dash/materials", "aggregate", "master"];
+const guideId = () => { const id = location.hash.replace("#", ""); return GUIDES[id] ? id : "home"; };
+const gIcon = (k, size = 18) => (I[k] || ICON2[k] || I.file).replace("<svg", `<svg width=${size} height=${size}`);
+
+function guideBtn(id, onBar){
+  const b = h(`<button class="btn sm gbtn${onBar ? "" : " ghost"}" title="Guide – how to use this page">${gIcon("help", 16)}<span>Guide</span></button>`);
+  b.onclick = () => openGuide(id || guideId(), b);
+  return b;
+}
+let guideOpen = null;
+function openGuide(id, opener){
+  if (guideOpen) guideOpen.close();
+  const bg = h(`<div class="gd-bg"><aside class="gd" role="dialog" aria-modal="true" aria-labelledby="gd-h">
+    <div class="gd-top"><select class="gd-pick" title="Guide for another page"></select><button class="btn sm gd-x" title="Close (Esc)">${I.x}</button></div>
+    <div class="gd-body"></div></aside></div>`);
+  const pick = $(".gd-pick", bg), body = $(".gd-body", bg);
+  GUIDE_ORDER.forEach(k => { const o = document.createElement("option"); o.value = k; o.textContent = GUIDES[k].title; pick.append(o); });
+  const draw = k => {
+    const g = GUIDES[k] || GUIDES.home; pick.value = k; body.textContent = "";
+    const head = h(`<div class="gd-head"><div class="ico ${g.c}">${gIcon(g.icon, 24)}</div><div><h2 id="gd-h"></h2><p></p></div></div>`);
+    $("h2", head).textContent = g.title; $("p", head).textContent = g.intro || "How to use this page";
+    body.append(head);
+    const sec = (title, el) => { const s = h(`<section class="gd-sec"><h3></h3></section>`); $("h3", s).textContent = title; s.append(el); body.append(s); };
+    if (g.need){ const w = h(`<div class="gd-need"></div>`);
+      g.need.forEach(([ic, name, hint]) => { const c = h(`<div class="gd-file"><span class="gi">${gIcon(ic, 16)}</span><span><b></b><small></small></span></div>`);
+        $("b", c).textContent = name; $("small", c).textContent = hint || ""; w.append(c); }); sec("What you need", w); }
+    if (g.steps){ const w = h(`<ol class="gd-steps"></ol>`);
+      g.steps.forEach(([ic, name, text], i) => { const li = h(`<li><span class="gn">${i + 1}</span><div class="gt"><b><span class="gsi">${gIcon(ic, 15)}</span><span></span></b><p></p></div></li>`);
+        $("b span:last-child", li).textContent = name; $("p", li).textContent = text; w.append(li); }); sec("Steps", w); }
+    if (g.result){ const r = h(`<div class="gd-result"><span class="gi">${gIcon("down", 16)}</span><span></span></div>`); $("span:last-child", r).textContent = g.result; sec("What you get", r); }
+    if (g.flow){ const w = h(`<div class="gd-flow"></div>`);
+      g.flow.forEach((f, i) => { if (i) w.append(h(`<span class="ga">${I.arrow}</span>`)); const c = h(`<span class="gc"></span>`); c.textContent = `${i + 1}. ${f}`; w.append(c); }); sec("Usual order of the tools", w); }
+    if (g.tabs){ const w = h(`<div class="gd-tabs"></div>`);
+      g.tabs.forEach(([ic, name, text]) => { const c = h(`<div class="gd-tab"><span class="gi">${gIcon(ic, 16)}</span><span><b></b><small></small></span></div>`);
+        $("b", c).textContent = name; $("small", c).textContent = text; w.append(c); }); sec("Tabs", w); }
+    if (g.dates){ const w = h(`<div class="gd-dates"></div>`);
+      g.dates.forEach(([col, name, text]) => { const c = h(`<div><i></i><b></b><span></span></div>`); $("i", c).style.background = col; $("b", c).textContent = name; $("span", c).textContent = text; w.append(c); });
+      sec("Date field", w); }
+    if (g.tips){ const w = h(`<ul class="gd-tips"></ul>`); g.tips.forEach(t => { const li = h(`<li>${gIcon("check", 14)}<span></span></li>`); $("span", li).textContent = t; w.append(li); }); sec("Good to know", w); }
+    body.scrollTop = 0;
+  };
+  const close = () => { bg.classList.remove("on"); document.removeEventListener("keydown", onKey); setTimeout(() => bg.remove(), 180); guideOpen = null; if (opener && opener.isConnected) opener.focus(); };
+  const onKey = e => { if (e.key === "Escape") close(); };
+  bg.addEventListener("mousedown", e => { if (e.target === bg) close(); });
+  $(".gd-x", bg).onclick = close;
+  pick.onchange = () => draw(pick.value);
+  document.addEventListener("keydown", onKey);
+  document.body.append(bg); draw(id);
+  requestAnimationFrame(() => bg.classList.add("on"));
+  $(".gd-x", bg).focus();
+  guideOpen = {close};
+}
+
 /* ---------------- router ---------------- */
-const PAGES = {tp: pageTP, build: pageBuild, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
+const PAGES = {gens: pageGen, tp: pageTP, build: pageBuild, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
 const EXTRA_PAGES = {
-  aggregate: {id:"aggregate", c:"c2", icon:"layers", title:"Aggregate Control Files", desc:"Step 1 on its own: build CF_aggregated (.xlsx + two .parquet files)."},
-  master: {id:"master", c:"c3", icon:"db", title:"Build Master Parquet", desc:"Step 2 on its own: join an existing CF_aggregated with the Project Tracker and the miscelaneous file."},
+  aggregate: {id:"aggregate", c:"c2", icon:"layers", title:"Aggregate Control Files", desc:"Step 1 on its own: CF_aggregated (.xlsx + .parquet)."},
+  master: {id:"master", c:"c3", icon:"db", title:"Build Master Parquet", desc:"Step 2 on its own: Master from an existing CF_aggregated."},
 };
 function route(){
   const id = location.hash.replace("#", "");
   window.scrollTo(0, 0);
   dashToken++;
-  Tip.hide(); if (openMs) openMs.close();
+  Tip.hide(); if (openMs) openMs.close(); if (guideOpen) guideOpen.close();
   app.innerHTML = "";
   document.body.classList.remove("dashmode"); delete document.body.dataset.dash;
   if (id.startsWith("dash/") && DASHDEF[id.slice(5)]) return pageDashboard(id.slice(5));
@@ -1209,8 +1615,9 @@ const IdleGuard = (() => {
     });
   });
   document.querySelectorAll(".hlogo[data-img]").forEach(el => el.replaceWith(imageEl(el.dataset.img, "", "hlogo")));
+  $("header").insertBefore(guideBtn(null), pill);   // ? Guide - opens the guide for the page you're on
   route();
-  PY.start().catch(() => {});   // start loading Python straight away, in the background
+  PY.start().then(() => PY.call("warmup", {}, {needs: ["pyarrow"]})).catch(() => {});   // load Python + the parquet reader in the background
 })();
 
 </script>
