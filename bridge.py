@@ -604,8 +604,10 @@ def gs_preview(task=1, ids=None, log=print):
     n_conf = len(conflicts)
     if res["task"] == 1:
         n_new = len(res["items"]) - n_conf
-        summary = (f"{n_new} outage(s) will be added to the Generators table starting at row "
-                   f"{_GS['trk']['last_used_row'] + 1}; {n_conf} already in the tracker.")
+        n_mid = sum(1 for it in res["items"] if not it["conflict"] and "inserted" in it["where"])
+        summary = (f"{n_new} outage(s) will be added to the Generators table in date order"
+                   + (f" ({n_mid} inserted between existing dates)" if n_mid else "")
+                   + f"; {n_conf} already in the tracker.")
         choices = G.T1_CHOICES
     else:
         n_w = sum(1 for it in res["items"] if not it["conflict"] and not it["same"])

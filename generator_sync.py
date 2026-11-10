@@ -3,7 +3,8 @@ Generator Tracker  <->  High-level planning  sync tool
 =====================================================
 
 Run in JupyterLab:
-    %run generator_sync.py          (or paste the whole file into a cell and run it)
+    %run tool_generator_sync.py     (or paste the whole file into a cell and run it)
+The web page (build_page.py) uses this same file - it picks up every tool_*.py.
 
 Requirements (Anaconda already has most of them):
     pip install ipywidgets openpyxl pandas msoffcrypto-tool
@@ -469,12 +470,29 @@ def plan_task1(selected: list[dict], trk: dict) -> dict:
             existing = fits[0] if fits else None
         items.append({
             "p": p, "existing": existing, "conflict": existing is not None,
-            "where": f"Tracker row {existing['_row']}" if existing else "new row",
+            "where": f"Tracker row {existing['_row']}" if existing else _insert_where(p, trk),
             "current": _trk_summary(existing) if existing else "",
             "new": _trk_summary({**p}),
             "source": f"{p['_sheet']}!row {p['_row']}",
         })
     return {"task": 1, "items": items, "unmatched": []}
+
+
+def _insert_point(d: dt.date | None, trk: dict) -> int:
+    """Current tracker row a new outage dated d must go *before* to keep the dates in
+    chronological order (same date -> after the existing ones). last_used_row+1 = at the end."""
+    if d is not None:
+        for t in sorted(trk["rows"], key=lambda t: t["_row"]):
+            if t["_date"] is not None and t["_date"] > d:
+                return t["_row"]
+    return trk["last_used_row"] + 1
+
+
+def _insert_where(p: dict, trk: dict) -> str:
+    pt = _insert_point(p.get("_date"), trk)
+    if pt > trk["last_used_row"]:
+        return "new row – at the end (date order)"
+    return f"new row – inserted in date order (before current row {pt})"
 
 
 def _task1_cells(p: dict, row: int, cols: dict) -> dict:
@@ -496,21 +514,56 @@ def _task1_cells(p: dict, row: int, cols: dict) -> dict:
 
 
 def build_edits_task1(plan_res: dict, choices: dict[int, str], trk: dict) -> tuple[dict, list[dict]]:
-    """Returns (edits {row: cells}, summary rows)."""
+    """Returns (edits {row: cells}, summary rows).
+
+    New outages are placed in chronological order: if a new date falls between dates
+    already in the tracker, the rows below move down and a row is inserted there.
+    The row move is passed to apply_task1 under the key SHIFT_KEY."""
     cols = trk["cols"]
-    edits, summary = {}, []
-    next_row = trk["last_used_row"] + 1
+    last = trk["last_used_row"]
+    adds, repl, summary = [], [], []
     for i, it in enumerate(plan_res["items"]):
         action = choices.get(i, "keep") if it["conflict"] else "add"
         if action == "add":
-            row, next_row = next_row, next_row + 1
+            adds.append(it)
         elif action == "replace":
-            row = it["existing"]["_row"]
+            repl.append(it)
         else:
             summary.append({"Action": "kept existing", "Row": it["existing"]["_row"], "Outage": it["new"]})
-            continue
+
+    # where each addition goes (old-row coordinates), stable by date then selection order
+    adds.sort(key=lambda it: it["p"]["_date"])
+    points = [_insert_point(it["p"]["_date"], trk) for it in adds]
+    inside = sorted(pt for pt in points if pt <= last)          # need a real row insert
+    m = len(inside)
+
+    def new_row_of(old: int) -> int:                          # existing row after the move
+        return old + sum(1 for pt in inside if pt <= old)
+
+    edits: dict = {}
+    if m:
+        edits[SHIFT_KEY] = {
+            "map": {r: new_row_of(r) for r in range(inside[0], last + 1)},
+            "drop": list(range(last + 1, last + m + 1)),      # empty rows the block grows into
+        }
+    used: dict[int, int] = {}
+    tail = last + m
+    for it, pt in zip(adds, points):
+        if pt <= last:
+            row = pt + sum(1 for x in inside if x < pt) + used.get(pt, 0)
+            used[pt] = used.get(pt, 0) + 1
+            how = "inserted (date order)"
+        else:
+            tail += 1
+            row = tail
+            how = "added at the end"
         edits.setdefault(row, {}).update(_task1_cells(it["p"], row, cols))
-        summary.append({"Action": "added" if action == "add" else "replaced", "Row": row, "Outage": it["new"]})
+        summary.append({"Action": how, "Row": row, "Outage": it["new"]})
+    for it in repl:
+        row = new_row_of(it["existing"]["_row"]) if m else it["existing"]["_row"]
+        edits.setdefault(row, {}).update(_task1_cells(it["p"], row, cols))
+        summary.append({"Action": "replaced", "Row": row, "Outage": it["new"]})
+    summary.sort(key=lambda x: x["Row"])
     return edits, summary
 
 
@@ -644,10 +697,12 @@ def _style_reference(xml: str, row_no: int) -> dict[str, str]:
     return out
 
 
-def patch_sheet_xml(xml: str, edits: dict[int, dict], style_row: int | None = None):
+def patch_sheet_xml(xml: str, edits: dict[int, dict], style_row: int | None = None,
+                    ref_styles: dict[str, str] | None = None):
     """edits: {row: {col: (kind, value)}}. Returns (new_xml, log list, max_row)."""
     log = []
-    ref_styles = _style_reference(xml, style_row) if style_row else {}
+    if ref_styles is None:
+        ref_styles = _style_reference(xml, style_row) if style_row else {}
     sd_open = re.search(r"<sheetData\b[^>]*?(/>|>)", xml)
     if sd_open.group(1) == "/>":  # empty sheetData
         xml = xml[: sd_open.start()] + "<sheetData></sheetData>" + xml[sd_open.end():]
@@ -677,6 +732,79 @@ def patch_sheet_xml(xml: str, edits: dict[int, dict], style_row: int | None = No
     xml = xml[:sd_start] + new_body + xml[sd_end:]
     max_row = max([int(x) for x in re.findall(r'<row\b[^>]*?\br="(\d+)"', new_body)] or [0])
     return xml, log, max_row
+
+
+SHIFT_KEY = "__row_shift__"
+
+
+def _shift_ref_attr(ref: str, mapping: dict[int, int]) -> str:
+    def one(m):
+        r = int(m.group(2))
+        return f"{m.group(1)}{mapping.get(r, r)}"
+    return re.sub(r"(\$?[A-Z]+\$?)(\d+)", one, ref)
+
+
+def shift_sheet_rows(xml: str, mapping: dict[int, int], drop: list[int]) -> str:
+    """Move rows old -> new (cell refs and formulas follow); remove the rows in drop
+    (empty rows the moved block grows into). mapping must keep the row order."""
+    from openpyxl.formula.translate import Translator
+    drop = set(drop)
+    sd = re.search(r"<sheetData\b[^>]*>", xml)
+    if not sd:
+        return xml
+    start, end = sd.end(), xml.index("</sheetData>", sd.end())
+    body = xml[start:end]
+
+    def fix_cell(cm, old, new):
+        cx = cm.group(0)
+        tag_end = cx.find(">") + 1
+        tag = re.sub(r'\br="([A-Z]+)\d+"', lambda m: f'r="{m.group(1)}{new}"', cx[:tag_end], count=1)
+        rest = cx[tag_end:]
+        col = re.search(r'\br="([A-Z]+)\d+"', tag).group(1)
+
+        def fix_f(fm):
+            ftag, ftxt = fm.group(1), fm.group(2)
+            if ftxt.strip():
+                try:
+                    src = html.unescape(ftxt)
+                    t = Translator("=" + src if not src.startswith("=") else src, origin=f"{col}{old}")
+                    out = t.translate_formula(f"{col}{new}")
+                    ftxt = html.escape(out[1:] if out.startswith("=") else out, quote=False)
+                except Exception:
+                    pass
+            ftag = re.sub(r'\bref="([^"]+)"', lambda m: f'ref="{_shift_ref_attr(m.group(1), {old: new})}"', ftag)
+            return f"{ftag}{ftxt}</f>"
+        rest = re.sub(r"(<f\b[^>]*>)(.*?)</f>", fix_f, rest, flags=re.S)
+        return tag + rest
+
+    out, pos = [], 0
+    for m in _ROW_RE.finditer(body):
+        rx = m.group(0)
+        tag_end = rx.find(">") + 1
+        r_no = int(re.search(r'\br="(\d+)"', rx[:tag_end]).group(1))
+        if r_no in drop:
+            out.append(body[pos:m.start()]); pos = m.end()
+            continue
+        if r_no in mapping and mapping[r_no] != r_no:
+            new = mapping[r_no]
+            rtag = re.sub(r'\br="\d+"', f'r="{new}"', rx[:tag_end], count=1)
+            inner = _CELL_RE.sub(lambda cm: fix_cell(cm, r_no, new), rx[tag_end:])
+            out.append(body[pos:m.start()]); out.append(rtag + inner); pos = m.end()
+    out.append(body[pos:])
+    return xml[:start] + "".join(out) + xml[end:]
+
+
+def _drop_calc_chain(zin: zipfile.ZipFile, replaced: dict, removed: set):
+    """Excel rebuilds calcChain.xml; a stale one (after rows moved) makes it complain."""
+    if "xl/calcChain.xml" not in zin.namelist():
+        return
+    removed.add("xl/calcChain.xml")
+    rels = replaced.get("xl/_rels/workbook.xml.rels", zin.read("xl/_rels/workbook.xml.rels")).decode("utf8")
+    replaced["xl/_rels/workbook.xml.rels"] = re.sub(
+        r'<Relationship\b[^>]*relationships/calcChain"[^>]*/>', "", rels).encode("utf8")
+    ct = zin.read("[Content_Types].xml").decode("utf8")
+    replaced["[Content_Types].xml"] = re.sub(
+        r'<Override\b[^>]*PartName="/xl/calcChain\.xml"[^>]*/>', "", ct).encode("utf8")
 
 
 def _build_row(r_no, cells, ref_styles, log):
@@ -779,18 +907,28 @@ def _extend_ref(ref: str, max_row: int) -> str:
 def write_workbook(plain: bytes, sheet_edits: dict[str, dict], style_rows: dict[str, int] | None = None,
                    grow_tables: bool = False, refresh_pivots: bool = False,
                    full_calc: bool = False) -> tuple[bytes, list[str]]:
-    """sheet_edits: {sheet name: {row: {col: (kind, value)}}}"""
+    """sheet_edits: {sheet name: {row: {col: (kind, value)}}}; an optional SHIFT_KEY entry
+    {"map": {old: new}, "drop": [rows]} moves rows first (row insert)."""
     style_rows = style_rows or {}
     zin = zipfile.ZipFile(io.BytesIO(plain))
     paths = _sheet_paths(zin)
     replaced: dict[str, bytes] = {}
+    removed: set[str] = set()
     log: list[str] = []
     for sheet, edits in sheet_edits.items():
         if not edits:
             continue
+        edits = dict(edits)
+        shift = edits.pop(SHIFT_KEY, None)
         p = paths[sheet]
         xml = zin.read(p).decode("utf8")
-        new_xml, lg, max_row = patch_sheet_xml(xml, edits, style_rows.get(sheet))
+        ref_styles = _style_reference(xml, style_rows[sheet]) if style_rows.get(sheet) else {}
+        if shift:
+            xml = shift_sheet_rows(xml, shift["map"], shift["drop"])
+            n = len(shift["drop"])
+            log.append(f"[{sheet}] {n} row(s) inserted to keep the dates in order")
+            _drop_calc_chain(zin, replaced, removed)
+        new_xml, lg, max_row = patch_sheet_xml(xml, edits, ref_styles=ref_styles)
         log += [f"[{sheet}] {x}" for x in lg]
         # keep <dimension> covering the data
         new_xml = re.sub(r'(<dimension\b[^>]*\bref=")([^"]+)(")',
@@ -822,6 +960,8 @@ def write_workbook(plain: bytes, sheet_edits: dict[str, dict], style_rows: dict[
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
+            if item.filename in removed:
+                continue
             data = replaced.get(item.filename, None)
             zout.writestr(item, data if data is not None else zin.read(item.filename))
     return out.getvalue(), log
@@ -1048,8 +1188,10 @@ def launch():
             n_conf = sum(1 for it in res["items"] if it["conflict"])
             if task.value == 1:
                 n_new = len(res["items"]) - n_conf
-                display(HTML(f"<b>{n_new}</b> outage(s) will be added to the Generators table starting at row "
-                             f"<b>{state['trk']['last_used_row'] + 1}</b>; <b>{n_conf}</b> already in the tracker."))
+                n_mid = sum(1 for it in res["items"] if not it["conflict"] and "inserted" in it["where"])
+                display(HTML(f"<b>{n_new}</b> outage(s) will be added to the Generators table in date order"
+                             + (f" (<b>{n_mid}</b> inserted between existing dates)" if n_mid else "")
+                             + f"; <b>{n_conf}</b> already in the tracker."))
             else:
                 n_w = sum(1 for it in res["items"] if not it["conflict"] and not it["same"])
                 display(HTML(f"<b>{n_w}</b> empty cell(s) will be filled; <b>{n_conf}</b> cell(s) already have "
@@ -1166,4 +1308,4 @@ if __name__ == "__main__":
         get_ipython  # noqa: F821  – only launch the UI inside Jupyter/IPython
         launch()
     except NameError:
-        print("Run this inside JupyterLab:  %run generator_sync.py")
+        print("Run this inside JupyterLab:  %run tool_generator_sync.py")

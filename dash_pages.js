@@ -6,7 +6,7 @@ const DASHES = [
   {key: "tracker", c: "c2", icon: "grid", title: "Planning Dashboard",
    desc: "Jobs, High level planning calendar, mapped items, pole position and totals."},
   {key: "master", c: "c1", icon: "pound", title: "Financial Dashboard",
-   desc: "Totals by date and team leader, PID breakdown and finance."},
+   desc: "Revenue, teams, PID breakdown and finance."},
   {key: "materials", c: "c3", icon: "box3", title: "Materials Breakdown",
    desc: "Poles, Free Issue and GUK for the filtered Control File."},
 ];
@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 09-Nov-2026</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026b</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -253,20 +253,15 @@ DASHDEF.master = {
   loadFn: "mc_load", loadArgs: () => ({path: FILES.master.path}),
   init(P){ const f = P.st.f, L = P.st.L;
     if (!L.date_fields.includes(f.date_field)) f.date_field = L.default_date_field;
-    f.preset = f.preset || "All time"; f.granularity = f.granularity || "Auto"; f.pid_mode = f.pid_mode || "All"; },
+    f.preset = f.preset || "All time"; f.granularity = f.granularity || "Auto"; f.pid_mode = f.pid_mode || "All";
+    P.st.teams = P.st.teams || mcTeamsLoad(); },
   viewFn: "mc_view",
   lazyTabs: true,
+  noComments: ["teams"],
   viewArgs(P){ const f = P.st.f; return {path: FILES.master.path, date_field: f.date_field, preset: f.preset, custom_from: f.custom_from || null, custom_to: f.custom_to || null,
     districts: f.districts || [], projects: f.projects || [], pids: f.pids || [], pms: f.pms || [], sourcefiles: f.sourcefiles || [],
-    circuits: f.circuits || [], poles: f.poles || [], granularity: f.granularity, pid_mode: f.pid_mode, tab: P.st.tab}; },
+    circuits: f.circuits || [], poles: f.poles || [], granularity: f.granularity, pid_mode: f.pid_mode, tab: P.st.tab, ...mcTeamArgs(P)}; },
   cascade: [["districts"], ["projects"], ["pids"], ["pms"], ["sourcefiles"], ["circuits", "circuit_options"], ["poles", "pole_options"]],
-  pre(P){
-    const L = P.st.L; if (!L.other_count) return null;
-    const d = h(`<details class="dmap"><summary></summary><p class="muted" style="margin:0 0 6px;font-size:13px">These jobs don't start with 'M -' / 'M-' (material) or 'C -' / 'C-' (construction), so they're excluded from every chart. Their dates still count toward the date range. Sample job codes:</p><div class="chips"></div></details>`);
-    $("summary", d).textContent = `⚠ ${intf(L.other_count)} row(s) not classified`;
-    L.other_sample.forEach(s => { const c = h(`<span class="chip"><span></span></span>`); $("span", c).textContent = s; $(".chips", d).append(c); });
-    return d;
-  },
   filters(P){ const L = P.st.L, o = L.options;
     return {dateFields: L.date_fields, dateKey: "date_field", presets: L.presets, gran: ["Auto", "Day", "Week", "Month", "Year"],
       multis: [{key: "districts", label: "District", options: o.district}, {key: "projects", label: "Project", options: o.project},
@@ -279,8 +274,48 @@ DASHDEF.master = {
     {id: "trends", label: "Trends", icon: "trend", render: mcTrends},
     {id: "pid", label: "PID Breakdown", icon: "table", render: mcPid},
     {id: "finance", label: "Finance", icon: "pound", render: mcFinance},
+    {id: "teams", label: "Teams", icon: "team", render: mcTeams},
   ],
 };
+/* ---- Teams tab: which teams build the Teams chart (Trends) + optional leader names.
+   Kept in this browser (localStorage) so it is there next time. */
+const MC_TEAMS_KEY = "gaeltec.financial.teams";
+function mcTeamsLoad(){
+  try { const x = JSON.parse(localStorage.getItem(MC_TEAMS_KEY) || "null"); if (x && typeof x === "object") return {off: x.off || [], leaders: x.leaders || {}}; } catch(e){}
+  return {off: [], leaders: {}};
+}
+function mcTeamsSave(t){ try { localStorage.setItem(MC_TEAMS_KEY, JSON.stringify(t)); } catch(e){} }
+function mcTeamArgs(P){
+  const t = P.st.teams || {off: [], leaders: {}}, all = ((P.st.L && P.st.L.teams) || []).map(x => x.team);
+  const on = all.filter(x => !t.off.includes(x));
+  const leaders = {}; Object.entries(t.leaders || {}).forEach(([k, v]) => { if (v && v.trim() && all.includes(k)) leaders[k] = v.trim(); });
+  return {teams: on.length === all.length ? null : (on.length ? on : ["(none)"]), team_leaders: leaders};
+}
+function mcTeams(P, panel){
+  const L = P.st.L, t = P.st.teams, list = L.teams || [];
+  if (!list.length){ panel.append(note("No team column values found in the control file.")); return; }
+  const c = dcard("Teams", "Tick the teams to show in the Teams chart (Trends). Optionally type the team leader to show next to the team name. Saved in this browser.");
+  const all = h(`<button class="btn sm" type="button">Tick all</button>`), none = h(`<button class="btn sm" type="button">Untick all</button>`), fill = h(`<button class="btn sm" type="button">Use leaders from file</button>`);
+  c.acts.append(all, none, fill);
+  const tb = h(`<div class="dt teamtbl"><div class="tw"><table><thead><tr><th style="width:44px"></th><th>Team</th><th style="text-align:right">Rows</th><th>Team leader (optional)</th></tr></thead><tbody></tbody></table></div></div>`);
+  const save = () => mcTeamsSave(t);
+  const rows = list.map(r => {
+    const tr = h(`<tr><td><input type="checkbox"></td><td class="tn"></td><td style="text-align:right" class="rn"></td><td><input type="text" class="tl" style="width:100%;max-width:280px"></td></tr>`);
+    const cb = $("input[type=checkbox]", tr), inp = $("input.tl", tr);
+    $(".tn", tr).textContent = r.team; $(".rn", tr).textContent = intf(r.rows);
+    cb.checked = !t.off.includes(r.team);
+    inp.value = t.leaders[r.team] || ""; inp.placeholder = r.leader ? `e.g. ${r.leader}` : "leader name";
+    cb.onchange = () => { t.off = t.off.filter(x => x !== r.team); if (!cb.checked) t.off.push(r.team); save(); };
+    inp.oninput = () => { t.leaders[r.team] = inp.value; save(); };
+    $("tbody", tb).append(tr);
+    return {r, cb, inp};
+  });
+  all.onclick = () => { t.off = []; rows.forEach(x => x.cb.checked = true); save(); };
+  none.onclick = () => { t.off = list.map(x => x.team); rows.forEach(x => x.cb.checked = false); save(); };
+  fill.onclick = () => { rows.forEach(x => { if (x.r.leader){ x.inp.value = x.r.leader; t.leaders[x.r.team] = x.r.leader; } }); save(); };
+  c.body.append(tb);
+  panel.append(c);
+}
 function mcTrends(P, panel){
   const v = P.v, p1 = v.trends.panel1, k = p1.kpis;
   if (!p1.labels.length){ panel.append(note("No records under these filters. Widen the date range or clear a filter.")); return; }
@@ -293,25 +328,26 @@ function mcTrends(P, panel){
   ]));
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
   const varCol = i => p1.variance[i] >= 0 ? "var(--s1)" : "var(--s8)";
-  g.append(vizCard({title: "Panel 01 — Total by date (construction + materials)", sub: "Each column = materials + construction base + variance vs. original, stacked",
+  g.append(vizCard({title: "Revenue",
     legend: [{name: "Materials", color: "var(--s4)"}, {name: "Construction base (original / the rest)", color: "var(--s3)"}, {name: "Positive variation", color: "var(--s1)"}, {name: "Negative variation", color: "var(--s8)"}],
     draw: host => Viz.columns(host, {labels: p1.labels, height: 340, axis: v => moneyS(v),
       series: [{name: "Materials", values: p1.material, color: "var(--s4)"}, {name: "Base", values: p1.base, color: "var(--s3)"}, {name: "Variance", values: p1.cap, colorAt: varCol}],
       tip: i => ({title: p1.labels[i], rows: [{color: "var(--s3)", name: "Construction total", value: money(p1.total[i])}, {name: "Original", value: money(p1.orig[i])},
         {color: varCol(i), name: p1.variance[i] >= 0 ? "Positive variation" : "Negative variation", value: signed(p1.variance[i])}, {color: "var(--s4)", name: "Materials", value: money(p1.material[i])}],
         total: {name: "Total", value: money(p1.total[i] + p1.material[i])}})}),
-    table: () => ({name: "Total by date", columns: ["Period", "Construction total (£)", "Original (£)", "Variance (£)", "Materials (£)", "Total (£)"],
+    table: () => ({name: "Revenue", columns: ["Period", "Construction total (£)", "Original (£)", "Variance (£)", "Materials (£)", "Total (£)"],
       rows: p1.labels.map((l, i) => [l, p1.total[i], p1.orig[i], p1.variance[i], p1.material[i], p1.total[i] + p1.material[i]])})}));
   const p2 = v.trends.panel2;
+  if (!p2 || !p2.leaders.length){ g.append(note(p2 ? "No teams ticked – choose them in the Teams tab." : "No construction records under these filters.")); return; }
   const people = p2.leaders.filter(l => l !== "Other"), col = P.ck.assign(people);
   const cOf = l => l === "Other" ? "var(--neutral)" : col(l);
-  const c2 = vizCard({title: "Panel 02 — Total by team leader (construction)", sub: "Stacked by team leader · same filters, date grouping and periods as Panel 01" + (p2.has_other ? ` · top ${p2.top_n} shown individually, the rest grouped as Other` : ""),
+  const c2 = vizCard({title: "Teams",
     legend: p2.leaders.map(l => ({name: l, color: cOf(l)})),
     draw: host => Viz.columns(host, {labels: p2.labels, height: 320, axis: v => moneyS(v), fmt: money,
       series: p2.leaders.map(l => ({name: l, values: p2.values[l], color: cOf(l)})),
       tip: i => { const rows = p2.leaders.map(l => ({color: cOf(l), name: l, value: money(p2.values[l][i] || 0)})).filter((r, j) => (p2.values[p2.leaders[j]][i] || 0) !== 0);
         return {title: p2.labels[i], rows, total: {name: "Total", value: money(p2.leaders.reduce((a, l) => a + (p2.values[l][i] || 0), 0))}}; }}),
-    table: () => ({name: "Total by team leader", columns: ["Period", ...p2.leaders.map(l => l + " (£)")], rows: p2.labels.map((lab, i) => [lab, ...p2.leaders.map(l => p2.values[l][i] || 0)])})});
+    table: () => ({name: "Teams", columns: ["Period", ...p2.leaders.map(l => l + " (£)")], rows: p2.labels.map((lab, i) => [lab, ...p2.leaders.map(l => p2.values[l][i] || 0)])})});
   const k2 = p2.kpis;
   c2.body.prepend(kpis([{label: "Total (construction)", value: money(k2.total)}, {label: "Original", value: money(k2.original)},
     {label: "Variance", value: signed(k2.variance), tone: k2.variance >= 0 ? "up" : "down", note: k2.variance >= 0 ? "▲ over" : "▼ under"}]));
@@ -327,7 +363,7 @@ function mcPid(P, panel){
   panel.append(kpis([{label: "Total", value: money(k.total), hero: true}, {label: "Remaining", value: money(k.remaining), swatch: "var(--neutral)"},
     {label: "Planned", value: money(k.planned), swatch: "var(--s4)"}, {label: "Done", value: money(k.done), swatch: "var(--s3)"},
     {label: "Invoiced", value: money(k.invoiced), swatch: "var(--s7)"}, {label: "Variance", value: signed(k.variance), tone: k.variance >= 0 ? "up" : "down", note: k.variance >= 0 ? "▲ over value" : "▼ under value"}]));
-  const c = dcard("Panel 03 — PID breakdown", `District → Project → Project Manager → PID · ${pid.rows.length} PID(s) · each bar is split by that PID's own total, so proportions compare across PID sizes`);
+  const c = dcard("PID Breakdown");
   let mode = "chart";
   const holder = h(`<div></div>`);
   c.acts.append(segc([["chart", "Bars"], ["table", "Table"]], mode, m => { mode = m; draw(); }));
@@ -491,7 +527,54 @@ function ntOverview(P, panel){
   else g.append(vizCard({title: "All pole categories (erect only)", sub: "Count by pole type", span: 12,
     draw: host => Viz.bars(host, {labels: o.poles.map(p => p.type), series: [{name: "Count", values: o.poles.map(p => p.count), color: "var(--s1)"}], fmt: intf, labelMax: 200}),
     table: () => ({name: "Pole categories", columns: ["Pole type", "Count"], rows: o.poles.map(p => [p.type, p.count])})}));
+  if (P.v.sf_pivot) panel.append(sfPivotCard(P.v.sf_pivot));
   if (P.v.plan1_comments) panel.append(planCommentsCard(P.v.plan1_comments, P.v, "Plan1"));
+}
+/* ---------- Overview: source file → circuit → most repeated job, opened like a pivot table ---------- */
+function sfPivotCard(pv){
+  const wrap = h(`<div class="dgrid" style="margin-top:16px"></div>`);
+  const card = dcard("Source files → circuits → most repeated job", "", 12); wrap.append(card);
+  if (!pv.available){ card.body.append(emptyMsg("This Master file has no source file or circuit column.")); return wrap; }
+  const files = pv.files || [];
+  if (!files.length){ card.body.append(emptyMsg("No rows for the current filters.")); return wrap; }
+  $(".tt", card).append(h(`<p>${intf(files.length)} source file(s) · click a source file to open its circuits and the job repeated most on each · same filters as above</p>`));
+  const el = h(`<div class="dt sfpv"><div class="dth"><input type="text" placeholder="Search source file, circuit or job…"><span class="cnt"></span>
+    <button class="btn sm ex">Open all</button><button class="btn sm co">Close all</button><button class="btn sm dl" title="Download as CSV">${ICON2.csv} CSV</button></div>
+    <div class="tw" style="max-height:560px"><table><thead><tr><th style="width:34%">Source file / Circuit</th><th class="pn">Rows</th><th class="pn">Circuits</th><th class="pn">Jobs</th><th>Most repeated job</th><th class="pn">Times</th></tr></thead><tbody></tbody></table></div><div class="foot"></div></div>`);
+  card.body.append(el);
+  const tb = $("tbody", el), inp = $("input", el), foot = $(".foot", el), cnt = $(".cnt", el);
+  const open = new Set(); let limit = 100, shown = files;
+  const td = (t, cls) => { const c = document.createElement("td"); if (cls) c.className = cls; c.textContent = t; return c; };
+  function draw(){
+    const q = inp.value.trim().toLowerCase();
+    shown = !q ? files : files.filter(f => f[0].toLowerCase().includes(q) || f[6].some(c => c[0].toLowerCase().includes(q) || String(c[3]).toLowerCase().includes(q)));
+    cnt.textContent = `${intf(shown.length)} of ${intf(files.length)}`;
+    tb.textContent = "";
+    shown.slice(0, limit).forEach(f => {
+      const isOpen = open.has(f[0]) || (q && !f[0].toLowerCase().includes(q));
+      const tr = document.createElement("tr"); tr.className = "sfp" + (isOpen ? " open" : "");
+      const c0 = td(""); c0.innerHTML = `<span class="car">▸</span>`; c0.append(document.createTextNode(f[0]));
+      tr.append(c0, td(intf(f[1]), "pn"), td(intf(f[2]), "pn"), td(intf(f[3]), "pn"), td(f[4]), td(intf(f[5]), "pn"));
+      tr.onclick = () => { open.has(f[0]) ? open.delete(f[0]) : open.add(f[0]); draw(); };
+      tb.append(tr);
+      if (isOpen) f[6].forEach(c => {
+        if (q && !f[0].toLowerCase().includes(q) && !(c[0].toLowerCase().includes(q) || String(c[3]).toLowerCase().includes(q))) return;
+        const r = document.createElement("tr"); r.className = "sfc";
+        r.append(td(c[0], "ind"), td(intf(c[1]), "pn"), td("", "pn"), td(intf(c[2]), "pn"), td(c[3]), td(intf(c[4]), "pn"));
+        tb.append(r);
+      });
+    });
+    foot.textContent = "";
+    if (shown.length > limit){ const b = h(`<button class="btn sm">Show ${intf(Math.min(100, shown.length - limit))} more</button>`); b.onclick = () => { limit += 100; draw(); }; foot.append(b); }
+  }
+  inp.oninput = () => { limit = 100; draw(); };
+  $(".ex", el).onclick = () => { shown.slice(0, limit).forEach(f => open.add(f[0])); draw(); };
+  $(".co", el).onclick = () => { open.clear(); draw(); };
+  $(".dl", el).onclick = () => downloadCSV("Source files - circuits - most repeated job",
+    ["Source file", "Circuit", "Rows", "Jobs", "Most repeated job", "Times"],
+    files.flatMap(f => f[6].map(c => [f[0], c[0], c[1], c[2], c[3], c[4]])));
+  draw();
+  return wrap;
 }
 const GROUP_ICON = {"Poles": "pole", "Transformers": "tx", "Conductor": "cable", "Switch gear": "switch"};
 const GROUP_IMAGE = {"Poles": "Poles", "Transformers": "Transformer", "Conductor": "Cable", "Switch gear": "Switchgear"};

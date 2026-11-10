@@ -723,6 +723,34 @@ def plan2_comments(frame, date_col, comment_col="comment", job_col="job", limit=
     return {"available": True, "rows": int(len(frame[frame[date_col].notna()])), "with_comment": int(len(sub)),
             "distinct": int(len(agg)), "top": top}
 
+# ---- Overview: source file -> circuit -> most repeated job (pivot style) ----
+def sourcefile_pivot(f, circuit_col, job_col="job", sf_col="sourcefile"):
+    """[[sourcefile, rows, circuits, jobs, top job, top job rows, [[circuit, rows, jobs, top job, top rows], ...]], ...]"""
+    if sf_col not in f.columns or circuit_col not in f.columns:
+        return {"available": False}
+    def txt(s, blank):
+        out = s.astype("string").str.strip()
+        return out.mask(out.isna() | (out == ""), blank)
+    g = pd.DataFrame({"sf": txt(f[sf_col], "(no source file)").values,
+                      "c": txt(f[circuit_col], "(no circuit)").values,
+                      "j": txt(f[job_col], "(no job)").values if job_col in f.columns else "(no job)"})
+    if g.empty:
+        return {"available": True, "files": []}
+    n = g.groupby(["sf", "c", "j"], sort=False).size().rename("n").reset_index()
+    circ = n.groupby(["sf", "c"], sort=False).agg(rows=("n", "sum"), jobs=("j", "nunique"))
+    top_c = n.sort_values(["n", "j"], ascending=[False, True]).drop_duplicates(["sf", "c"]).set_index(["sf", "c"])
+    circ = circ.join(top_c[["j", "n"]]).reset_index().sort_values(["sf", "rows"], ascending=[True, False])
+    fj = n.groupby(["sf", "j"], sort=False)["n"].sum().reset_index()
+    top_f = fj.sort_values(["n", "j"], ascending=[False, True]).drop_duplicates("sf").set_index("sf")
+    jobs_per_file = fj.groupby("sf").size()
+    files = []
+    for sf, grp in circ.groupby("sf", sort=True):
+        files.append([sf, int(grp["rows"].sum()), int(len(grp)), int(jobs_per_file.get(sf, 0)),
+                      top_f.at[sf, "j"], int(top_f.at[sf, "n"]),
+                      [[r.c, int(r.rows), int(r.jobs), r.j, int(r.n)] for r in grp.itertuples(index=False)]])
+    return {"available": True, "files": files}
+
+
 COL_FIELDS = [  # (key, label, guesses)
     ("item_col", "Description / item", ("item", "description")),
     ("qsub_col", "Quantity (qsub)", ("qsub", "quantity_used")),
@@ -1012,6 +1040,7 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
                              if date_field == "Plan1" and "overview" in want else None)
     if "overview" in want:
         _overview(res, f, cols, filters, granularity, meta)
+        res["sf_pivot"] = sourcefile_pivot(f, cols["circuit_col"], cols["job_col"])
     if "items" in want:
         _items(res, f, cols, detail)
     if "totals" in want:

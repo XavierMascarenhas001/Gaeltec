@@ -305,7 +305,7 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 09-Nov-2026</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 10-Nov-2026b</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -1416,6 +1416,7 @@ const GUIDES = {
     result: "<name>_updated_<date>.xlsx – pivots, charts and the password kept",
     tips: ["Task 2 writes e.g. “No Access, (x1) Generator from GWF, 3 phase 10 kVa, Setubal, 30 m of cable needed.”",
            "Battery pods: the multiplier goes into the Battery Pods column.",
+           "Task 1 keeps the tracker in date order – a date that falls between existing ones gets a new row there.",
            "A second run continues from the updated copy – drop a file again to start fresh."]},
   outputs: {title: "Outputs (CV Excel Report)", icon: "chart", c: "c4",
     need: [["db", "Master file", ".parquet / .csv – from Your files"], ["file", "Logos (optional)", "remembered"], ["db", "miscelaneous.parquet (optional)", "service codes – remembered"]],
@@ -1449,7 +1450,7 @@ const GUIDES = {
             ["cal", "Date field and range", "Combined date is the default. Unplanned = no Plan1 and no Done."],
             ["filter", "Filters, left to right", "Each one narrows the next. × on a chip removes it; Reset filters clears all."],
             ["table", "Open a tab", "Only the tab on screen is worked out, so switching tabs is quick."]],
-    tabs: [["trend", "Overview", "CV7 recover over time, pole categories – plus the most repeated Plan1 comments when Plan1 is picked."],
+    tabs: [["trend", "Overview", "CV7 recover over time, pole categories, source files → circuits → most repeated job (click a file to open it) – plus the most repeated Plan1 comments when Plan1 is picked."],
            ["cal", "Jobs", "The High level planning calendar – click a day for its outages, poles and tasks."],
            ["grid", "Mapped Items", "Item cards – click one to see its rows."],
            ["chart", "Pole Position", "Gantt from the Workbank, and the PID breakdown under it."],
@@ -1462,11 +1463,12 @@ const GUIDES = {
             ["cal", "Date field, range and Group by", "Group by Auto picks Day / Week / Month / Year for the range."],
             ["filter", "Filters, left to right", "Circuit and Pole narrow to what the others allow."],
             ["table", "Open a tab", "Only the tab on screen is worked out."]],
-    tabs: [["trend", "Trends", "Total by date (construction + materials) and by team leader."],
+    tabs: [["trend", "Trends", "Revenue (construction + materials) and Teams – the teams ticked in the Teams tab."],
            ["table", "PID Breakdown", "Remaining / planned / done / invoiced per PID – Show All, Construction or Material."],
-           ["pound", "Finance", "Billing pipeline, invoicing speed, variance by project, top overruns and underspends."]],
+           ["pound", "Finance", "Billing pipeline, invoicing speed, variance by project, top overruns and underspends."],
+           ["check", "Teams", "Tick the teams (A, B, C …) for the Teams chart and type a leader name if you want – remembered in this browser."]],
     dates: DATE_GUIDE,
-    tips: ["Rows whose job doesn't start with M - or C - are left out of the charts (listed at the top)."]},
+    tips: ["Rows whose job doesn't start with M - or C - are left out of the charts."]},
   "dash/materials": {title: "Materials Breakdown", icon: "box3", c: "c3",
     need: [["box3", "materials_all.parquet", "required"], ["db", "Master file", "required"]],
     steps: [["drop", "Drop both files", "In the strip at the top."],
@@ -1620,6 +1622,30 @@ const IdleGuard = (() => {
   PY.start().then(() => PY.call("warmup", {}, {needs: ["pyarrow"]})).catch(() => {});   // load Python + the parquet reader in the background
 })();
 
+
+/* ---- gentle "digital click" when an option on the home page is clicked ---- */
+const uiClick = (() => {
+  let ctx = null;
+  return () => {
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+      const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      o.type = "sine";
+      o.frequency.setValueAtTime(1900, t);
+      o.frequency.exponentialRampToValueAtTime(1100, t + 0.03);
+      f.type = "lowpass"; f.frequency.value = 3200;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.045, t + 0.004);   // very soft
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      o.connect(f).connect(g).connect(ctx.destination);
+      o.start(t); o.stop(t + 0.06);
+    } catch(e){}
+  };
+})();
+document.addEventListener("pointerdown", e => {
+  if (e.button === 0 && e.target.closest && e.target.closest("#app .tile, #app .lcard")) uiClick();
+}, {passive: true});
 </script>
 </body>
 </html>

@@ -1,25 +1,31 @@
-Gaeltec Tools page - version 09-Nov-2026
+Gaeltec Tools page - version 10-Nov-2026b
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 09-Nov-2026".
+The header should say "version 10-Nov-2026b".
 
-TO KEEP BUILDING IT YOURSELF: copy every other file in this folder into your page
+TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
     python build_page.py
 
-These files are based on your last built page (28-Oct) - the page_template.html,
-dash_pages.js, dashboards.css and dash_core.js you had were older (16-Oct), which
-is why building from them lost features. patch_dashboard.py, patch_page_template.py
-and patch_generators.py are already included - running them again does nothing.
+JUPYTER: generator_sync.py is the same code as tool_generator_sync.py - put it next
+to your notebook (replacing the old one) and run:
+    import generator_sync; generator_sync.launch()
 
 What changed
-  - Dashboards much faster: only the tab on screen is worked out; filter changes
-    take well under a second on a 150,000-row Master.
-  - "Combined date" replaces DateToUse in all three dashboards: Done when it's today
-    or in the past, otherwise Plan1 when it's today or later.
-  - Planning > Overview: "Plan1 comments - most repeated" when Plan1 is the date field.
-  - "Outages Programme" is now "High level planning" (the High-level_planning file).
-  - Column mapping panel removed from the Planning dashboard.
-  - ? Guide button (header and dashboard bar): steps, files and tips per page.
-  - Shorter descriptions; the four intro texts on the home page are gone.
+  - Generators (task 1, Planning -> Tracker): new outages go in date order. A date
+    that falls between dates already in the tracker gets a new row there - the rows
+    below move down with all their columns (generator details, status ...), and the
+    Weekday formula follows. Same date = after the existing ones. The preview says
+    "inserted in date order (before current row N)" or "at the end".
+  - Financial dashboard > new "Teams" tab: tick which teams (from the control file
+    team column) build the Teams chart in Trends, and optionally type the team
+    leader shown next to each team ("T1 · John Smith"). "Use leaders from file"
+    fills in the leader that appears most for each team. Remembered in this browser.
+  - Financial charts renamed: "Revenue", "Teams", "PID Breakdown" (no descriptions).
+  - The "N row(s) not classified" warning is gone from the Financial dashboard.
+  - A very soft click sound when you click a tool, dashboard or link on the home page.
+  - Planning dashboard > Overview: new "Source files -> circuits -> most repeated job"
+    table (above the Plan1 comments). One line per source file; click it to open its
+    circuits, each with the job repeated most for that circuit in that file. Search,
+    Open all / Close all and CSV download. Follows the same filters as the page.

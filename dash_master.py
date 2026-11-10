@@ -237,6 +237,26 @@ def _s(v):
     return "" if v is None or (not isinstance(v, str) and pd.isna(v)) else str(v)
 
 
+NO_TEAM = "No team"
+
+
+def _team_list(df):
+    """Teams found in the control file (A, B, C …) with the team leader that appears most for each."""
+    sub = df.loc[df["flag"] == "construction", ["team", "team lider"]]
+    if sub.empty:
+        sub = df[["team", "team lider"]]
+    team = sub["team"].fillna(NO_TEAM)
+    out = []
+    counts = team.value_counts()
+    lead = (sub.assign(team=team).dropna(subset=["team lider"])
+            .groupby(["team", "team lider"]).size().reset_index(name="n")
+            .sort_values(["team", "n"], ascending=[True, False]).drop_duplicates("team")
+            .set_index("team")["team lider"])
+    for t in sorted(counts.index, key=lambda x: (x == NO_TEAM, str(x))):
+        out.append({"team": str(t), "leader": _s(lead.get(t)), "rows": int(counts[t])})
+    return out
+
+
 def load(path):
     df = _df(path)
     available = {label: col for label, col in DATE_FIELDS.items() if col in df.columns and df[col].notna().any()}
@@ -248,6 +268,7 @@ def load(path):
         "default_date_field": COMBINED if COMBINED in available else (list(available)[0] if available else None),
         "presets": PRESETS,
         "other_count": int((df["flag"] == "other").sum()),
+        "teams": _team_list(df),
         "other_sample": [_s(x) for x in other],
         "options": {
             "district": sorted(df["district"].dropna().unique().tolist()),
@@ -264,7 +285,8 @@ def load(path):
 # --------------------------------------------------------------------------
 def view(path, date_field=COMBINED, preset="All time", custom_from=None, custom_to=None,
          districts=None, projects=None, pids=None, pms=None, sourcefiles=None,
-         circuits=None, poles=None, granularity="Auto", pid_mode="All", tab=None):
+         circuits=None, poles=None, granularity="Auto", pid_mode="All", tab=None,
+         teams=None, team_leaders=None):
     """tab = the tab on screen ("trends", "pid", "finance"): only that one is worked out.
     No tab = all three, as before."""
     df = _df(path)
@@ -320,7 +342,7 @@ def view(path, date_field=COMBINED, preset="All time", custom_from=None, custom_
     }
     out["tab"] = tab
     if tab in (None, "trends"):
-        out["trends"] = _trends(fdf_dated, active_date_col, gran)
+        out["trends"] = _trends(fdf_dated, active_date_col, gran, teams, team_leaders)
     if tab in (None, "pid"):
         out["pid"] = _pid_breakdown(fdf, pid_mode)
     if tab in (None, "finance"):
@@ -328,7 +350,7 @@ def view(path, date_field=COMBINED, preset="All time", custom_from=None, custom_
     return out
 
 
-def _trends(fdf_dated, active_date_col, granularity):
+def _trends(fdf_dated, active_date_col, granularity, teams=None, team_leaders=None):
     construction = fdf_dated[fdf_dated["flag"] == "construction"].copy()
     material = fdf_dated[fdf_dated["flag"] == "material"].copy()
     res = {"panel1": None, "panel2": None}
@@ -361,29 +383,28 @@ def _trends(fdf_dated, active_date_col, granularity):
 
     if construction.empty:
         return res
-    totals_by_lider = (
-        construction.assign(lider=construction["team lider"].fillna("Unassigned"))
-        .groupby("lider")["total"].sum()
-        .sort_values(ascending=False)
-    )
-    TOP_N = 6
-    top_liders = list(totals_by_lider.index[:TOP_N])
-    has_other = len(totals_by_lider) > TOP_N
-    construction["lider_grp"] = construction["team lider"].fillna("Unassigned")
-    if has_other:
-        construction["lider_grp"] = construction["lider_grp"].where(construction["lider_grp"].isin(top_liders), "Other")
-    lider_order = top_liders + (["Other"] if has_other else [])
-    lider_pivot = (
-        construction.groupby(["bucket", "lider_grp"])["total"].sum()
-        .unstack("lider_grp", fill_value=0)
+    # Panel 2 – Teams: the teams picked in the Teams tab (all when none picked),
+    # named "A · leader" when a leader was typed for that team
+    leaders = {str(k): str(v).strip() for k, v in (team_leaders or {}).items() if v and str(v).strip()}
+    construction["team_grp"] = construction["team"].fillna(NO_TEAM).astype(str)
+    present = construction.groupby("team_grp")["total"].sum()
+    order = sorted(present.index, key=lambda x: (x == NO_TEAM, x))
+    if teams:
+        wanted = set(map(str, teams))
+        order = [t for t in order if t in wanted]
+    team_c = construction[construction["team_grp"].isin(order)]
+    name = {t: (f"{t} · {leaders[t]}" if t in leaders else t) for t in order}
+    pivot = (
+        team_c.groupby(["bucket", "team_grp"])["total"].sum()
+        .unstack("team_grp", fill_value=0)
         .reindex(index=shared_buckets, fill_value=0)
-        .reindex(columns=lider_order, fill_value=0)
+        .reindex(columns=order, fill_value=0)
     )
-    var_sum = construction["total"].sum() - construction["orig"].sum()
+    var_sum = team_c["total"].sum() - team_c["orig"].sum()
     res["panel2"] = {
-        "kpis": {"total": _num(construction["total"].sum()), "original": _num(construction["orig"].sum()), "variance": _num(var_sum)},
-        "labels": shared_labels, "leaders": [str(l) for l in lider_order], "has_other": has_other, "top_n": TOP_N,
-        "values": {str(l): [_num(v) for v in lider_pivot[l].values] for l in lider_order},
+        "kpis": {"total": _num(team_c["total"].sum()), "original": _num(team_c["orig"].sum()), "variance": _num(var_sum)},
+        "labels": shared_labels, "leaders": [name[t] for t in order],
+        "values": {name[t]: [_num(v) for v in pivot[t].values] for t in order},
     }
     return res
 
