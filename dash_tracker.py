@@ -704,8 +704,11 @@ _BLANK_COMMENTS = {"", "nan", "none", "nat", "<na>", "null", "0", "-"}
 
 
 def plan2_comments(frame, date_col, comment_col="comment", job_col="job", limit=500):
-    if comment_col not in frame.columns or date_col not in frame.columns:
+    if comment_col not in frame.columns or (date_col is not None and date_col not in frame.columns):
         return {"available": False}
+    if date_col is None:                      # Unplanned: no dates – every row counts
+        frame = frame.assign(_nodate=pd.Timestamp("2000-01-01"))
+        date_col = "_nodate"
     sub = frame[frame[date_col].notna()]
     txt = sub[comment_col].astype(str).str.strip()
     keep = ~txt.str.lower().isin(_BLANK_COMMENTS)
@@ -1043,8 +1046,11 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
     # ---- Most repeated comments: Plan2 on every tab, Plan1 on the Overview ----
     job_for_comments = "_job_clean" if "_job_clean" in f.columns else cols["job_col"]
     res["plan2_comments"] = plan2_comments(f, "_date", "comment", job_for_comments) if date_field == "Plan2" else None
-    res["plan1_comments"] = (plan2_comments(f, "_date", "comment", job_for_comments)
-                             if date_field in ("Plan1", BLANKS) and "overview" in want else None)
+    # Overview comments card (below the source-file table) for Plan1, Blanks, Combined date and Unplanned
+    if "overview" in want and (date_field in ("Plan1", BLANKS, COMBINED, UNPLANNED) or not date_field):
+        res["plan1_comments"] = plan2_comments(f, None if date_field == UNPLANNED else "_date", "comment", job_for_comments)
+    else:
+        res["plan1_comments"] = None
     if "overview" in want:
         _overview(res, f, cols, filters, granularity, meta)
         res["sf_pivot"] = sourcefile_pivot(f, cols["circuit_col"], cols["job_col"])

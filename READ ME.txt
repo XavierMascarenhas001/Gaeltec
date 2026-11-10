@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 10-Nov-2026d
+Gaeltec Tools page - version 10-Nov-2026e
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 10-Nov-2026d".
+The header should say "version 10-Nov-2026e".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -37,3 +37,6 @@ What changed
     passed (before today) and still have no Done date; they are dated by Plan1, so the
     range and every tab work as usual. The Overview shows "Blanks comments - most
     repeated" (the comments written on those rows).
+  - Planning > Overview: the "most repeated comments" card now also shows for
+    Combined date (the default), Blanks and Unplanned (as well as Plan1), always
+    below the source-file table.
