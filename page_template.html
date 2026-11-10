@@ -305,7 +305,7 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 10-Nov-2026c</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 10-Nov-2026d</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -1380,6 +1380,7 @@ I.x = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="
 const DATE_GUIDE = [
   ["var(--s1)", "Combined date", "Done when it's today or in the past, otherwise Plan1 when it's today or later. The default."],
   ["var(--s4)", "Plan1 · Plan2 · Done", "Only that date. Plan2 adds a “most repeated comments” card."],
+  ["var(--s8)", "Blanks", "Planning dashboard: Plan1 date already passed and no Done date yet (dated by Plan1)."],
 ];
 const GUIDES = {
   home: {title: "Using Gaeltec Tools", icon: "grid", c: "c1", intro: "Everything runs here in your browser – your files never leave your PC.",
@@ -1447,7 +1448,7 @@ const GUIDES = {
     need: [["db", "Master file", "required"], ["grid", "High level planning", "optional · Jobs calendar"], ["chart", "Service Partner Workbank", "optional · Pole Position"],
            ["file", "Outage calendar .ics", "optional"], ["file", "miscelaneous.parquet", "optional · service codes in Totals"]],
     steps: [["drop", "Drop the Master", "In the strip at the top – the optional files can be added any time."],
-            ["cal", "Date field and range", "Combined date is the default. Unplanned = no Plan1 and no Done."],
+            ["cal", "Date field and range", "Combined date is the default. Blanks = Plan1 passed, no Done. Unplanned = no Plan1 and no Done."],
             ["filter", "Filters, left to right", "Each one narrows the next. × on a chip removes it; Reset filters clears all."],
             ["table", "Open a tab", "Only the tab on screen is worked out, so switching tabs is quick."]],
     tabs: [["trend", "Overview", "CV7 recover over time, pole categories, source files → circuits → most repeated job (click a file to open it) – plus the most repeated Plan1 comments when Plan1 is picked."],

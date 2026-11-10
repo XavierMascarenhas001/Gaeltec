@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026c</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026d</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -210,11 +210,12 @@ function plan2CommentsCard(c, v){ return planCommentsCard(c, v, "Plan2"); }
 function planCommentsCard(c, v, field){
   const wrap = h(`<div class="dgrid" style="margin-top:16px"></div>`);
   const card = dcard(`${field} comments — most repeated`, "", 12); wrap.append(card);
+  const blanks = field === "Blanks";
   const range = v.date_from ? `${fmtDate(v.date_from)} → ${fmtDate(v.date_to)}` : `all ${field} dates`;
   if (!c.available){ card.body.append(emptyMsg("This Master file has no comment column.")); return wrap; }
   $("p", card) || $(".tt", card).append(h(`<p></p>`));
-  $(".tt p", card).textContent = `Comments on the rows with a ${field} date in ${range} (same filters as above) · ${intf(c.with_comment)} of ${intf(c.rows)} rows have a comment · ${intf(c.distinct)} different comments`;
-  if (!c.top.length){ card.body.append(emptyMsg(`No comments on the rows with a ${field} date in this range.`)); return wrap; }
+  $(".tt p", card).textContent = `Comments on the rows with ${blanks ? "a passed Plan1 date and no Done date" : `a ${field} date`} in ${range} (same filters as above) · ${intf(c.with_comment)} of ${intf(c.rows)} rows have a comment · ${intf(c.distinct)} different comments`;
+  if (!c.top.length){ card.body.append(emptyMsg(blanks ? "No comments on the blank rows in this range." : `No comments on the rows with a ${field} date in this range.`)); return wrap; }
   const [tc, tn, tj] = c.top[0];
   const call = h(`<div class="ctop"><div class="cq">“<span></span>”</div><div class="cm"><b></b><span></span></div></div>`);
   $(".cq span", call).textContent = tc; $(".cm b", call).textContent = `${intf(tn)} times`;
@@ -227,12 +228,12 @@ function planCommentsCard(c, v, field){
   card.body.append(holder);
   function draw(){
     holder.textContent = "";
-    if (mode === "table"){ holder.append(dtable({name: `${field} comments`, columns: ["Comment", "Times", "Jobs", `First ${field}`, `Last ${field}`], rows: c.top, height: 460})); return; }
+    if (mode === "table"){ holder.append(dtable({name: `${field} comments`, columns: ["Comment", "Times", "Jobs", `First ${blanks ? "Plan1" : field}`, `Last ${blanks ? "Plan1" : field}`], rows: c.top, height: 460})); return; }
     const host = h(`<div class="viz"></div>`); holder.append(host);
     Viz.bars(host, {labels: top.map(x => x[0]), labelMax: 420, rowH: 30, fmt: intf, valueLabel: i => `${intf(top[i][1])}×`,
       series: [{name: "Times", values: top.map(x => x[1]), color: "var(--s1)"}],
       tip: i => ({title: top[i][0], rows: [{color: "var(--s1)", name: "Times written", value: intf(top[i][1])}, {name: "Jobs", value: intf(top[i][2])},
-        {name: `${field} dates`, value: `${fmtDate(top[i][3])} → ${fmtDate(top[i][4])}`}]})});
+        {name: `${blanks ? "Plan1" : field} dates`, value: `${fmtDate(top[i][3])} → ${fmtDate(top[i][4])}`}]})});
   }
   requestAnimationFrame(draw);
   return wrap;
@@ -486,7 +487,7 @@ DASHDEF.tracker = {
                {key: "circuits", label: "Circuit", cascade: "circuit_options", hint},
                {key: "poles", label: "Pole", cascade: "pole_options", hint: "Narrowed to the poles of the circuits (and other filters) to its left."}],
       caption: v => v.unplanned ? capHTML([["Unplanned", "– no Plan1 or Done date"], [intf(v.rows), `of ${intf(v.rows_total)} rows`]])
-                                : capHTML([v.date_from ? [fmtDate(v.date_from) + " → " + fmtDate(v.date_to)] : "", [intf(v.rows), `of ${intf(v.rows_total)} rows`]])}; },
+                                : capHTML([P.st.f.date_field === "Blanks" ? ["Blanks", "– Plan1 passed, no Done"] : "", v.date_from ? [fmtDate(v.date_from) + " → " + fmtDate(v.date_to)] : "", [intf(v.rows), `of ${intf(v.rows_total)} rows`]])}; },
   tabs: [
     {id: "overview", label: "Overview", icon: "trend", render: ntOverview},
     {id: "jobs", label: "Jobs", icon: "cal", render: ntJobs},
@@ -533,7 +534,7 @@ function ntOverview(P, panel){
     draw: host => Viz.bars(host, {labels: o.poles.map(p => p.type), series: [{name: "Count", values: o.poles.map(p => p.count), color: "var(--s1)"}], fmt: intf, labelMax: 200}),
     table: () => ({name: "Pole categories", columns: ["Pole type", "Count"], rows: o.poles.map(p => [p.type, p.count])})}));
   if (P.v.sf_pivot) panel.append(sfPivotCard(P.v.sf_pivot));
-  if (P.v.plan1_comments) panel.append(planCommentsCard(P.v.plan1_comments, P.v, "Plan1"));
+  if (P.v.plan1_comments) panel.append(planCommentsCard(P.v.plan1_comments, P.v, P.st.f.date_field === "Blanks" ? "Blanks" : "Plan1"));
 }
 /* ---------- Overview: source file → circuit → most repeated job, opened like a pivot table ---------- */
 function sfPivotCard(pv){

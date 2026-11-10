@@ -657,6 +657,7 @@ PRESETS = ["All time", "Current week", "Last week", "Current month", "Last month
 COMBINED = "Combined date"
 DATE_FIELD_OPTIONS = {COMBINED: "combined", "Plan1": "plan1", "Plan2": "plan2", "Done": "done"}
 UNPLANNED = "Unplanned"   # rows with no Plan1 and no Done date
+BLANKS = "Blanks"         # Plan1 already passed (before today) and still no Done date – dated by Plan1
 COMMENT_FIELDS = {"Plan1", "Plan2"}   # date fields that show the "most repeated comments" card
 
 # ---- Cascading filters: each one only offers what the filters before it allow ----
@@ -917,6 +918,12 @@ def _available_dates(frame):
                 parsed = parsed.where(parsed.dt.year > 1901)
                 if parsed.notna().any():
                     out[label] = parsed
+        if "Plan1" in out:
+            p1 = out["Plan1"]
+            done = out.get("Done", pd.Series(pd.NaT, index=frame.index))
+            blanks = p1.where((p1.dt.normalize() < pd.Timestamp.today().normalize()) & done.isna())
+            if blanks.notna().any():
+                out[BLANKS] = blanks
         return out
     return _derived(frame, "dates", "", make)
 
@@ -1037,7 +1044,7 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
     job_for_comments = "_job_clean" if "_job_clean" in f.columns else cols["job_col"]
     res["plan2_comments"] = plan2_comments(f, "_date", "comment", job_for_comments) if date_field == "Plan2" else None
     res["plan1_comments"] = (plan2_comments(f, "_date", "comment", job_for_comments)
-                             if date_field == "Plan1" and "overview" in want else None)
+                             if date_field in ("Plan1", BLANKS) and "overview" in want else None)
     if "overview" in want:
         _overview(res, f, cols, filters, granularity, meta)
         res["sf_pivot"] = sourcefile_pivot(f, cols["circuit_col"], cols["job_col"])

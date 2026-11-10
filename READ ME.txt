@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 10-Nov-2026c
+Gaeltec Tools page - version 10-Nov-2026d
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 10-Nov-2026c".
+The header should say "version 10-Nov-2026d".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -33,3 +33,7 @@ What changed
     its title and legend (white background, sharp at 2x size).
   - The CV7_recover picture (Planning > Overview) shows the value on top of every bar,
     whatever the grouping (day / week / month).
+  - Planning dashboard: new date field "Blanks" = rows whose Plan1 date has already
+    passed (before today) and still have no Done date; they are dated by Plan1, so the
+    range and every tab work as usual. The Overview shows "Blanks comments - most
+    repeated" (the comments written on those rows).
