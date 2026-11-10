@@ -328,7 +328,7 @@ function dtable(spec){
   return el;
 }
 /* card whose body flips between a chart and the same data as a table */
-function vizCard({title, sub, span = 12, draw, table, legend, extra}){
+function vizCard({title, sub, span = 12, draw, table, legend, extra, exportDraw, exportWidth}){
   const c = dcard(title, sub, span);
   const holder = h(`<div></div>`);
   let mode = "chart";
@@ -339,9 +339,82 @@ function vizCard({title, sub, span = 12, draw, table, legend, extra}){
   };
   if (extra) c.acts.append(extra);
   if (table) c.acts.append(segc([["chart", "Chart"], ["table", "Table"]], "chart", v => { mode = v; render(); }));
+  c.acts.append(pngButton(c, {draw: exportDraw || draw, legend, width: exportWidth}));
   c.body.append(holder);
   requestAnimationFrame(render);
   return c;
+}
+
+/* ---------- download a chart as a PNG picture (title + legend + chart) ----------
+   The chart is drawn again off screen at a fixed width, so the picture looks the same
+   whatever the window size; colours and fonts are copied from the page styles. */
+ICON2.img = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>';
+function pngButton(card, opts){
+  const b = h(`<button class="btn sm" title="Download this chart as a picture (PNG)">${ICON2.img} PNG</button>`);
+  b.onclick = async () => { b.disabled = true; try { await exportChartPNG(card, opts || {}); } catch(e){ console.error(e); alert("Could not make the picture: " + e.message); } finally { b.disabled = false; } };
+  return b;
+}
+const _PNG_PROPS = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-dasharray", "stroke-opacity", "opacity",
+  "font-family", "font-size", "font-weight", "font-variant-numeric", "text-anchor", "dominant-baseline"];
+function _inlineSvg(svg){
+  const clone = svg.cloneNode(true), src = [svg, ...svg.querySelectorAll("*")], dst = [clone, ...clone.querySelectorAll("*")];
+  src.forEach((el, i) => { const cs = getComputedStyle(el), d = dst[i];
+    if (d.classList && d.classList.contains("hit")){ d.remove(); return; }
+    let st = ""; _PNG_PROPS.forEach(p => { const v = cs.getPropertyValue(p); if (v) st += `${p}:${v};`; });
+    d.setAttribute("style", (d.getAttribute("style") || "") + ";" + st); });   // resolved colours win over var(--…)
+  const r = svg.getBoundingClientRect();
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", Math.round(r.width)); clone.setAttribute("height", Math.round(r.height));
+  return {xml: new XMLSerializer().serializeToString(clone), w: r.width, h: r.height};
+}
+function _svgImage(xml){
+  return new Promise((ok, bad) => { const im = new Image();
+    im.onload = () => ok(im); im.onerror = () => bad(new Error("chart could not be drawn"));
+    im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml); });
+}
+async function exportChartPNG(card, {draw, legend, width} = {}){
+  const title = ($("h3", card) || {}).textContent || "Chart", sub = (($(".tt p", card) || {}).textContent || "").split(" · ").filter(x => !/hover|click/i.test(x)).join(" · ");
+  let svgs = [], tmp = null;
+  if (draw){
+    tmp = h(`<div style="position:fixed;left:-20000px;top:0;width:${width || 1400}px"><div class="viz"></div></div>`);
+    card.append(tmp);                                   // inside the card so the page styles apply
+    draw($(".viz", tmp));
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    svgs = [...tmp.querySelectorAll(".viz svg")];
+  } else svgs = [...card.querySelectorAll(".viz svg")];
+  if (!svgs.length){ tmp && tmp.remove(); throw new Error("no chart on screen – switch to Chart view first"); }
+  const parts = svgs.map(_inlineSvg);
+  tmp && tmp.remove();
+  // legend: given items, else read from the legend shown in the card
+  let items = legend ? legend.map(it => ({name: it.name, color: it.color})) :
+    [...card.querySelectorAll(".legend span")].map(sp => ({name: sp.textContent, color: getComputedStyle($("i", sp)).backgroundColor}));
+  const probe = document.createElement("span"); card.append(probe);
+  items = items.map(it => { probe.style.color = it.color; return {name: it.name, color: getComputedStyle(probe).color}; }); probe.remove();
+  const cs = getComputedStyle(card), bg = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? cs.backgroundColor : "#fff";
+  const ink = getComputedStyle($("h3", card) || card).color, muted = $(".tt p", card) ? getComputedStyle($(".tt p", card)).color : ink;
+  const font = '"Segoe UI",system-ui,-apple-system,sans-serif', S = 2, pad = 28;
+  const W = Math.max(...parts.map(p => p.w)) + pad * 2;
+  const m = document.createElement("canvas").getContext("2d");
+  // lay out the legend in rows
+  m.font = `13px ${font}`; const rows = []; let row = [], x = 0;
+  items.forEach(it => { const w = 18 + m.measureText(it.name).width + 18; if (x + w > W - pad * 2 && row.length){ rows.push(row); row = []; x = 0; } row.push({...it, x}); x += w; });
+  if (row.length) rows.push(row);
+  const top = pad + 26 + (sub ? 22 : 0) + 6, legH = rows.length * 22 + (rows.length ? 10 : 0);
+  const H = top + legH + parts.reduce((a, p) => a + p.h + 10, 0) + pad;
+  const cv = document.createElement("canvas"); cv.width = Math.ceil(W * S); cv.height = Math.ceil(H * S);
+  const g = cv.getContext("2d"); g.scale(S, S);
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.fillStyle = ink; g.font = `600 19px ${font}`; g.textBaseline = "top"; g.fillText(title, pad, pad);
+  if (sub){ g.fillStyle = muted; g.font = `13px ${font}`; g.fillText(sub, pad, pad + 28); }
+  g.font = `13px ${font}`; g.textBaseline = "middle";
+  rows.forEach((r, ri) => r.forEach(it => { const y = top + ri * 22 + 8;
+    g.fillStyle = it.color; g.beginPath(); g.roundRect ? g.roundRect(pad + it.x, y - 5, 10, 10, 2) : g.rect(pad + it.x, y - 5, 10, 10); g.fill();
+    g.fillStyle = ink; g.fillText(it.name, pad + it.x + 16, y); }));
+  let y = top + legH;
+  for (const p of parts){ const im = await _svgImage(p.xml); g.drawImage(im, pad, y, p.w, p.h); y += p.h + 10; }
+  const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadBlob(`${title.replace(/[\\/:*?"<>|—→]+/g, "-").replace(/\s+/g, " ").trim()} ${stamp}.png`, blob);
 }
 function legendEl(items){
   const el = h(`<div class="legend"></div>`);
@@ -390,6 +463,7 @@ const Viz = (() => {
       const sc = nice(Math.max(...sums, 0) || 1, 5);
       const axis = o.axis || compact;
       const L = Math.max(...sc.ticks.map(t => tw(axis(t)))) + 12, R = 6, T = o.valueLabels ? 22 : 10;
+      if (o.valueLabels === "all") sc.hi *= 1.06;   // headroom for the labels
       const pw = W - L - R, band = pw / Math.max(n, 1);
       const maxLab = Math.max(...o.labels.map(l => tw(l)));
       const rotate = !o.fill && maxLab + 10 > band && n > 1;
@@ -419,7 +493,7 @@ const Viz = (() => {
                       : `<text x="${o.fill ? L + band * i : cx}" y="${T + ph + 16}" text-anchor="${o.fill ? "start" : "middle"}">${lab}</text>`;
         }
       }
-      if (o.valueLabels && band >= 22){ for (let i = 0; i < n; i++){ if (!sums[i]) continue; const cx = L + band * i + band / 2;
+      if (o.valueLabels === "all" || (o.valueLabels && band >= 22)){ for (let i = 0; i < n; i++){ if (!sums[i]) continue; const cx = L + band * i + band / 2;
         s += `<text class="lbl tnum" x="${cx}" y="${y(sums[i]) - 6}" text-anchor="middle">${esc((o.fmt || qty)(sums[i]))}</text>`; } }
       if (o.marker){ const mx = L + band * o.marker.x; s += `<line x1="${mx}" x2="${mx}" y1="${T}" y2="${T + ph}" style="stroke:var(--ink);stroke-width:1.5"/><text class="lbl" x="${mx + 5}" y="${T + 11}">${esc(o.marker.label)}</text>`; }
       s += `<line class="base" x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}"/></svg>`;

@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 10-Nov-2026b
+Gaeltec Tools page - version 10-Nov-2026c
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 10-Nov-2026b".
+The header should say "version 10-Nov-2026c".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -29,3 +29,7 @@ What changed
     table (above the Plan1 comments). One line per source file; click it to open its
     circuits, each with the job repeated most for that circuit in that file. Search,
     Open all / Close all and CSV download. Follows the same filters as the page.
+  - Every dashboard chart has a "PNG" button: downloads the chart as a picture with
+    its title and legend (white background, sharp at 2x size).
+  - The CV7_recover picture (Planning > Overview) shows the value on top of every bar,
+    whatever the grouping (day / week / month).

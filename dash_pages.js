@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026b</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026c</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -223,6 +223,7 @@ function planCommentsCard(c, v, field){
   const top = c.top.slice(0, 15);
   let mode = "chart"; const holder = h(`<div></div>`);
   card.acts.append(segc([["chart", "Top 15"], ["table", `All ${intf(c.top.length)}`]], mode, m => { mode = m; draw(); }));
+  card.acts.append(pngButton(card, {}));
   card.body.append(holder);
   function draw(){
     holder.textContent = "";
@@ -518,7 +519,11 @@ function ntOverview(P, panel){
   if (P.v.unplanned_poles){ /* no dates to plot over time */ }
   else if (!o.trend){ const c = dcard("CV7_recover — count over time", "", 12); c.acts.append(gsel); c.body.append(emptyMsg("No CV7_recover records (with a date) for the current filters.")); g.append(c); }
   else { const labs = o.trend.x.map(x => periodLabel(x, P.st.gran)), ys = o.trend.y, mx = Math.max(...ys);
+    const cvOpts = {labels: labs, height: 340, axis: compact, fmt: intf,
+        series: [{name: "CV7_recover", values: ys, color: "var(--s1)"}]};
     g.append(vizCard({title: "CV7_recover — count over time", sub: `Grouped by ${P.st.gran.toLowerCase()} · hover a bar for its count`, span: 12, extra: gsel,
+      exportDraw: host => Viz.columns(host, {...cvOpts, height: 420, valueLabels: "all"}),          // picture: value on every bar
+      exportWidth: Math.max(1400, labs.length * 26 + 120),
       draw: host => Viz.columns(host, {labels: labs, height: 340, axis: compact, fmt: intf, valueLabels: ys.length <= 40,
         series: [{name: "CV7_recover", values: ys, color: "var(--s1)"}],
         tip: i => ({title: labs[i], rows: [{color: "var(--s1)", name: "CV7_recover", value: intf(ys[i])}], note: ys[i] === mx ? "Highest period" : ""})}),
