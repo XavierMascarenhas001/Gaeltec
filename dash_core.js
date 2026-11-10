@@ -152,6 +152,17 @@ const Tip = (() => {
       s.append(document.createTextNode(r.name)); const b = document.createElement("b"); b.textContent = r.value; d.append(s, b); el.append(d); };
     (spec.rows || []).forEach(r => row(r));
     if (spec.total) row(spec.total, "tot");
+    if (spec.list && spec.list.length){                     // circuits / jobs behind the bar
+      const box = document.createElement("div"); box.className = "tl";
+      const hd = document.createElement("div"); hd.className = "tlh"; hd.textContent = spec.listTitle || "Circuit · Job"; box.append(hd);
+      spec.list.forEach(it => { const d = document.createElement("div"); d.className = "tli";
+        const c = document.createElement("b"); c.textContent = it[0];
+        const j = document.createElement("span"); j.textContent = it[1];
+        const v = document.createElement("em"); v.textContent = it[2];
+        d.append(c, j, v); box.append(d); });
+      if (spec.more){ const m = document.createElement("div"); m.className = "tlm"; m.textContent = `+ ${spec.more} more circuit/job(s)`; box.append(m); }
+      el.append(box);
+    }
     if (spec.note){ const n = document.createElement("div"); n.style.opacity = ".75"; n.style.marginTop = "3px"; n.textContent = spec.note; el.append(n); }
     el.classList.add("on"); place(ev);
   }

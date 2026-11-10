@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 10-Nov-2026e
+Gaeltec Tools page - version 10-Nov-2026f
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 10-Nov-2026e".
+The header should say "version 10-Nov-2026f".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -40,3 +40,8 @@ What changed
   - Planning > Overview: the "most repeated comments" card now also shows for
     Combined date (the default), Blanks and Unplanned (as well as Plan1), always
     below the source-file table.
+  - Planning > Overview: hovering a bar (CV7_recover over time, Unplanned poles) now
+    lists the circuits and job names behind it, biggest first (top 8 + "N more").
+  - Source-file table: new "Dates" column - the dates of that circuit's most repeated
+    job (for a source file: all its rows), always inside the date field/range picked
+    at the top. One date, or "first -> last · N dates". Also in the CSV.

@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026e</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026f</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -514,7 +514,7 @@ function ntOverview(P, panel){
         sub: (u.by === "Circuit" ? "Rows with no Plan1 and no Done date, for the selected project(s) · by circuit" : "Rows with no Plan1 and no Done date · pick a Project to see it by circuit") + ` · ${intf(u.labels.length)} ${u.by.toLowerCase()}(s)`,
         legend: series.length > 1 ? series.map(x => ({name: x.name, color: x.color})) : null,
         draw: host => Viz.columns(host, {labels: u.labels, height: 360, axis: compact, fmt: intf, valueLabels: u.labels.length <= 40, series,
-          tip: i => ({title: `${u.by}: ${u.labels[i]}`, rows: series.filter(x => x.values[i]).map(x => ({color: x.color, name: x.name, value: intf(x.values[i])})), total: {name: "Unplanned poles", value: intf(u.totals[i])}})}),
+          tip: i => ({title: `${u.by}: ${u.labels[i]}`, rows: series.filter(x => x.values[i]).map(x => ({color: x.color, name: x.name, value: intf(x.values[i])})), total: {name: "Unplanned poles", value: intf(u.totals[i])}, ...barList(u.detail, i)})}),
         table: () => ({name: `Unplanned poles by ${u.by}`, columns: [u.by, ...series.map(x => x.name), "Total"], rows: u.labels.map((l, i) => [l, ...series.map(x => x.values[i]), u.totals[i]])})}));
     }
   }
@@ -529,7 +529,8 @@ function ntOverview(P, panel){
       exportWidth: Math.max(1400, labs.length * 26 + 120),
       draw: host => Viz.columns(host, {labels: labs, height: 340, axis: compact, fmt: intf, valueLabels: ys.length <= 40,
         series: [{name: "CV7_recover", values: ys, color: "var(--s1)"}],
-        tip: i => ({title: labs[i], rows: [{color: "var(--s1)", name: "CV7_recover", value: intf(ys[i])}], note: ys[i] === mx ? "Highest period" : ""})}),
+        tip: i => ({title: labs[i], rows: [{color: "var(--s1)", name: "CV7_recover", value: intf(ys[i])}], note: ys[i] === mx ? "Highest period" : "",
+          ...barList(o.trend.detail, i)})}),
       table: () => ({name: "CV7_recover over time", columns: ["Date", "Count"], rows: o.trend.x.map((x, i) => [x, o.trend.y[i]])})})); }
   if (!o.poles.length){ const c = dcard("All pole categories (erect only)", "", 12); c.body.append(emptyMsg("No pole records for the current filters.")); g.append(c); }
   else g.append(vizCard({title: "All pole categories (erect only)", sub: "Count by pole type", span: 12,
@@ -538,6 +539,12 @@ function ntOverview(P, panel){
   if (P.v.sf_pivot) panel.append(sfPivotCard(P.v.sf_pivot));
   if (P.v.plan1_comments) panel.append(planCommentsCard(P.v.plan1_comments, P.v, P.st.f.date_field || "Combined date"));
 }
+/* hover list for a bar: the circuits and jobs behind it (biggest first) */
+function barList(detail, i){
+  const d = detail && detail[i]; if (!d || !d[0].length) return {};
+  return {list: d[0].map(x => [x[0], x[1], intf(x[2])]), more: d[1]};
+}
+const dateSpan = (a, b, n) => !a ? "" : (a === b ? fmtDate(a) : `${fmtDate(a)} → ${fmtDate(b)}${n > 2 ? ` · ${intf(n)} dates` : ""}`);
 /* ---------- Overview: source file → circuit → most repeated job, opened like a pivot table ---------- */
 function sfPivotCard(pv){
   const wrap = h(`<div class="dgrid" style="margin-top:16px"></div>`);
@@ -545,30 +552,30 @@ function sfPivotCard(pv){
   if (!pv.available){ card.body.append(emptyMsg("This Master file has no source file or circuit column.")); return wrap; }
   const files = pv.files || [];
   if (!files.length){ card.body.append(emptyMsg("No rows for the current filters.")); return wrap; }
-  $(".tt", card).append(h(`<p>${intf(files.length)} source file(s) · click a source file to open its circuits and the job repeated most on each · same filters as above</p>`));
+  $(".tt", card).append(h(`<p>${intf(files.length)} source file(s) · click a source file to open its circuits and the job repeated most on each · dates = that job's dates on the circuit, inside the date range above</p>`));
   const el = h(`<div class="dt sfpv"><div class="dth"><input type="text" placeholder="Search source file, circuit or job…"><span class="cnt"></span>
     <button class="btn sm ex">Open all</button><button class="btn sm co">Close all</button><button class="btn sm dl" title="Download as CSV">${ICON2.csv} CSV</button></div>
-    <div class="tw" style="max-height:560px"><table><thead><tr><th style="width:34%">Source file / Circuit</th><th class="pn">Rows</th><th class="pn">Circuits</th><th class="pn">Jobs</th><th>Most repeated job</th><th class="pn">Times</th></tr></thead><tbody></tbody></table></div><div class="foot"></div></div>`);
+    <div class="tw" style="max-height:560px"><table><thead><tr><th style="width:26%">Source file / Circuit</th><th class="pn">Rows</th><th class="pn">Circuits</th><th class="pn">Jobs</th><th>Most repeated job</th><th class="pn">Times</th><th>Dates</th></tr></thead><tbody></tbody></table></div><div class="foot"></div></div>`);
   card.body.append(el);
   const tb = $("tbody", el), inp = $("input", el), foot = $(".foot", el), cnt = $(".cnt", el);
   const open = new Set(); let limit = 100, shown = files;
   const td = (t, cls) => { const c = document.createElement("td"); if (cls) c.className = cls; c.textContent = t; return c; };
   function draw(){
     const q = inp.value.trim().toLowerCase();
-    shown = !q ? files : files.filter(f => f[0].toLowerCase().includes(q) || f[6].some(c => c[0].toLowerCase().includes(q) || String(c[3]).toLowerCase().includes(q)));
+    shown = !q ? files : files.filter(f => f[0].toLowerCase().includes(q) || f[9].some(c => c[0].toLowerCase().includes(q) || String(c[3]).toLowerCase().includes(q)));
     cnt.textContent = `${intf(shown.length)} of ${intf(files.length)}`;
     tb.textContent = "";
     shown.slice(0, limit).forEach(f => {
       const isOpen = open.has(f[0]) || (q && !f[0].toLowerCase().includes(q));
       const tr = document.createElement("tr"); tr.className = "sfp" + (isOpen ? " open" : "");
       const c0 = td(""); c0.innerHTML = `<span class="car">▸</span>`; c0.append(document.createTextNode(f[0]));
-      tr.append(c0, td(intf(f[1]), "pn"), td(intf(f[2]), "pn"), td(intf(f[3]), "pn"), td(f[4]), td(intf(f[5]), "pn"));
+      tr.append(c0, td(intf(f[1]), "pn"), td(intf(f[2]), "pn"), td(intf(f[3]), "pn"), td(f[4]), td(intf(f[5]), "pn"), td(dateSpan(f[6], f[7], f[8]), "dts"));
       tr.onclick = () => { open.has(f[0]) ? open.delete(f[0]) : open.add(f[0]); draw(); };
       tb.append(tr);
-      if (isOpen) f[6].forEach(c => {
+      if (isOpen) f[9].forEach(c => {
         if (q && !f[0].toLowerCase().includes(q) && !(c[0].toLowerCase().includes(q) || String(c[3]).toLowerCase().includes(q))) return;
         const r = document.createElement("tr"); r.className = "sfc";
-        r.append(td(c[0], "ind"), td(intf(c[1]), "pn"), td("", "pn"), td(intf(c[2]), "pn"), td(c[3]), td(intf(c[4]), "pn"));
+        r.append(td(c[0], "ind"), td(intf(c[1]), "pn"), td("", "pn"), td(intf(c[2]), "pn"), td(c[3]), td(intf(c[4]), "pn"), td(dateSpan(c[5], c[6], c[7]), "dts"));
         tb.append(r);
       });
     });
@@ -579,8 +586,8 @@ function sfPivotCard(pv){
   $(".ex", el).onclick = () => { shown.slice(0, limit).forEach(f => open.add(f[0])); draw(); };
   $(".co", el).onclick = () => { open.clear(); draw(); };
   $(".dl", el).onclick = () => downloadCSV("Source files - circuits - most repeated job",
-    ["Source file", "Circuit", "Rows", "Jobs", "Most repeated job", "Times"],
-    files.flatMap(f => f[6].map(c => [f[0], c[0], c[1], c[2], c[3], c[4]])));
+    ["Source file", "Circuit", "Rows", "Jobs", "Most repeated job", "Times", "First date", "Last date", "Number of dates"],
+    files.flatMap(f => f[9].map(c => [f[0], c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])));
   draw();
   return wrap;
 }

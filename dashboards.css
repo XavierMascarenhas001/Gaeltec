@@ -451,3 +451,13 @@ details.dmap[open] summary{margin-bottom:10px}
 .sfpv tr.sfc td.ind{padding-left:38px}
 .sfpv td,.sfpv th{padding-top:9px;padding-bottom:9px}
 .sfpv .foot{padding:8px 0;text-align:center}
+
+/* hover: circuits & jobs behind a bar */
+.vtip{max-width:440px}
+.vtip .tl{margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.18)}
+.vtip .tlh{font-size:11px;opacity:.7;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+.vtip .tli{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;font-size:12px;line-height:1.45}
+.vtip .tli span{opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vtip .tli em{font-style:normal;font-variant-numeric:tabular-nums}
+.vtip .tlm{font-size:11px;opacity:.7;margin-top:2px}
+.sfpv td.dts{white-space:nowrap;color:#475569;font-variant-numeric:tabular-nums}

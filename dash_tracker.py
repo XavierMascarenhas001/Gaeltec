@@ -728,30 +728,40 @@ def plan2_comments(frame, date_col, comment_col="comment", job_col="job", limit=
             "distinct": int(len(agg)), "top": top}
 
 # ---- Overview: source file -> circuit -> most repeated job (pivot style) ----
-def sourcefile_pivot(f, circuit_col, job_col="job", sf_col="sourcefile"):
-    """[[sourcefile, rows, circuits, jobs, top job, top job rows, [[circuit, rows, jobs, top job, top rows], ...]], ...]"""
+def sourcefile_pivot(f, circuit_col, job_col="job", sf_col="sourcefile", date_col="_date"):
+    """{"files": [[sourcefile, rows, circuits, jobs, top job, top job rows, first, last, n dates,
+                   [[circuit, rows, jobs, top job, top rows, first, last, n dates], ...]], ...]}
+    Dates = the dates (of the date field picked on the page, within its range) of the rows
+    of that circuit's most repeated job; for a source file, all its rows."""
     if sf_col not in f.columns or circuit_col not in f.columns:
         return {"available": False}
     def txt(s, blank):
         out = s.astype("string").str.strip()
         return out.mask(out.isna() | (out == ""), blank)
+    d = pd.to_datetime(f[date_col], errors="coerce").dt.normalize() if date_col in f.columns else pd.Series(pd.NaT, index=f.index)
     g = pd.DataFrame({"sf": txt(f[sf_col], "(no source file)").values,
                       "c": txt(f[circuit_col], "(no circuit)").values,
-                      "j": txt(f[job_col], "(no job)").values if job_col in f.columns else "(no job)"})
+                      "j": txt(f[job_col], "(no job)").values if job_col in f.columns else "(no job)",
+                      "d": d.values})
     if g.empty:
         return {"available": True, "files": []}
-    n = g.groupby(["sf", "c", "j"], sort=False).size().rename("n").reset_index()
+    n = (g.groupby(["sf", "c", "j"], sort=False)
+         .agg(n=("j", "size"), d0=("d", "min"), d1=("d", "max"), dn=("d", "nunique")).reset_index())
     circ = n.groupby(["sf", "c"], sort=False).agg(rows=("n", "sum"), jobs=("j", "nunique"))
     top_c = n.sort_values(["n", "j"], ascending=[False, True]).drop_duplicates(["sf", "c"]).set_index(["sf", "c"])
-    circ = circ.join(top_c[["j", "n"]]).reset_index().sort_values(["sf", "rows"], ascending=[True, False])
+    circ = circ.join(top_c[["j", "n", "d0", "d1", "dn"]]).reset_index().sort_values(["sf", "d0", "rows"], ascending=[True, True, False])
     fj = n.groupby(["sf", "j"], sort=False)["n"].sum().reset_index()
     top_f = fj.sort_values(["n", "j"], ascending=[False, True]).drop_duplicates("sf").set_index("sf")
     jobs_per_file = fj.groupby("sf").size()
+    fd = g.groupby("sf").agg(d0=("d", "min"), d1=("d", "max"), dn=("d", "nunique"))
+    ds = lambda x: "" if pd.isna(x) else pd.Timestamp(x).strftime("%Y-%m-%d")
     files = []
     for sf, grp in circ.groupby("sf", sort=True):
         files.append([sf, int(grp["rows"].sum()), int(len(grp)), int(jobs_per_file.get(sf, 0)),
                       top_f.at[sf, "j"], int(top_f.at[sf, "n"]),
-                      [[r.c, int(r.rows), int(r.jobs), r.j, int(r.n)] for r in grp.itertuples(index=False)]])
+                      ds(fd.at[sf, "d0"]), ds(fd.at[sf, "d1"]), int(fd.at[sf, "dn"]),
+                      [[r.c, int(r.rows), int(r.jobs), r.j, int(r.n), ds(r.d0), ds(r.d1), int(r.dn)]
+                       for r in grp.itertuples(index=False)]])
     return {"available": True, "files": files}
 
 
@@ -1063,6 +1073,30 @@ def view(path, cols=None, filters=None, granularity="Month", detail=None, misc="
     return res
 
 
+def _bar_detail(frame, key, circuit_col, job_col, order, top=8):
+    """For each bar (in order): the circuits and jobs behind it, biggest first –
+    [[[circuit, job, count], ...up to top], number of other circuit/job pairs]."""
+    if frame.empty or circuit_col not in frame.columns:
+        return None
+    c = frame[circuit_col].astype("string").str.strip().fillna("(no circuit)")
+    j = frame[job_col].astype("string").str.strip().fillna("(no job)") if job_col and job_col in frame.columns else pd.Series("", index=frame.index)
+    k = key if isinstance(key, pd.Grouper) else pd.Series(key, index=frame.index)
+    grp = frame.assign(cc=c.values, jj=j.values).groupby([k, "cc", "jj"])["_qsub_adj"].sum().rename("q")
+    grp = grp[grp != 0].reset_index()
+    kcol = grp.columns[0]
+    if isinstance(key, pd.Grouper):
+        grp[kcol] = [_s(x) for x in grp[kcol]]
+    grp = grp.sort_values([kcol, "q"], ascending=[True, False])
+    by = {kk: g for kk, g in grp.groupby(kcol, sort=False)}
+    out = []
+    for kk in order:
+        g = by.get(kk)
+        if g is None:
+            out.append([[], 0]); continue
+        out.append([[[r.cc, r.jj, _n(r.q)] for r in g.head(top).itertuples(index=False)], max(0, len(g) - top)])
+    return out
+
+
 def _overview(res, f, cols, filters, granularity, meta):
     district_col, project_col, circuit_col = cols["district_col"], cols["project_col"], cols["circuit_col"]
     recover_keys = {normalize_item(k) for k in CV7_recover}
@@ -1074,6 +1108,8 @@ def _overview(res, f, cols, filters, granularity, meta):
         t = (recover_df.dropna(subset=["_date"]).set_index("_date").resample(freq)["_qsub_adj"].sum().reset_index()
              .rename(columns={"_date": "Date", "_qsub_adj": "Count"}))
         trend = {"x": [_s(d) for d in t["Date"]], "y": [_n(v) for v in t["Count"]]}
+        trend["detail"] = _bar_detail(recover_df.dropna(subset=["_date"]), pd.Grouper(key="_date", freq=freq),
+                                      circuit_col, cols.get("job_col"), [_s(d) for d in t["Date"]])
     pole_rows = []
     for cat_name, mapping in POLE_CATEGORIES.items():
         if cat_name == "CV7_recover":
@@ -1100,8 +1136,12 @@ def _overview(res, f, cols, filters, granularity, meta):
             totals = g if totals is None else totals.add(g, fill_value=0)
         if totals is not None and len(totals):
             order_ = totals.sort_values(ascending=False).index.tolist()
+            pole_keys = {normalize_item(k) for c_, m_ in POLE_CATEGORIES.items() if c_ != "CV7_recover" for k in m_}
+            psub = f[f["_item_norm"].isin(pole_keys)]
             res["unplanned_poles"] = {"by": by_name, "labels": order_, "totals": [_n(totals[k]) for k in order_],
-                                      "series": [{"name": n_, "values": [_n(g_.get(k, 0)) for k in order_]} for n_, g_ in series]}
+                                      "series": [{"name": n_, "values": [_n(g_.get(k, 0)) for k in order_]} for n_, g_ in series],
+                                      "detail": _bar_detail(psub, psub[by_col].astype(str).str.strip(), circuit_col,
+                                                            cols.get("job_col"), order_)}
         else:
             res["unplanned_poles"] = {"by": by_name, "labels": [], "totals": [], "series": []}
     res["overview"] = {"recover_total": _n(recover_total), "trend": trend, "pole_total": _n(pole_total),
