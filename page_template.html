@@ -298,6 +298,13 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
 .gd-tips svg{color:var(--ok);flex:none;margin-top:2px}
 @media (max-width:560px){header .gbtn span{display:none}}
 /*__DASH_CSS__*/
+
+.mailbox{border:1px solid var(--line,#dde3ea);border-radius:12px;padding:14px;background:var(--card,#fff)}
+.mailbox .mrow{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.mailbox .mrow label{width:62px;font-weight:600;font-size:13px;color:var(--muted,#55606e)}
+.mailbox .mrow input{flex:1}
+.mailbox .mbody{border:1px solid var(--line,#dde3ea);border-radius:8px;padding:14px 16px;min-height:220px;max-height:520px;overflow:auto;background:#fff;color:#000;font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.35}
+.mailbox .mbody:focus{outline:2px solid var(--accent,#0d7d78);outline-offset:-1px}
 </style>
 </head>
 <body>
@@ -305,7 +312,7 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 10-Nov-2026f</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 11-Nov-2026</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -1196,12 +1203,13 @@ function pageWI(t){
 /* ---------------- Generators ⇄ High-level planning ---------------- */
 const NEED_GS_CRYPT = ["cryptography"];   // only loaded when a workbook is password protected
 function pageGen(t){
+  let trkLoaded = false;
   let loaded = false, needCrypt = false, preview = null, choiceEls = new Map(), days = [], run = null;
 
   /* 1 - files + password */
   const b1 = box(1, "Drop the two workbooks", "Type the password if a file is protected.");
   const xl = [["Excel files", ".xlsx,.xlsm"]];
-  const onFiles = () => { loaded = false; resetDays(); readFiles(); };
+  const onFiles = () => { loaded = false; trkLoaded = false; resetDays(); if (typeof resetMail === "function") resetMail(); readFiles(); };
   const trk = dropField({label: "Generator Tracker", kind: "file", types: xl, onChange: onFiles});
   const pln = dropField({label: "High-level planning", kind: "file", types: xl, onChange: onFiles});
   const r1 = h(`<div class="row"></div>`); r1.append(trk, pln); b1.append(r1);
@@ -1213,7 +1221,7 @@ function pageGen(t){
   pwIn.addEventListener("keydown", e => { if (e.key === "Enter") readFiles(true); });
 
   async function readFiles(explicit){
-    if (!trk.get() || !pln.get()){ fStat.className = "status"; fStat.textContent = "Drop both workbooks."; return; }
+    if (!trk.get()){ fStat.className = "status"; fStat.textContent = pln.get() ? "Drop the Generator Tracker too." : "Drop both workbooks (only the Generator Tracker is needed for the email, step 6)."; return; }
     fStat.className = "status"; fStat.textContent = PY.ready ? "Reading the workbooks…" : "Starting Python and reading the workbooks (first time ~30 s)…";
     try {
       const p = (await PY.call("gs_probe", {tracker: trk.get(), planning: pln.get()})).result;
@@ -1225,10 +1233,10 @@ function pageGen(t){
       }
       const s = (await PY.call("gs_load", {tracker: trk.get(), planning: pln.get(), password: pwIn.value},
                                {needs: needCrypt ? NEED_GS_CRYPT : []})).result;
-      loaded = true;
-      fStat.className = "status ok"; fStat.textContent = `✔ ${s.tracker}\n✔ ${s.planning}`;
+      loaded = !!s.planning; trkLoaded = true;
+      fStat.className = "status ok"; fStat.textContent = `✔ ${s.tracker}\n` + (s.planning ? `✔ ${s.planning}` : "High level planning not dropped – only needed for tasks 1 and 2 (the email in step 6 works without it).");
     } catch(e){
-      loaded = false;
+      loaded = false; trkLoaded = false;
       fStat.className = "status err";
       fStat.textContent = /cryptography|loadPackage|Failed to fetch/i.test(e.message)
         ? "Couldn't load the decryption package (cryptography) – check the internet connection, or remove the password from the file and drop it again."
@@ -1365,8 +1373,99 @@ function pageGen(t){
     try { const s = (await PY.call("gs_status", {})).result; fStat.textContent = `✔ ${s.tracker}\n✔ ${s.planning}`; } catch(e){}
   };
 
-  resetDays();
-  app.append(b1, b2, b3, b4, b5);
+  /* 6 - email to the generator provider (Outlook) */
+  const b6 = box(6, "Email for the generator provider (Outlook)", "From the Generator Tracker: tick the generators, then copy the email or open it as an Outlook draft.");
+  const er = h(`<div class="row" style="align-items:flex-end"><div class="field"><label>From</label><input type="date"></div><div class="field"><label>To</label><input type="date"></div><button class="btn primary">${I.generator} Show generators</button><span class="status"></span></div>`);
+  const [eFrom, eTo] = er.querySelectorAll("input"); const eStat = $(".status", er);
+  eFrom.value = iso(today); eTo.value = iso(new Date(today.getTime() + 7 * 864e5));
+  const eList = h(`<div style="max-height:360px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:10px;padding:8px 12px;margin-top:12px"></div>`);
+  const eGo = h(`<div class="runbar" style="margin-top:12px"><button class="btn primary" disabled>${I.file} Write email</button><span class="status"></span></div>`);
+  const eOut = h(`<div style="margin-top:12px"></div>`);
+  b6.append(er, eList, eGo, eOut);
+  let eDays = [];
+  const eIds = () => eDays.flatMap(d => d.items.filter(x => x.cb.checked).map(x => x.id));
+  function resetMail(){ eDays = []; eList.innerHTML = `<p class="hint" style="margin:6px 0">Read the Generator Tracker (step 1), choose the dates and click <b>Show generators</b>.</p>`; eOut.innerHTML = ""; $(".btn", eGo).disabled = true; $(".status", eGo).textContent = ""; }
+  const eCount = () => { const n = eIds().length; $(".btn", eGo).disabled = !n; $(".status", eGo).className = "status"; $(".status", eGo).textContent = n ? `${n} generator(s) ticked` : ""; };
+  $(".btn", er).onclick = async () => {
+    eOut.innerHTML = "";
+    if (!trkLoaded){ eStat.className = "status err"; eStat.textContent = "Read the Generator Tracker first (step 1)."; return; }
+    eStat.className = "status"; eStat.textContent = "Listing generators…";
+    try {
+      const r = (await PY.call("gs_email_list", {date_from: eFrom.value, date_to: eTo.value})).result;
+      eList.innerHTML = ""; eDays = [];
+      if (!r.days.length){ eList.innerHTML = `<p class="hint" style="margin:6px 0">No generators / battery pods in the tracker for these dates.</p>`; eStat.textContent = ""; eCount(); return; }
+      r.days.forEach(d => {
+        const day = h(`<div style="padding:4px 0;border-bottom:1px solid var(--line,#eee)"><label style="display:flex;gap:8px;align-items:center;font-weight:700;cursor:pointer"><input type="checkbox"><span></span></label><div style="padding:2px 0 6px 28px"></div></div>`);
+        $("span", day).textContent = `${d.label}  (${d.items.length})`;
+        const dayCb = $("input", day), inner = $("div", day), entry = {cb: dayCb, items: []};
+        d.items.forEach(it => {
+          const row = h(`<label style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;cursor:pointer;font-size:13px"><input type="checkbox" style="margin-top:3px"><span></span></label>`);
+          $("span", row).textContent = it.label;
+          const cb = $("input", row); cb.onchange = () => { dayCb.checked = entry.items.every(x => x.cb.checked); eCount(); };
+          entry.items.push({id: it.id, cb}); inner.append(row);
+        });
+        dayCb.onchange = () => { entry.items.forEach(x => x.cb.checked = dayCb.checked); eCount(); };
+        eDays.push(entry); eList.append(day);
+      });
+      eStat.className = "status ok";
+      eStat.textContent = `${r.days.length} day(s)` + (r.days_col ? "" : " · no ‘days needed’ column found after Schedule - Finish – 1 day is used");
+      eCount();
+    } catch(e){ eStat.className = "status err"; eStat.textContent = e.message; }
+  };
+  const MAIL_KEY = "gaeltec.gens.mail";
+  const mailPrefs = () => { try { return JSON.parse(localStorage.getItem(MAIL_KEY) || "{}"); } catch(e){ return {}; } };
+  $(".btn", eGo).onclick = async () => {
+    const st = $(".status", eGo); eOut.innerHTML = "";
+    try {
+      const m = (await PY.call("gs_email", {ids: eIds()})).result, pref = mailPrefs();
+      const ed = h(`<div class="mailbox">
+          <div class="mrow"><label>To</label><input type="text" class="mto" placeholder="provider email(s) – remembered"></div>
+          <div class="mrow"><label>Cc</label><input type="text" class="mcc" placeholder="optional – remembered"></div>
+          <div class="mrow"><label>Subject</label><input type="text" class="msub"></div>
+          <div class="mbody" contenteditable="true" spellcheck="true"></div>
+          <div class="row" style="margin-top:10px;align-items:center">
+            <button class="btn primary mcopy">${I.file} Copy email</button>
+            <button class="btn mol">${I.ext} Open in Outlook</button>
+            <button class="btn mmt">${I.ext} Open in mail app (plain text)</button>
+            <span class="status"></span></div>
+          <p class="hint" style="margin:8px 0 0">You can edit the text above first. <b>Copy email</b> → paste into a new Outlook email (bullets kept). <b>Open in Outlook</b> downloads a draft (.eml) – open it and it opens as a new Outlook email. Attach the request file in Outlook before sending.</p></div>`);
+      const to = $(".mto", ed), cc = $(".mcc", ed), sub = $(".msub", ed), body = $(".mbody", ed), ms = $(".status", ed);
+      to.value = pref.to || ""; cc.value = pref.cc || ""; sub.value = m.subject; body.innerHTML = m.html;
+      const keep = () => { try { localStorage.setItem(MAIL_KEY, JSON.stringify({to: to.value, cc: cc.value})); } catch(e){} };
+      to.oninput = keep; cc.oninput = keep;
+      const ok = t => { ms.className = "status ok"; ms.textContent = t; };
+      $(".mcopy", ed).onclick = async () => {
+        const html = body.innerHTML, text = body.innerText;
+        try {
+          await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type: "text/html"}), "text/plain": new Blob([text], {type: "text/plain"})})]);
+        } catch(e){
+          const r = document.createRange(); r.selectNodeContents(body); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+          document.execCommand("copy"); sel.removeAllRanges();
+        }
+        ok("Copied – paste it into a new Outlook email (Ctrl + V).");
+      };
+      $(".mol", ed).onclick = () => {
+        const b64 = str => btoa(unescape(encodeURIComponent(str)));
+        const html = `<html><head><meta charset="utf-8"></head><body>${body.innerHTML}</body></html>`;
+        const eml = [to.value.trim() ? `To: ${to.value.trim()}` : "", cc.value.trim() ? `Cc: ${cc.value.trim()}` : "",
+          `Subject: =?utf-8?B?${b64(sub.value)}?=`, "X-Unsent: 1", "MIME-Version: 1.0",
+          "Content-Type: text/html; charset=utf-8", "Content-Transfer-Encoding: base64", "",
+          b64(html).replace(/(.{76})/g, "$1\r\n")].filter((x, i) => x !== "" || i > 6).join("\r\n");
+        downloadBlob(`${sub.value.replace(/[\\/:*?"<>|]+/g, "-")}.eml`, eml);
+        ok("Draft downloaded – open the .eml file and it opens in Outlook ready to send.");
+      };
+      $(".mmt", ed).onclick = () => {
+        const q = new URLSearchParams(); if (cc.value.trim()) q.set("cc", cc.value.trim());
+        q.set("subject", sub.value); q.set("body", body.innerText);
+        location.href = `mailto:${encodeURIComponent(to.value.trim()).replace(/%40/g, "@").replace(/%2C/gi, ",")}?${q.toString().replace(/\+/g, "%20")}`;
+      };
+      eOut.append(ed);
+      st.className = "status ok"; st.textContent = `Email ready – ${m.n_rows} generator line(s), ${m.n_areas} area(s).`;
+    } catch(e){ st.className = "status err"; st.textContent = e.message; }
+  };
+
+  resetDays(); resetMail();
+  app.append(b1, b2, b3, b4, b5, b6);
 }
 
 /* ======================================================================
@@ -1418,7 +1517,8 @@ const GUIDES = {
     tips: ["Task 2 writes e.g. “No Access, (x1) Generator from GWF, 3 phase 10 kVa, Setubal, 30 m of cable needed.”",
            "Battery pods: the multiplier goes into the Battery Pods column.",
            "Task 1 keeps the tracker in date order – a date that falls between existing ones gets a new row there.",
-           "A second run continues from the updated copy – drop a file again to start fresh."]},
+           "A second run continues from the updated copy – drop a file again to start fresh.",
+           "Step 6 writes the provider email from the tracker (PTE – address – what3words, then multiplier, phase, kVa, cable). Days needed = the column after Schedule - Finish (blank = 1 day). The time = Schedule - start."]},
   outputs: {title: "Outputs (CV Excel Report)", icon: "chart", c: "c4",
     need: [["db", "Master file", ".parquet / .csv – from Your files"], ["file", "Logos (optional)", "remembered"], ["db", "miscelaneous.parquet (optional)", "service codes – remembered"]],
     steps: [["db", "Load the Master", "Picked up from Your files, or drop it in box 1."],
@@ -1467,7 +1567,7 @@ const GUIDES = {
     tabs: [["trend", "Trends", "Revenue (construction + materials) and Teams – the teams ticked in the Teams tab."],
            ["table", "PID Breakdown", "Remaining / planned / done / invoiced per PID – Show All, Construction or Material."],
            ["pound", "Finance", "Billing pipeline, invoicing speed, variance by project, top overruns and underspends."],
-           ["check", "Teams", "Tick the teams (A, B, C …) for the Teams chart and type a leader name if you want – remembered in this browser."]],
+           ["check", "Teams", "Tick the teams (A, B, C …) for the Teams chart. Leaders come from the control files (type to change). Shared jobs (AB, DE …) are split equally."]],
     dates: DATE_GUIDE,
     tips: ["Rows whose job doesn't start with M - or C - are left out of the charts."]},
   "dash/materials": {title: "Materials Breakdown", icon: "box3", c: "c3",

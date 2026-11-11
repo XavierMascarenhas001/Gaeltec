@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 10-Nov-2026f</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 11-Nov-2026</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -292,23 +292,25 @@ function mcTeamsSave(t){ try { localStorage.setItem(MC_TEAMS_KEY, JSON.stringify
 function mcTeamArgs(P){
   const t = P.st.teams || {off: [], leaders: {}}, all = ((P.st.L && P.st.L.teams) || []).map(x => x.team);
   const on = all.filter(x => !t.off.includes(x));
-  const leaders = {}; Object.entries(t.leaders || {}).forEach(([k, v]) => { if (v && v.trim() && all.includes(k)) leaders[k] = v.trim(); });
+  // leader shown next to each team: the one typed in the Teams tab, otherwise the one found in the control file
+  const leaders = {}; ((P.st.L && P.st.L.teams) || []).forEach(x => { const typed = (t.leaders || {})[x.team];
+    const v = typed && typed.trim() ? typed.trim() : x.leader; if (v) leaders[x.team] = v; });
   return {teams: on.length === all.length ? null : (on.length ? on : ["(none)"]), team_leaders: leaders};
 }
 function mcTeams(P, panel){
   const L = P.st.L, t = P.st.teams, list = L.teams || [];
   if (!list.length){ panel.append(note("No team column values found in the control file.")); return; }
-  const c = dcard("Teams", "Tick the teams to show in the Teams chart (Trends). Optionally type the team leader to show next to the team name. Saved in this browser.");
-  const all = h(`<button class="btn sm" type="button">Tick all</button>`), none = h(`<button class="btn sm" type="button">Untick all</button>`), fill = h(`<button class="btn sm" type="button">Use leaders from file</button>`);
+  const c = dcard("Teams", "Tick the teams to show in the Teams chart (Trends). The leader comes from the control files (the name on that team's own rows) – type a name to change it. Jobs done by two or more teams (AB, DE …) are split equally between them. Saved in this browser.");
+  const all = h(`<button class="btn sm" type="button">Tick all</button>`), none = h(`<button class="btn sm" type="button">Untick all</button>`), fill = h(`<button class="btn sm" type="button">Reset to file leaders</button>`);
   c.acts.append(all, none, fill);
-  const tb = h(`<div class="dt teamtbl"><div class="tw"><table><thead><tr><th style="width:44px"></th><th>Team</th><th style="text-align:right">Rows</th><th>Team leader (optional)</th></tr></thead><tbody></tbody></table></div></div>`);
+  const tb = h(`<div class="dt teamtbl"><div class="tw"><table><thead><tr><th style="width:44px"></th><th>Team</th><th style="text-align:right">Rows</th><th style="text-align:right">Shared rows</th><th>Team leader</th></tr></thead><tbody></tbody></table></div></div>`);
   const save = () => mcTeamsSave(t);
   const rows = list.map(r => {
-    const tr = h(`<tr><td><input type="checkbox"></td><td class="tn"></td><td style="text-align:right" class="rn"></td><td><input type="text" class="tl" style="width:100%;max-width:280px"></td></tr>`);
+    const tr = h(`<tr><td><input type="checkbox"></td><td class="tn"></td><td style="text-align:right" class="rn"></td><td style="text-align:right" class="sn"></td><td><input type="text" class="tl" style="width:100%;max-width:280px"></td></tr>`);
     const cb = $("input[type=checkbox]", tr), inp = $("input.tl", tr);
-    $(".tn", tr).textContent = r.team; $(".rn", tr).textContent = intf(r.rows);
+    $(".tn", tr).textContent = r.team; $(".rn", tr).textContent = intf(r.rows); $(".sn", tr).textContent = r.shared ? intf(r.shared) : "–";
     cb.checked = !t.off.includes(r.team);
-    inp.value = t.leaders[r.team] || ""; inp.placeholder = r.leader ? `e.g. ${r.leader}` : "leader name";
+    inp.value = t.leaders[r.team] || ""; inp.placeholder = r.leader ? `${r.leader} (from file)` : "leader name";
     cb.onchange = () => { t.off = t.off.filter(x => x !== r.team); if (!cb.checked) t.off.push(r.team); save(); };
     inp.oninput = () => { t.leaders[r.team] = inp.value; save(); };
     $("tbody", tb).append(tr);
@@ -316,7 +318,7 @@ function mcTeams(P, panel){
   });
   all.onclick = () => { t.off = []; rows.forEach(x => x.cb.checked = true); save(); };
   none.onclick = () => { t.off = list.map(x => x.team); rows.forEach(x => x.cb.checked = false); save(); };
-  fill.onclick = () => { rows.forEach(x => { if (x.r.leader){ x.inp.value = x.r.leader; t.leaders[x.r.team] = x.r.leader; } }); save(); };
+  fill.onclick = () => { rows.forEach(x => { x.inp.value = ""; }); t.leaders = {}; save(); };
   c.body.append(tb);
   panel.append(c);
 }

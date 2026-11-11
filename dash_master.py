@@ -9,6 +9,7 @@ page draws.
 """
 import datetime as dt
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -240,20 +241,54 @@ def _s(v):
 NO_TEAM = "No team"
 
 
+TEAM_LETTERS = set("ABCDEFGHIJKL")   # single-letter teams (I, H … for the future)
+_TEAM_SEP = re.compile(r"^[A-Z](?:\s*[,/&+\-]?\s*[A-Z])*$")
+
+
+def split_team(v):
+    """'A' -> ['A'];  'AB', 'A/B', 'A & D', 'Team AC' -> ['A','B'] … (each letter = one team);
+    anything else (e.g. 'T1') is kept as one team; blank -> ['No team']."""
+    if v is None or (isinstance(v, float) and v != v):
+        return [NO_TEAM]
+    t = str(v).strip().upper()
+    if not t or t in ("NAN", "NONE"):
+        return [NO_TEAM]
+    core = re.sub(r"\bTEAMS?\b", "", t).strip(" :-")
+    if core and _TEAM_SEP.match(core) and all(ch in TEAM_LETTERS for ch in core if ch.isalpha()) \
+            and sum(ch.isalpha() for ch in core) <= 5:
+        letters = list(dict.fromkeys(ch for ch in core if "A" <= ch <= "Z"))
+        return letters
+    return [str(v).strip()]
+
+
+def _team_parts(team_series):
+    """Rows exploded per team letter, with the share of the row each team gets (equal split)."""
+    uniq = pd.unique(team_series.astype(object))
+    m = {u: split_team(u) for u in uniq}
+    parts = team_series.astype(object).map(lambda u: m.get(u, [NO_TEAM]) if u == u else [NO_TEAM])
+    ex = parts.explode().rename("team_one")
+    share = (1.0 / parts.map(len)).reindex(ex.index)
+    return ex, share
+
+
 def _team_list(df):
-    """Teams found in the control file (A, B, C …) with the team leader that appears most for each."""
+    """Single teams (A, B, C …; combinations like AB are split into A and B) with the team leader
+    that appears most on that team's own rows (rows of that letter alone)."""
     sub = df.loc[df["flag"] == "construction", ["team", "team lider"]]
     if sub.empty:
         sub = df[["team", "team lider"]]
-    team = sub["team"].fillna(NO_TEAM)
+    ex, share = _team_parts(sub["team"])
+    rows = ex.value_counts()
+    shared = ex[share.values < 1].value_counts()
+    exf = pd.DataFrame({"team_one": ex.values, "share": share.values,
+                        "team lider": sub["team lider"].reindex(ex.index).values})
+    alone = exf[exf["share"] >= 1]
+    lead = (alone.dropna(subset=["team lider"]).groupby(["team_one", "team lider"]).size().reset_index(name="n")
+            .sort_values(["team_one", "n"], ascending=[True, False]).drop_duplicates("team_one")
+            .set_index("team_one")["team lider"])
     out = []
-    counts = team.value_counts()
-    lead = (sub.assign(team=team).dropna(subset=["team lider"])
-            .groupby(["team", "team lider"]).size().reset_index(name="n")
-            .sort_values(["team", "n"], ascending=[True, False]).drop_duplicates("team")
-            .set_index("team")["team lider"])
-    for t in sorted(counts.index, key=lambda x: (x == NO_TEAM, str(x))):
-        out.append({"team": str(t), "leader": _s(lead.get(t)), "rows": int(counts[t])})
+    for t in sorted(rows.index, key=lambda x: (x == NO_TEAM, len(str(x)), str(x))):
+        out.append({"team": str(t), "leader": _s(lead.get(t)), "rows": int(rows[t]), "shared": int(shared.get(t, 0))})
     return out
 
 
@@ -386,13 +421,18 @@ def _trends(fdf_dated, active_date_col, granularity, teams=None, team_leaders=No
     # Panel 2 – Teams: the teams picked in the Teams tab (all when none picked),
     # named "A · leader" when a leader was typed for that team
     leaders = {str(k): str(v).strip() for k, v in (team_leaders or {}).items() if v and str(v).strip()}
-    construction["team_grp"] = construction["team"].fillna(NO_TEAM).astype(str)
-    present = construction.groupby("team_grp")["total"].sum()
-    order = sorted(present.index, key=lambda x: (x == NO_TEAM, x))
+    # a row shared by several teams (e.g. "AB") is split equally between them
+    ex, share = _team_parts(construction["team"])
+    tc = construction.loc[ex.index, ["bucket", "total", "orig"]].copy()
+    tc["team_grp"] = ex.astype(str).values
+    tc["total"] = tc["total"].values * share.values
+    tc["orig"] = tc["orig"].values * share.values
+    present = tc.groupby("team_grp")["total"].sum()
+    order = sorted(present.index, key=lambda x: (x == NO_TEAM, len(x), x))
     if teams:
         wanted = set(map(str, teams))
         order = [t for t in order if t in wanted]
-    team_c = construction[construction["team_grp"].isin(order)]
+    team_c = tc[tc["team_grp"].isin(order)]
     name = {t: (f"{t} · {leaders[t]}" if t in leaders else t) for t in order}
     pivot = (
         team_c.groupby(["bucket", "team_grp"])["total"].sum()

@@ -531,8 +531,12 @@ def _gs_status():
 def gs_load(tracker="", planning="", password="", log=print):
     import tool_generator_sync as G
     _need(tracker, "Generator Tracker")
-    _need(planning, "High-level planning workbook")
-    for key, path, reader in (("trk", tracker, G.read_tracker), ("plan", planning, G.read_planning)):
+    # the planning workbook is only needed for tasks 1-2 (the email uses the tracker alone)
+    todo = [("trk", tracker, G.read_tracker)] + ([("plan", planning, G.read_planning)] if planning else [])
+    if not planning:
+        for k in ("plan", "plan_plain", "plan_enc", "plan_name", "plan_stamp"):
+            _GS.pop(k, None)
+    for key, path, reader in todo:
         stamp = (path, os.path.getmtime(path), password if _gs_is_encrypted(path) else "")
         if _GS.get(key + "_stamp") == stamp:
             continue  # same file (and password) as last time - keep it, incl. any applied changes
@@ -556,6 +560,36 @@ def gs_load(tracker="", planning="", password="", log=print):
 def _gs_ready():
     if not (_GS.get("trk") and _GS.get("plan")):
         raise UserError("Drop both workbooks and click Read files first.")
+
+
+def gs_email_list(date_from="", date_to="", log=print):
+    """Generator Tracker rows (with a Type of supply) between the two dates, for the email."""
+    import tool_generator_sync as G
+    if not _GS.get("trk"):
+        raise UserError("Drop the Generator Tracker and click Read files first (step 1).")
+    try:
+        a = datetime.strptime(date_from[:10], "%Y-%m-%d").date()
+        b = datetime.strptime(date_to[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise UserError("Choose both dates (From and To).")
+    a, b = min(a, b), max(a, b)
+    cands = G.email_candidates(_GS["trk"], a, b)
+    _GS["email_cands"] = {c["_id"]: c for c in cands}
+    days = {}
+    for c in cands:
+        d = days.setdefault(c["_date"], {"date": c["_date"].isoformat(), "label": c["_date"].strftime("%a %d %b %Y"), "items": []})
+        d["items"].append({"id": c["_id"], "label": c["_label"]})
+    has_days = bool(_GS["trk"]["cols"].get("days"))
+    return {"days": list(days.values()), "days_col": has_days}
+
+
+def gs_email(ids=None, log=print):
+    import tool_generator_sync as G
+    rows = [_GS.get("email_cands", {}).get(i) for i in ids or []]
+    rows = [r for r in rows if r]
+    if not rows:
+        raise UserError("Tick at least one generator.")
+    return G.build_email(rows)
 
 
 def gs_days(task=1, date_from="", date_to="", log=print):

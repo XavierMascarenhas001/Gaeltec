@@ -224,7 +224,19 @@ def read_tracker(plain: bytes) -> dict:
         "cable": find_col(hdr, "Cable length (m)", "Cable length", prefix=True),
         "provider": find_col(hdr, "Gen provider", prefix=True),
         "status": find_col(hdr, "Status"),
+        "start": find_col(hdr, "Schedule - start", "Schedule start", prefix=True),
+        "finish": find_col(hdr, "Schedule - Finish", "Schedule finish", prefix=True),
+        "pte": find_col(hdr, "PTE"),
+        "address": find_col(hdr, "Customer Adress", "Customer Address", prefix=True),
+        "w3w": find_col(hdr, "What3words", "What 3 words", prefix=True),
+        "days": find_col(hdr, "Days", "Days needed", "Days required", "Number of days", "No of days", "Nº days"),
     }
+    # the "days needed" column sits right after Schedule - Finish (whatever its header says)
+    if not cols["days"] and cols["finish"]:
+        nxt = idx_to_col(col_to_idx(cols["finish"]) + 1)
+        used = {v for v in cols.values() if v}
+        if nxt in hdr.values() and nxt not in used:
+            cols["days"] = nxt
     missing = [k for k in ("district", "date", "outage", "circuit", "pm") if not cols[k]]
     if missing:
         raise RuntimeError(f"Generator Tracker: columns not found: {missing}")
@@ -1012,6 +1024,199 @@ def _html_table(df: pd.DataFrame) -> str:
         return "<i>nothing</i>"
     shown = df.astype(object).where(df.notna(), "").map(lambda v: html.escape(str(v)).replace("\n", "<br>"))
     return shown.to_html(index=False, escape=False)
+
+
+# ---------------------------------------------------------------------------
+# Email to the generator provider (Outlook) – from the Generator Tracker rows
+# ---------------------------------------------------------------------------
+def _time_of(v) -> dt.time | None:
+    if is_blank(v):
+        return None
+    if isinstance(v, dt.datetime):
+        return v.time()
+    if isinstance(v, dt.time):
+        return v
+    if isinstance(v, (int, float)) and 0 <= float(v) < 1:          # Excel time fraction
+        mins = round(float(v) * 24 * 60)
+        return dt.time(mins // 60 % 24, mins % 60)
+    m = re.search(r"(\d{1,2})[:.h](\d{2})\s*([ap]m)?", str(v), re.I) or re.search(r"\b(\d{1,2})\s*([ap]m)\b", str(v), re.I)
+    if not m:
+        return None
+    g = m.groups()
+    hh, mm, ap = (int(g[0]), int(g[1]), g[2]) if len(g) == 3 else (int(g[0]), 0, g[1])
+    if ap and ap.lower() == "pm" and hh < 12:
+        hh += 12
+    if ap and ap.lower() == "am" and hh == 12:
+        hh = 0
+    return dt.time(hh % 24, mm % 60)
+
+
+def fmt_time(t: dt.time | None, default: str = "08:30am") -> str:
+    if t is None:
+        return default
+    return f"{t.hour % 12 or 12:02d}:{t.minute:02d}{'am' if t.hour < 12 else 'pm'}"
+
+
+def fmt_d(d: dt.date) -> str:
+    return d.strftime("%d/%m/%Y")
+
+
+def days_needed(v, start: dt.date) -> tuple[dt.date, dt.date]:
+    """The 'days needed' cell -> (first day, last day). Blank = 1 day; a number = that many
+    days from the outage date; a date = the last day."""
+    if start is None:
+        return None, None
+    if is_blank(v):
+        return start, start
+    if isinstance(v, (dt.datetime, dt.date)) and not (isinstance(v, (int, float))):
+        end = to_date(v)
+        return start, max(start, end) if end else start
+    if isinstance(v, (int, float)):
+        if 20000 < v < 80000:                                     # an Excel date
+            end = to_date(v)
+            return start, max(start, end)
+        n = max(1, int(round(float(v))))
+        return start, start + dt.timedelta(days=n - 1)
+    t = str(v).strip()
+    m = re.fullmatch(r"(\d{1,3})(?:\s*(?:days?|d))?", t, re.I)
+    if m:
+        n = max(1, int(m.group(1)))
+        return start, start + dt.timedelta(days=n - 1)
+    end = to_date(t)
+    return start, (max(start, end) if end else start)
+
+
+def email_candidates(trk: dict, a: dt.date, b: dt.date) -> list[dict]:
+    """Tracker rows with a date in [a, b] and a Type of supply (Generator / Battery pod …)."""
+    out = []
+    for r in trk["rows"]:
+        d = r.get("_date")
+        if d is None or not (a <= d <= b) or is_blank(r.get("type")):
+            continue
+        first, last = days_needed(r.get("days"), d)
+        rec = dict(r, _first=first, _last=last, _id=f"e{r['_row']}")
+        spec = gen_spec(rec)
+        rec["_label"] = " · ".join(x for x in (clean_text(r.get("outage")), clean_text(r.get("circuit")),
+                                                _pte_line(rec, w3w=False), spec,
+                                                (f"{fmt_d(first)} → {fmt_d(last)}" if last != first else ""),
+                                                f"row {r['_row']}") if x)
+        out.append(rec)
+    out.sort(key=lambda r: (r["_date"], r["_row"]))
+    return out
+
+
+def _pte_line(r: dict, w3w: bool = True) -> str:
+    """PTE – BALLAIRD PINWHERRY – Pinwherry, Girvan KA26 0QB – (///word.word.word)"""
+    pte = clean_text(r.get("pte"))
+    if pte and not re.match(r"^\s*PTE\b", pte, re.I):
+        pte = f"PTE – {pte}"
+    pte = re.sub(r"^\s*PTE\s*[-–:]\s*", "PTE – ", pte, flags=re.I) if pte else ""
+    parts = [pte or "PTE – (no PTE in the tracker)"]
+    addr = clean_text(r.get("address"))
+    if addr:
+        parts.append(addr)
+    w = clean_text(r.get("w3w")).strip()
+    if w3w and w:
+        w = w.strip("() ")
+        parts.append(f"({w if w.startswith('///') else '///' + w.lstrip('/')})")
+    return " – ".join(parts)
+
+
+def gen_spec(r: dict) -> str:
+    """(x1) Generator – 3 phase – 10 kVa – 30 m of cable"""
+    typ = clean_text(r.get("type")) or "Generator"
+    mult = _num_txt(r.get("multiplier"))
+    mult = mult if _is_num(mult) and mult != "0" else "1"
+    bits = [f"(x{mult}) {typ}"]
+    phase = clean_text(r.get("phase"))
+    if phase:
+        bits.append(phase if "phase" in phase.lower() else f"{phase} phase")
+    cap = _num_txt(r.get("capacity"))
+    if cap:
+        bits.append(f"{cap} kVa" if _is_num(cap) else cap)
+    cable = _num_txt(r.get("cable"))
+    if cable:
+        bits.append(f"{cable} m of cable" if _is_num(cable) else cable)
+    return " – ".join(bits)
+
+
+def _join_dates(ds: list[dt.date]) -> str:
+    ds = sorted(set(ds))
+    t = [fmt_d(d) for d in ds]
+    return t[0] if len(t) == 1 else ", ".join(t[:-1]) + " and " + t[-1]
+
+
+def _span(a: dt.date, b: dt.date) -> str:
+    return fmt_d(a) if a == b else f"{fmt_d(a)} to {fmt_d(b)}"
+
+
+def build_email(rows: list[dict]) -> dict:
+    """Outlook email for the selected tracker rows -> {subject, text, html}."""
+    if not rows:
+        raise RuntimeError("Tick at least one generator.")
+    rows = sorted(rows, key=lambda r: (r["_first"], r["_row"]))
+    spans = {(r["_first"], r["_last"]) for r in rows}
+    times = {fmt_time(_time_of(r.get("start"))) for r in rows}
+    one_span = len(spans) == 1
+    first, last = next(iter(spans)) if one_span else (min(r["_first"] for r in rows), max(r["_last"] for r in rows))
+
+    # areas: one bullet per PTE / address, its generators underneath
+    areas: dict[str, dict] = {}
+    for r in rows:
+        key = _pte_line(r)
+        a = areas.setdefault(key, {"line": key, "specs": []})
+        extra = []
+        if not one_span:
+            extra.append("required " + (fmt_d(r["_first"]) if r["_first"] == r["_last"] else f"{fmt_d(r['_first'])} – {fmt_d(r['_last'])}"))
+        if len(times) > 1:
+            extra.append("ready by " + fmt_time(_time_of(r.get("start"))))
+        a["specs"].append(gen_spec(r) + (f" ({', '.join(extra)})" if extra else ""))
+
+    n_gens = sum(int(float(_num_txt(r.get("multiplier")))) if _is_num(_num_txt(r.get("multiplier"))) and _num_txt(r.get("multiplier")) != "0" else 1 for r in rows)
+    these, gens, be = ("these", "generators", "these") if n_gens > 1 else ("this", "generator", "this")
+    if one_span:
+        when = _span(first, last)
+        n_days = (last - first).days + 1
+        req = (f"Please note that {these} {gens} will only be required for one day."
+               if n_days == 1 else
+               f"Please note that {these} {gens} will be required for {n_days} days, from {fmt_d(first)} to {fmt_d(last)}.")
+    else:
+        when = _join_dates([r["_first"] for r in rows])
+        req = "Please note the days each generator is required are shown under each area."
+    ready = (f"Can {be} be ready for connection by {next(iter(times))} please."
+             if len(times) == 1 else "Can these be ready for connection by the times shown above please.")
+    plural = len(rows) > 1
+    intro = (f"Please could you assist us with the attached generator request{'s' if plural else ''} "
+             f"for {when} at the below area{'s' if len(areas) > 1 else ''}?")
+    closing = [f"If you can provide {these} {gens}, could you please send over the schedule builder as soon as possible?",
+               "The password for the attachment will follow on separately."]
+
+    # plain text (mailto) ------------------------------------------------
+    lines = ["Hi all,", "", intro, ""]
+    for a in areas.values():
+        lines.append(f"• {a['line']}")
+        for sp in a["specs"]:
+            lines.append(f"      {sp}")
+        lines.append("")
+    lines += [req + " " + ready, "", *[c for c2 in closing for c in (c2, "")]]
+    text = "\n".join(lines).rstrip() + "\n"
+
+    # HTML (Outlook keeps the bullets) -------------------------------------
+    esc = lambda x: html.escape(str(x), quote=False)
+    p = lambda x: f'<p style="margin:0 0 11px">{esc(x)}</p>'
+    lis = "".join(
+        f'<li style="margin:0 0 8px">{esc(a["line"])}'
+        + "".join(f'<div style="margin:2px 0 0 0;color:#333">{esc(sp)}</div>' for sp in a["specs"])
+        + "</li>" for a in areas.values())
+    body = (p("Hi all,") + p(intro)
+            + f'<ul style="margin:0 0 12px 0;padding-left:26px">{lis}</ul>'
+            + p(req + " " + ready) + "".join(p(c) for c in closing))
+    html_doc = f'<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000">{body}</div>'
+
+    one = next(iter(areas.values()))["line"].split(" – ")
+    name = one[1] if len(one) > 1 else one[0]
+    subject = f"Generator request – {when}" + (f" – {name}" if len(areas) == 1 else f" – {len(areas)} areas")
+    return {"subject": subject, "text": text, "html": html_doc, "n_rows": len(rows), "n_areas": len(areas)}
 
 
 def launch():

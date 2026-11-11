@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 10-Nov-2026f
+Gaeltec Tools page - version 11-Nov-2026
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 10-Nov-2026f".
+The header should say "version 11-Nov-2026".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -45,3 +45,18 @@ What changed
   - Source-file table: new "Dates" column - the dates of that circuit's most repeated
     job (for a source file: all its rows), always inside the date field/range picked
     at the top. One date, or "first -> last · N dates". Also in the CSV.
+
+11-Nov-2026
+  - Financial > Teams: teams are read letter by letter (A, B, C … L). Combinations
+    such as AB, AC, DE, A/B are split equally between those teams in the Teams chart,
+    which only shows single letters. Each letter's leader is taken from the control
+    files (the name on that team's own rows) and shown as "A · Ann"; type a name in
+    the Teams tab to change it ("Reset to file leaders" goes back).
+  - Generators > step 6 "Email for the generator provider (Outlook)": read the
+    Generator Tracker (the planning file is optional for this), pick dates, tick the
+    generators, Write email. Copy email (paste into Outlook, bullets kept), Open in
+    Outlook (.eml draft) or Open in mail app. To / Cc are remembered.
+    Uses: PTE – Customer Adress – (///What3words), then (xN) type – phase – kVa –
+    m of cable; the time = Schedule - start (08:30am if blank); days needed = the
+    column right after Schedule - Finish (blank = 1 day, a number = that many days,
+    a date = last day).
