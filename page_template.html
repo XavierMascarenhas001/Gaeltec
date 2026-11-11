@@ -57,6 +57,7 @@ main{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
 .c3{background:linear-gradient(135deg,#6C3FB5,#9B59B6)}.c4{background:linear-gradient(135deg,#C0762B,#E6A23C)}
 .c5{background:linear-gradient(135deg,#B03A48,#E4606D)}
 .c6{background:linear-gradient(135deg,#1E6B52,#3DAA6E)}
+.c7{background:linear-gradient(135deg,#7A3E9D,#B26BD6)}
 
 /* ---------- tool page ---------- */
 .toolhead{display:flex;align-items:center;gap:14px;margin-bottom:18px}
@@ -128,6 +129,10 @@ input:focus,select:focus,button:focus-visible{outline:2px solid var(--sky);outli
 .lf li:hover{background:var(--sky-soft)}
 .lf li.sel{background:var(--blue);color:#fff}
 .lf .btns{display:flex;gap:6px}
+.lfrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:800px){.lfrow{grid-template-columns:1fr}}
+label.ck{display:inline-flex;gap:8px;align-items:center;font-size:13.5px;cursor:pointer}
+label.ck input{width:16px;height:16px}
 
 /* ---------- Materials combobox (tick list + custom value) ---------- */
 .mfilters{display:flex;flex-wrap:wrap;gap:14px}
@@ -324,7 +329,7 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 11-Nov-2026b</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 11-Nov-2026d</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -722,6 +727,8 @@ const TOOLS = [
    desc:"Work Instructions document and the WorkPack map check."},
   {id:"gens", n:5, c:"c6", icon:"generator", tag:"Planning", noflow:true, title:"Generators ⇄ High level planning",
    desc:"High level planning ⇄ Generator Tracker, both ways."},
+  {id:"cal", n:6, c:"c7", icon:"cal", tag:"Planning", noflow:true, title:"Outage Calendar",
+   desc:"High level planning → Excel calendar + Outlook (.ics)."},
 ];
 const app = $("#app");
 
@@ -1214,6 +1221,303 @@ function pageWI(t){
 
 /* ---------------- Generators ⇄ High-level planning ---------------- */
 const NEED_GS_CRYPT = ["cryptography"];   // only loaded when a workbook is password protected
+
+/* ======================================================================
+   Outage calendar – shared by the Outage Calendar tool and the Planning
+   dashboard (Jobs): team roster (kept in this browser), absence CSVs
+   (this session) and the outage-folder look-ups (Edge / Chrome).
+   ====================================================================== */
+const ROSTER_KEY = "gaeltec.roster", ABS_URL_KEY = "gaeltec.absence.url";
+const CALX = {absence: [], absenceNames: [], password: ""};
+const rosterText = () => { try { return localStorage.getItem(ROSTER_KEY) || ""; } catch(e){ return ""; } };
+const rosterSave = t => { try { localStorage.setItem(ROSTER_KEY, t || ""); } catch(e){} };
+function rosterSummary(t){
+  let groups = 0, teams = 0, people = 0, leaders = 0;
+  (t || "").split(/\r?\n/).forEach(l => { l = l.trim(); if (!l || l.startsWith("#") || !l.includes(":")) return;
+    const [g, n] = [l.slice(0, l.indexOf(":")).trim(), l.slice(l.indexOf(":") + 1)];
+    const names = n.split(",").map(x => x.trim()).filter(Boolean); if (!names.length) return;
+    groups++; if (/^team\s/i.test(g)) teams++; people += names.length; leaders += names.filter(x => x.startsWith("*")).length; });
+  return {groups, teams, people, leaders};
+}
+const ROSTER_EXAMPLE = `# One group per line:  Group: name, name, *leader, name
+# Field teams = groups called "Team A", "Team B" … – put * before the team leader.
+# Also used: Supervisors, Digger Drivers, Jointers, Pole Lorry
+Supervisors: Name, Name
+Team A: Name, Name, *Leader Name, Name
+Digger Drivers: Name, Name
+Jointers: Name, Name
+Pole Lorry: Name, Name`;
+function absenceMonths(today = new Date()){
+  const y = today.getFullYear(), out = [];
+  for (let m = 1; m <= 12; m++) out.push(`${y}-${String(m).padStart(2, "0")}`);
+  if (today.getMonth() >= 9) for (let m = 1; m <= 3; m++) out.push(`${y + 1}-${String(m).padStart(2, "0")}`);
+  return out;
+}
+/* roster + absence status line, the editor and the absence drop – one block, used on both pages */
+function teamBlock(onChange){
+  const el = h(`<div>
+    <div class="row" style="align-items:center;gap:10px"><b>Team roster</b><span class="status rst"></span>
+      <button class="btn sm red">Edit roster</button><button class="btn sm rld">Load roster file (.txt)</button><input type="file" class="hidden" accept=".txt,.csv"></div>
+    <div class="redit hidden" style="margin-top:8px"><textarea spellcheck="false" style="width:100%;min-height:200px;font-family:Consolas,monospace;font-size:12.5px"></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn sm primary rsv">Save roster</button><span class="hint" style="margin:0">Kept only in this browser – it isn't part of the website.</span></div></div>
+    <div style="margin-top:14px" class="absz"></div>
+    <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Download the absence CSVs from the company link</summary>
+      <div class="row" style="margin-top:8px;align-items:flex-end"><div class="field grow"><label>Absence export link (with {year_month}, or ending in m=) – kept only in this browser</label><input type="text" class="aurl" placeholder="https://…export-csv.php?token=…&m={year_month}"></div>
+      <button class="btn sm afetch">Download all months</button></div>
+      <div class="status ast" style="margin-top:6px"></div><div class="alinks hint" style="margin-top:6px;line-height:1.9"></div></details>
+  </div>`);
+  const ta = $("textarea", el), rst = $(".rst", el), ed = $(".redit", el), fin = $("input[type=file]", el);
+  const show = () => { const s = rosterSummary(rosterText());
+    rst.className = "status " + (s.teams ? "ok rst" : "rst");
+    rst.textContent = s.teams ? `✔ ${s.teams} teams · ${s.people} people · ${s.leaders} leader(s) – saved in this browser` : "Not set – the team breakdown needs it (load your roster file once)."; };
+  $(".red", el).onclick = () => { ed.classList.toggle("hidden"); ta.value = rosterText() || ROSTER_EXAMPLE; };
+  $(".rsv", el).onclick = () => { rosterSave(ta.value); ed.classList.add("hidden"); show(); onChange && onChange(); };
+  $(".rld", el).onclick = () => fin.click();
+  fin.onchange = async () => { const f = fin.files[0]; fin.value = ""; if (!f) return; rosterSave(await f.text()); show(); onChange && onChange(); };
+  const abs = dropField({label: "Absence / training CSVs (one per month)", kind: "files", types: [["CSV", ".csv"]],
+    hint: "user, team, role, start, end, days, absence", onChange: v => { CALX.absence = v; CALX.absenceNames = abs.names(); onChange && onChange(); }});
+  $(".absz", el).append(abs);
+  if (CALX.absence.length){ const n = h(`<p class="hint" style="margin:4px 0 0"></p>`); n.textContent = `Using ${CALX.absence.length} absence CSV(s) already loaded: ${CALX.absenceNames.join(", ")} – drop new ones to replace them.`; $(".absz", el).append(n); }
+  const url = $(".aurl", el), ast = $(".ast", el), links = $(".alinks", el);
+  try { url.value = localStorage.getItem(ABS_URL_KEY) || ""; } catch(e){}
+  const mk = ym => { const u = url.value.trim(); return u.includes("{year_month}") ? u.replace("{year_month}", ym) : u.replace(/([?&]m=)[^&]*$/, "$1" + ym).replace(/([?&])m$/, "$1m=" + ym) + (/[?&]m=/.test(u) ? "" : (u.includes("?") ? "&m=" : "?m=") + ym); };
+  const showLinks = () => { links.innerHTML = ""; if (!url.value.trim()) return;
+    links.append("Or click each month to download it, then drop the files above: ");
+    absenceMonths().forEach(ym => { const a = h(`<a target="_blank" rel="noopener" style="margin-right:10px"></a>`); a.href = mk(ym); a.textContent = ym; links.append(a); }); };
+  url.oninput = () => { try { localStorage.setItem(ABS_URL_KEY, url.value.trim()); } catch(e){} showLinks(); };
+  showLinks();
+  $(".afetch", el).onclick = async () => {
+    if (!url.value.trim()){ ast.className = "status err"; ast.textContent = "Paste the link first."; return; }
+    const got = [], errs = [];
+    for (const ym of absenceMonths()){
+      ast.className = "status"; ast.textContent = `Downloading ${ym}…`;
+      try { const r = await fetch(mk(ym), {credentials: "omit"}); if (!r.ok) throw new Error("HTTP " + r.status);
+        const t = await r.text(); if (/^\s*<(!doctype|html)/i.test(t)) throw new Error("got a web page, not a CSV – check the link");
+        if (t.trim()) got.push(new File([t], `absence_${ym}.csv`, {type: "text/csv"})); }
+      catch(e){ errs.push(`${ym}: ${e.message === "Failed to fetch" ? "blocked by the server (the browser isn't allowed to download it directly)" : e.message}`); if (e.message === "Failed to fetch") break; }
+      await new Promise(r => setTimeout(r, 800));
+    }
+    if (got.length){ const dir = await PY.mount(got.map(f => ({rel: f.name, file: f})));
+      CALX.absence = got.map(f => dir + "/" + f.name); CALX.absenceNames = got.map(f => f.name); onChange && onChange(); }
+    ast.className = "status " + (got.length ? "ok" : "err");
+    ast.textContent = got.length ? `✔ ${got.length} month(s) downloaded` + (errs.length ? ` · ${errs.length} failed` : "")
+      : `Couldn't download: ${errs[0] || "no data"}. Use the month links below to download them, then drop the CSVs above.`;
+  };
+  show();
+  return el;
+}
+
+/* ---- outage-folder look-ups: the user picks the "1 - Outages Programme" folder once ---- */
+let OUTAGES_ROOT = null;
+const _lc = x => String(x).toLowerCase();
+const _nn = x => String(x).replace(/[\s_\-]+/g, " ").trim().toLowerCase();
+const _skipName = n => n.startsWith("~$") || _lc(n).startsWith("arquive");
+const GEN_DIRS = new Set(["generators", "generator", "gens", "gen", "genny", "gennys", "genset", "gensets"]);
+const WZ_DIRS = new Set(["workpack zones", "workpack zone", "work pack zones", "work pack zone"]);
+const AM_DIRS = new Set(["access maps returned", "access map returned"]);
+async function _ls(dir){ const out = []; for await (const hd of dir.values()) out.push(hd); return out.sort((a, b) => _lc(a.name) < _lc(b.name) ? -1 : 1); }
+async function _sub(dir, name){
+  try { return await dir.getDirectoryHandle(name); }
+  catch(e){ try { return (await _ls(dir)).find(x => x.kind === "directory" && _lc(x.name) === _lc(name)) || null; } catch(e2){ return null; } }
+}
+async function _resolveFolder(root, winPath, rootKids){
+  const parts = String(winPath).replace(/^\\\\/, "").split(/[\\/]+/).filter(Boolean), lp = parts.map(_lc);
+  const starts = [];
+  const i = lp.lastIndexOf(_lc(root.name)); if (i >= 0) starts.push(i + 1);
+  lp.forEach((p, k) => { if (rootKids.has(p) && !starts.includes(k)) starts.push(k); });
+  for (const st of starts){
+    let d = root, ok = true;
+    for (const p of parts.slice(st)){ d = await _sub(d, p); if (!d){ ok = false; break; } }
+    if (ok) return d;
+  }
+  return null;
+}
+async function _firstFile(dir, prefix, exts, depth){
+  let level = [dir];
+  for (let k = 0; k < depth; k++){
+    const next = [];
+    for (const [d, rel] of level.map(x => Array.isArray(x) ? x : [x, ""])){
+      let kids = []; try { kids = await _ls(d); } catch(e){ continue; }
+      for (const c of kids){
+        if (_skipName(c.name)) continue;
+        if (c.kind === "file"){ const n = _lc(c.name); if (n.startsWith(prefix) && exts.some(e => n.endsWith(e))) return {handle: c, rel: rel + c.name}; }
+        else next.push([c, rel + c.name + "/"]);
+      }
+    }
+    level = next;
+  }
+  return null;
+}
+async function _findDir(dir, names, depth){
+  let level = [[dir, ""]];
+  for (let k = 0; k < depth; k++){
+    const next = [];
+    for (const [d, rel] of level){
+      let kids = []; try { kids = await _ls(d); } catch(e){ continue; }
+      for (const c of kids){ if (c.kind !== "directory" || _skipName(c.name)) continue;
+        if (names.has(_nn(c.name))) return [c, rel + c.name + "/"]; next.push([c, rel + c.name + "/"]); }
+    }
+    level = next;
+  }
+  return null;
+}
+async function _pdfs(dir, rel, out = []){
+  let kids = []; try { kids = await _ls(dir); } catch(e){ return out; }
+  for (const c of kids){
+    if (_skipName(c.name)) continue;
+    if (c.kind === "file" && _lc(c.name).endsWith(".pdf")) out.push([c.name, rel + c.name]);
+    else if (c.kind === "directory") await _pdfs(c, rel + c.name + "/", out);
+  }
+  return out;
+}
+async function readOutageFolders(root, folders, onProg){
+  const files = [], found = {}, missing = [];
+  let timedOut = 0, n = 0;
+  const rootKids = new Set((await _ls(root)).filter(x => x.kind === "directory").map(x => _lc(x.name)));
+  for (const folder of folders){
+    n++; onProg && onProg(n, folders.length, folder);
+    const work = (async () => {
+      const d = await _resolveFolder(root, folder, rootKids);
+      if (!d){ missing.push(folder); return; }
+      const f = {gens: [], maps: []};
+      const req = await _firstFile(d, "outage request", [".xlsx", ".xlsm"], 1);
+      if (req){ const nm = `${n}_req_${req.handle.name}`; files.push({rel: nm, file: await req.handle.getFile()}); f.request = nm; }
+      const wi = await _firstFile(d, "work instructions", [".docx", ".docm"], 2);
+      if (wi){ const nm = `${n}_wi_${wi.handle.name}`; files.push({rel: nm, file: await wi.handle.getFile()}); f.wi = nm; f.wi_rel = wi.rel; }
+      for (const [title, names] of [["Workpack Zones", WZ_DIRS], ["Access Maps Returned", AM_DIRS]]){
+        const sd = await _findDir(d, names, 2);
+        if (sd) f.maps.push([title, await _pdfs(sd[0], sd[1])]);
+      }
+      for (const c of await _ls(d)){
+        if (c.kind === "directory" && !_lc(c.name).startsWith("arquive") && GEN_DIRS.has(_lc(c.name).trim())){
+          for (const x of await _ls(c)) if (x.kind === "file" && _lc(x.name).endsWith(".pdf")) f.gens.push(x.name);
+          break;
+        }
+      }
+      found[folder] = f;
+    })();
+    const t = await Promise.race([work.then(() => "ok", () => "err"), new Promise(r => setTimeout(() => r("timeout"), 30000))]);
+    if (t === "timeout") timedOut++;
+  }
+  return {files, found, missing, timedOut};
+}
+/* pick the root (once per session), read the folders, hand the files to Python */
+async function outageFolderLookups(folders, statusEl){
+  if (!window.showDirectoryPicker) throw new Error("This browser can't open folders – use Microsoft Edge or Google Chrome.");
+  if (!OUTAGES_ROOT){
+    statusEl.textContent = "Choose the “1 - Outages Programme” folder (the one the Outage # links point into)…";
+    OUTAGES_ROOT = await showDirectoryPicker({id: "outages-programme", mode: "read"});
+  }
+  if (!folders.length) return {totals: {}, n: 0, missing: [], timedOut: 0};
+  const r = await readOutageFolders(OUTAGES_ROOT, folders, (i, n, f) => { statusEl.textContent = `Folder ${i} of ${n}: ${f.split(/[\\/]/).slice(-2).join(" \\ ")}`; });
+  let totals = {};
+  if (Object.keys(r.found).length){
+    statusEl.textContent = "Reading the Outage Requests and Work Instructions…";
+    const dir = r.files.length ? await PY.mount(r.files) : "";
+    try { totals = (await PY.call("oc_enrich", {dir, found: r.found})).result; }
+    finally { if (dir) PY.unmount(dir); }
+  }
+  return {totals, n: folders.length, missing: r.missing, timedOut: r.timedOut};
+}
+function folderSummary(r){
+  const t = r.totals || {}, n = r.n, L = [
+    `Substation info found: ${t.substation || 0} of ${n}`,
+    `Work Instructions found: ${t.work_instructions || 0} of ${n} (hospital / what3words read from ${t.site_info || 0})`,
+    `Workpack Zones PDFs: ${t.workpack_zones || 0} of ${n} · Access Maps Returned PDFs: ${t.access_maps || 0} of ${n}`,
+    `Generators PDFs: ${t.generators || 0} of ${n}`];
+  if (r.missing.length) L.push(`${r.missing.length} folder(s) not found under the chosen folder – choose “1 - Outages Programme” itself (Change folder).`);
+  if (r.timedOut) L.push(`${r.timedOut} folder(s) took over 30 s and were skipped.`);
+  return L.join("\n");
+}
+
+function pageCal(t){
+  let loaded = false, info = null;
+  /* 1 - files */
+  const b1 = box(1, "Drop the files", "The High level planning is needed; the Master adds the poles / switches / transformers of each day.");
+  const pln = dropField({label: "High level planning", kind: "file", types: [["Excel files", ".xlsx,.xlsm"]], onChange: () => read()});
+  const mst = dropField({label: "Master file (optional)", kind: "file", types: [["Master", ".parquet"]], onChange: () => read()});
+  const r1 = h(`<div class="row"></div>`); r1.append(pln, mst); b1.append(r1);
+  const r2 = h(`<div class="row" style="margin-top:12px;align-items:flex-end">
+     <div class="field"><label>Password (if protected)</label><input type="password" autocomplete="off" placeholder="file password" style="width:200px"></div>
+     <div class="field"><label>Master date</label><select class="mdate"><option>Plan1</option><option>Combined date</option><option>Done</option></select></div>
+     <button class="btn">${I.folder} Read files</button></div>`);
+  const pw = $("input", r2), mdate = $(".mdate", r2);
+  pw.value = CALX.password || "";
+  const st1 = h(`<div class="status" style="margin-top:10px;white-space:pre-line"></div>`);
+  b1.append(r2, st1);
+  $(".btn", r2).onclick = () => read(true); pw.addEventListener("keydown", e => { if (e.key === "Enter") read(true); });
+  mdate.onchange = () => read();
+
+  /* 2 - filters */
+  const b2 = box(2, "Filters (optional)", "Leave a list empty to include everything. Project filters both the planning rows and the Master figures.");
+  const fD = listFilter("District"), fP = listFilter("Project"), fY = listFilter("Year");
+  const fr = h(`<div class="lfrow"></div>`); fr.append(fD, fP, fY);
+  const opts = h(`<div class="row" style="margin-top:10px;gap:22px"><label class="ck"><input type="checkbox" checked> Include comments (Access, Jointers, Permits …) on each event</label><label class="ck"><input type="checkbox" checked> Show the £ Total in the Day / Week breakdown</label></div>`);
+  const [ckCom, ckTot] = opts.querySelectorAll("input");
+  b2.append(fr, opts);
+
+  /* 3 - team breakdown */
+  const b3 = box(3, "Team breakdown (optional)", "Complete / uncomplete teams, team leaders off, who's off per team, Digger Drivers / Jointers / Lorry drivers and Supervisors off – on every day.");
+  b3.append(teamBlock(() => { if (loaded) read(); }));
+
+  /* 4 - folder look-ups */
+  const b4 = box(4, "Folder look-ups (optional · Edge or Chrome)", "Looks inside each outage's linked folder for the Outage Request (Jay number, customers, start / end), Work Instructions (closest hospital + what3words), Workpack Zones / Access Maps Returned PDFs and Generators PDFs.");
+  const fl = h(`<div class="row" style="align-items:center"><button class="btn">${I.folder} Look inside the outage folders</button><button class="btn sm ghost chg">Change folder</button><span class="status"></span></div>`);
+  const flStat = $(".status", fl), flOut = h(`<div class="status" style="margin-top:8px;white-space:pre-line"></div>`);
+  b4.append(fl, flOut);
+  $(".chg", fl).onclick = () => { OUTAGES_ROOT = null; flStat.textContent = "The next look-up asks for the folder again."; };
+  $(".btn", fl).onclick = async () => {
+    if (!loaded){ flStat.className = "status err"; flStat.textContent = "Read the files first (step 1)."; return; }
+    flStat.className = "status"; flOut.textContent = "";
+    try {
+      const f = (await PY.call("oc_folders", {planning: pln.get(), password: pw.value, districts: fD.get(), years: fY.get().map(Number), projects: fP.get()})).result;
+      if (!f.all){ flStat.textContent = "None of the filtered outages has a folder link."; return; }
+      if (!f.folders.length){ flStat.className = "status ok"; flStat.textContent = `All ${f.all} linked folder(s) already looked up.`; return; }
+      const r = await outageFolderLookups(f.folders, flStat);
+      flStat.className = "status ok"; flStat.textContent = `✔ ${r.n} folder(s) looked up`;
+      flOut.textContent = folderSummary(r);
+    } catch(e){ if (e.name === "AbortError"){ flStat.textContent = ""; return; } flStat.className = "status err"; flStat.textContent = e.message; }
+  };
+
+  /* 5 - build */
+  const b5 = box(5, "Make the calendars", "Excel calendar (.xlsx – a sheet per month, comments on each outage) and Outlook calendar (.ics – import it in Outlook: File › Open & Export › Import/Export).");
+  const nm = h(`<div class="row" style="margin-bottom:12px"><div class="field"><label>File name</label><input type="text" style="width:280px"></div></div>`);
+  const nmIn = $("input", nm);
+  const pad = n => String(n).padStart(2, "0"), dnow = new Date();
+  nmIn.value = `outage_calendar_${dnow.getFullYear()}${pad(dnow.getMonth() + 1)}${pad(dnow.getDate())}`;
+  const run = runArea("Make the Excel + Outlook calendars", "cal");
+  b5.append(nm, run);
+  run.button.onclick = async () => {
+    if (!loaded){ run.fail("Read the files first (step 1)."); return; }
+    await run.run("oc_build", {planning: pln.get(), password: pw.value, master: mst.get(), date_field: mdate.value,
+      districts: fD.get(), projects: fP.get(), years: fY.get().map(Number), include_comments: ckCom.checked,
+      include_total: ckTot.checked, output_name: nmIn.value}, {needs: needs(), busy: "Building the calendars…"});
+  };
+
+  let crypt = false;
+  const needs = () => (mst.get() ? NEED_PARQUET : []).concat(crypt ? NEED_GS_CRYPT : []);
+  async function read(explicit){
+    if (!pln.get()){ loaded = false; st1.className = "status"; st1.textContent = "Drop the High level planning workbook."; return; }
+    st1.className = "status"; st1.textContent = PY.ready ? "Reading…" : "Starting Python and reading (first time ~30 s)…";
+    try {
+      crypt = (await PY.call("gs_probe", {planning: pln.get()})).result.planning.encrypted;
+      if (crypt && !pw.value){ loaded = false; st1.className = "status err"; st1.textContent = "🔒 The High level planning is password protected – type the password and click Read files."; pw.focus(); return; }
+      CALX.password = pw.value;
+      info = (await PY.call("oc_load", {planning: pln.get(), password: pw.value, master: mst.get(), date_field: mdate.value,
+        absence: CALX.absence, roster: rosterText()}, {needs: needs()})).result;
+      loaded = true;
+      const keepD = fD.get(), keepY = fY.get(), keepP = fP.get();
+      fD.setValues(info.districts); fY.setValues(info.years.map(String)); fP.setValues(info.projects);
+      st1.className = "status ok";
+      st1.textContent = `✔ ${intf(info.rows)} outages on ${info.years.join(", ")} · ${info.links} with a folder link` + (info.enriched ? ` (${info.enriched} looked up)` : "")
+        + (mst.get() ? `\n✔ Master: ${intf(info.master_days)} days with figures (${mdate.value})` : "\nNo Master – the calendars come without the poles / switches / transformers.")
+        + (info.roster.teams && info.absence.people ? `\n✔ Team breakdown: ${info.roster.teams} teams, absence data for ${info.absence.people} people` :
+           info.roster.teams || info.absence.files ? "\nTeam breakdown needs both the roster and the absence CSVs (step 3)." : "");
+    } catch(e){ loaded = false; st1.className = "status err"; st1.textContent = e.message; }
+  }
+  app.append(b1, b2, b3, b4, b5);
+}
+
 I.pullIn = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="16" rx="1.5"/><path d="M3 9h8M3 14h8"/><path d="M14 12h7"/><path d="m17 9 -3 3 3 3"/></svg>';
 I.pushOut = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M13 9h8M13 14h8"/><path d="M3 12h7"/><path d="m7 9 3 3-3 3"/></svg>';
 I.mail = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>';
@@ -1548,6 +1852,18 @@ const GUIDES = {
            "Task 1 keeps the tracker in date order – a date that falls between existing ones gets a new row there.",
            "A second run continues from the updated copy – drop a file again to start fresh.",
            "The Mail tab writes the provider email from the tracker (PTE – address – what3words, then multiplier, phase, kVa, cable). Days needed = the column after Schedule - Finish (blank = 1 day; more = from … to … in the email). The time = Schedule - start (08:30am if blank)."]},
+  cal: {title: "Outage Calendar", icon: "cal", c: "c7",
+    need: [["grid", "High level planning", ".xlsx (password if protected)"], ["db", "Master file (optional)", ".parquet – poles, switches, transformers"],
+           ["file", "Roster + absence CSVs (optional)", "team breakdown"], ["folder", "Outage folders (optional)", "Edge / Chrome"]],
+    steps: [["drop", "Drop the files", "Then Read files. Master date: Plan1 (as before), Combined date or Done."],
+            ["filter", "Filters", "District / Project / Year – empty = everything."],
+            ["check", "Team breakdown", "Load the roster file once (kept in this browser) and drop the absence CSVs."],
+            ["folder", "Folder look-ups", "Choose “1 - Outages Programme” once – reads the folders the outages link to."],
+            ["save", "Make the calendars", "Downloads the Excel calendar and the Outlook .ics."]],
+    result: "outage_calendar_<date>.xlsx + .ics",
+    tips: ["Same layout as the desktop exporter: one event per outage + 📊 Day / Week Summary events.",
+           "The absence link and the roster never go into the website – they stay in your browser.",
+           "The look-ups and roster are also used by the calendar in the Planning dashboard (Jobs)."]},
   outputs: {title: "Outputs (CV Excel Report)", icon: "chart", c: "c4",
     need: [["db", "Master file", ".parquet / .csv – from Your files"], ["file", "Logos (optional)", "remembered"], ["db", "miscelaneous.parquet (optional)", "service codes – remembered"]],
     steps: [["db", "Load the Master", "Picked up from Your files, or drop it in box 1."],
@@ -1581,7 +1897,7 @@ const GUIDES = {
             ["filter", "Filters, left to right", "Each one narrows the next. × on a chip removes it; Reset filters clears all."],
             ["table", "Open a tab", "Only the tab on screen is worked out, so switching tabs is quick."]],
     tabs: [["trend", "Overview", "CV7 recover over time, pole categories, source files → circuits → most repeated job (click a file to open it) – plus the most repeated Plan1 comments when Plan1 is picked."],
-           ["cal", "Jobs", "The High level planning calendar – click a day for its outages, poles and tasks."],
+           ["cal", "Jobs", "Big High level planning calendar in district colours – hover an outage for poles / TX / Noja / ABSW / Soule / customers / teams, click for the full Outlook-style details."],
            ["grid", "Mapped Items", "Item cards – click one to see its rows."],
            ["chart", "Pole Position", "Gantt from the Workbank, and the PID breakdown under it."],
            ["pound", "Totals", "Totals, the Variations pivot, service codes and every item (CSV)."]],
@@ -1610,7 +1926,7 @@ const GUIDES = {
            ["csv", "Export", "Materials_Breakdown.xlsx for the current filters."]],
     dates: DATE_GUIDE},
 };
-const GUIDE_ORDER = ["home", "tp", "build", "outputs", "wi", "gens", "dash/tracker", "dash/master", "dash/materials", "aggregate", "master"];
+const GUIDE_ORDER = ["home", "tp", "build", "outputs", "wi", "gens", "cal", "dash/tracker", "dash/master", "dash/materials", "aggregate", "master"];
 const guideId = () => { const id = location.hash.replace("#", ""); return GUIDES[id] ? id : "home"; };
 const gIcon = (k, size = 18) => (I[k] || ICON2[k] || I.file).replace("<svg", `<svg width=${size} height=${size}`);
 
@@ -1664,7 +1980,7 @@ function openGuide(id, opener){
 }
 
 /* ---------------- router ---------------- */
-const PAGES = {gens: pageGen, tp: pageTP, build: pageBuild, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
+const PAGES = {gens: pageGen, cal: pageCal, tp: pageTP, build: pageBuild, aggregate: pageAggregate, master: pageMaster, outputs: pageOutputs, wi: pageWI};
 const EXTRA_PAGES = {
   aggregate: {id:"aggregate", c:"c2", icon:"layers", title:"Aggregate Control Files", desc:"Step 1 on its own: CF_aggregated (.xlsx + .parquet)."},
   master: {id:"master", c:"c3", icon:"db", title:"Build Master Parquet", desc:"Step 2 on its own: Master from an existing CF_aggregated."},

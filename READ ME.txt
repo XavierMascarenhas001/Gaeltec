@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 11-Nov-2026
+Gaeltec Tools page - version 11-Nov-2026d
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 11-Nov-2026b".
+The header should say "version 11-Nov-2026d".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -71,3 +71,22 @@ What changed
   - Email: when the days column is more than 1 it says "from 10/11/2026 to
     12/11/2026" (blank = one day). The days column is found even without a header.
     Start time read from Schedule - start (08:30, 0830, 8:30am, 7.45 …), 08:30am if blank.
+
+11-Nov-2026d
+  - New tool "Outage Calendar" (calendar icon, after Generators): the desktop Outage
+    Calendar Exporter in the page. High level planning (+ password) -> Excel calendar
+    (.xlsx) + Outlook (.ics), with the Master figures (Plan1 / Combined date / Done),
+    District / Project / Year filters, the team breakdown and the folder look-ups.
+    New file: tool_outage_calendar.py (build_page.py picks it up automatically).
+  - Team roster: gaeltec_team_roster.txt (made from your script) – load it once with
+    "Load roster file"; it is kept in your browser only. Do NOT upload it to GitHub.
+  - Absence CSVs: drop them, or paste the export link once (kept in your browser
+    only, never in the website). If the server blocks the browser download, the page
+    lists the month links to download them by hand.
+  - Folder look-ups (Edge / Chrome): choose the "1 - Outages Programme" folder once.
+  - Planning dashboard > Jobs: full-width calendar, taller days, every year sheet,
+    chips in the district colours (darker = At Risk, red = Cancelled) with outage,
+    project, circuit and job; badges per day (poles, switches, TX, complete teams);
+    hover = poles / transformers / Noja / ABSW / Soule / customers / teams available;
+    click a day or an outage = day summary + teams + the Outlook-style details.
+    Password-protected planning workbooks now open (it asks for the password).

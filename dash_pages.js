@@ -17,7 +17,7 @@ function pyPill(){ return h(`<span class="pill pystat"><span class="dot ${PYSTAT
 function dashBar(key){
   const d = DASHES.find(x => x.key === key);
   const el = h(`<div class="dbar"><div class="nav"><button class="btn sm">${I.back} All tools</button><div class="dsw"></div><span class="spacer"></span></div>
-    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 11-Nov-2026b</span></div></div>`);
+    <div class="dtitle"><div class="ico">${I[d.icon]}</div><div><h1></h1><p></p></div><span class="spacer"></span><span class="pill" title="Page version">v 11-Nov-2026d</span></div></div>`);
   $("h1", el).textContent = d.title; $(".dtitle p", el).textContent = d.desc;
   $(".nav .btn", el).onclick = () => { location.hash = ""; };
   const sw = $(".dsw", el);
@@ -750,9 +750,10 @@ function ntVarPivot(P, vr){
 /* ---- Jobs: High level planning calendar + .ics ---- */
 function ntJobs(P, panel){
   const g = h(`<div class="dgrid"></div>`); panel.append(g);
-  const oc = dcard("High level planning 2026", "High-level_planning_2026.xlsx, sheet '2026' · click a day to see its outages and the poles & MD Poling tasks from the Master file", 12);
+  const oc = dcard("High level planning", "Every year sheet · colour = district (darker = At Risk, red = Cancelled) · hover an outage for its figures · click a day or an outage for the full details (same as the Outlook calendar)", 12);
+  oc.classList.add("calwide");
   g.append(oc);
-  if (!FILES.outages){ oc.body.append(slotZone("outages", false, "Drop High-level_planning_2026.xlsx – the calendar shows here")); }
+  if (!FILES.outages){ oc.body.append(slotZone("outages", false, "Drop the High level planning workbook – the calendar shows here")); }
   else ntOutages(P, oc);
   const ic = dcard("Outage calendar (.ics)", "Events from the outage calendar file", 12); g.append(ic);
   if (!FILES.ics){ ic.body.append(slotZone("ics", false, "Drop outage_calendar_2026 (vN).ics")); }
@@ -761,69 +762,197 @@ function ntJobs(P, panel){
       ic.body.append(r.count ? dtable({columns: r.columns, rows: r.rows, name: "Outage calendar"}) : emptyMsg("No VEVENT entries found in this calendar file.")); })
       .catch(e => { if (!e.stale){ ic.body.textContent = ""; ic.body.append(errNote(e)); } }); }
 }
+const calMonthOf = (o, r) => {
+  if (o.month) return o.month;
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, t = iso(new Date());
+  if (r && r.min && r.max && t >= r.min.slice(0, 7) && t <= r.max.slice(0, 7)) return t;
+  return r && r.min ? r.min.slice(0, 7) : t;
+};
 function ntOutages(P, card){
   const o = P.st.o, body = card.body;
   body.append(spinner("Reading the High level planning…"));
+  const month = calMonthOf(o, o._range);
   P.tabCall("nt_outages", {outage_path: FILES.outages.path, master_path: FILES.master.path, cols: P.st.cols, filters: DASHDEF.tracker.ntFilters(P),
-    o_districts: o.districts || [], o_pms: o.pms || [], o_from: o.from || null, o_to: o.to || null, selected_date: o.date || null}, NEED_NT)
+    o_districts: o.districts || [], o_pms: o.pms || [], o_from: o.from || null, o_to: o.to || null, selected_date: o.date || null,
+    password: CALX.password || "", roster: rosterText(), absence: CALX.absence, month}, NEED_NT)
   .then(r => {
     body.textContent = "";
     const redo = () => { body.textContent = ""; ntOutages(P, card); };
-    const bar = h(`<div class="fr" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px"></div>`);
+    if (r.need_password){
+      const pw = h(`<div class="row" style="align-items:flex-end;gap:10px"><div class="field"><label>🔒 Password of the High level planning</label><input type="password" autocomplete="off" style="width:220px"></div><button class="btn">Open</button></div>`);
+      const go = () => { CALX.password = $("input", pw).value; redo(); };
+      $("button", pw).onclick = go; $("input", pw).addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+      body.append(pw); if (CALX.password) body.append(note("That password didn't open it – try again.")); return;
+    }
+    o._range = {min: r.min, max: r.max};
+    if (!o.month && month !== calMonthOf(o, o._range)){ o.month = calMonthOf(o, o._range); redo(); return; }
+    const bar = h(`<div class="fr" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px"></div>`);
     bar.append(msel({label: "District", options: r.districts, value: o.districts || [], onChange: v => { o.districts = v; redo(); }}),
                msel({label: "SPEN PM", options: r.pms, value: o.pms || [], onChange: v => { o.pms = v; redo(); }}));
     const di = (k, def) => { const i = h(`<input type="date">`); i.value = o[k] || def || ""; i.onchange = () => { o[k] = i.value || null; redo(); }; return i; };
     bar.append(h(`<span class="lbl" style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-left:6px">Outage dates</span>`), di("from", r.min), h(`<span class="muted">→</span>`), di("to", r.max));
     bar.append(segc([["calendar", "Calendar"], ["table", "Table"]], o.view || "calendar", v => { o.view = v; redo(); }));
-    const cnt = h(`<span class="muted" style="margin-left:auto;font-size:13px"></span>`); cnt.textContent = `${intf(r.rows)} of ${intf(r.rows_total)} outage rows`; bar.append(cnt);
+    const cnt = h(`<span class="muted" style="margin-left:auto;font-size:13px"></span>`); cnt.textContent = `${intf(r.rows)} of ${intf(r.rows_total)} outages`; bar.append(cnt);
     body.append(bar);
-    if ((o.view || "calendar") === "table"){ body.append(dtable({columns: r.table.columns, rows: r.table.rows, name: "High level planning", height: 460})); return; }
-    const districts = [...new Set(r.events.map(e => e.district).filter(Boolean))].sort();
-    const col = P.ck.assign(districts);
-    if (districts.length > 1) body.append(legendEl(districts.map(d => ({name: d, color: col(d)}))));
-    body.append(calendarEl(r, o, col, iso => { o.date = iso; redo(); }, m => { o.month = m; redo(); }));
-    if (r.day) body.append(dayPanel(r.day));
-    else body.append(h(`<p class="muted" style="margin:12px 0 0">Click a date or an outage above to see its full breakdown and the poles & tasks here.</p>`));
+    body.append(calExtrasBar(P, r, month, redo));
+    if ((o.view || "calendar") === "table"){ body.append(dtable({columns: r.table.columns, rows: r.table.rows, name: "High level planning", height: 520})); return; }
+    body.append(calLegend(r));
+    body.append(calendarEl(r, o, month, iso => { o.date = iso; o.sel = null; redo(); }, (iso, id) => { o.date = iso; o.sel = id; redo(); }, m => { o.month = m; redo(); }));
+    if (r.day) body.append(dayPanel(r.day, o.sel));
+    else body.append(h(`<p class="muted" style="margin:12px 0 0">Click a date or an outage above to see the day summary, the teams and each outage's details here.</p>`));
   })
   .catch(e => { if (!e.stale){ body.textContent = ""; body.append(errNote(e)); } });
 }
-function calendarEl(r, o, col, onDay, onMonth){
+/* roster / absence / folder look-ups – compact bar above the calendar */
+function calExtrasBar(P, r, month, redo){
+  const el = h(`<div class="calx"><span class="cxs"></span><button class="btn sm ts">👷 Team breakdown…</button><button class="btn sm fl">📁 Look inside this month's outage folders</button><span class="status"></span></div>`);
+  const rs = rosterSummary(rosterText()), st = $(".status", el);
+  const bits = [];
+  bits.push(r.has_master ? "✔ Master figures" : "Master not loaded – no poles / switches");
+  bits.push(r.has_team ? "✔ Teams available" : (rs.teams ? (CALX.absence.length ? "Teams: roster + absence loaded" : "Teams: drop the absence CSVs") : "Teams: load the roster"));
+  $(".cxs", el).textContent = bits.join(" · ");
+  const panel = h(`<div class="calxp hidden"></div>`);
+  $(".ts", el).onclick = () => { if (!panel.firstChild) panel.append(teamBlock(() => redo())); panel.classList.toggle("hidden"); };
+  $(".fl", el).onclick = async () => {
+    st.className = "status";
+    try {
+      const f = (await PY.call("nt_outage_folders", {outage_path: FILES.outages.path, password: CALX.password || "", o_districts: P.st.o.districts || [], o_pms: P.st.o.pms || [], month}, {})).result;
+      if (!f.all){ st.textContent = "No outage this month has a folder link."; return; }
+      if (!f.folders.length){ st.className = "status ok"; st.textContent = `All ${f.all} folder(s) already looked up.`; return; }
+      const res = await outageFolderLookups(f.folders, st);
+      st.className = "status ok"; st.textContent = `✔ ${res.n} folder(s) looked up`; st.title = folderSummary(res);
+      setTimeout(redo, 400);
+    } catch(e){ if (e.name === "AbortError"){ st.textContent = ""; return; } st.className = "status err"; st.textContent = e.message; }
+  };
+  const w = h(`<div></div>`); w.append(el, panel); return w;
+}
+function calLegend(r){
+  const el = h(`<div class="calleg"></div>`);
+  r.legend.forEach(d => { const x = h(`<span><i></i><i></i><b></b></span>`); const [a, b] = x.querySelectorAll("i"); a.style.background = d.green; b.style.background = d.risk; $("b", x).textContent = d.district; el.append(x); });
+  const c = h(`<span><i></i><b>Cancelled</b></span>`); $("i", c).style.background = r.cancelled; el.append(c);
+  el.append(h(`<span class="muted">light = on track · dark = At Risk</span>`));
+  return el;
+}
+const _n0 = v => v ? (Number.isInteger(v) ? String(v) : String(+v.toFixed(2))) : "0";
+function evTip(e){
+  const rows = [{name: "Recover poles", value: _n0(e.poles)}];
+  const tx = Object.entries(e.tx || {}); rows.push({name: "Transformers", value: tx.length ? tx.map(([k, v]) => `${_n0(v)}× ${k}`).join(", ") : "0"});
+  rows.push({name: "Noja", value: _n0(e.noja)}, {name: "ABSW", value: _n0(e.absw)}, {name: "Soule", value: _n0(e.soule)});
+  rows.push({name: "Customers", value: e.customers || (e.folder ? (e.looked ? "–" : "look inside the folder") : "–")});
+  rows.push({name: "Teams available", value: e.teams === null || e.teams === undefined ? "load roster + absence" : String(e.teams)});
+  return {title: [e.outage, e.scheme].filter(Boolean).join(" · ") || "Outage",
+    rows, note: [e.district, e.circuit && "Circuit " + e.circuit, e.project, e.job && "Job: " + e.job, e.pm && "PM " + e.pm, e.time, e.status].filter(Boolean).join(" · ")};
+}
+function calendarEl(r, o, month, onDay, onEv, onMonth){
   const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const today = iso(new Date());
-  let month = o.month;
-  if (!month){ const t = today.slice(0, 7); month = (r.min && r.max && today >= r.min && today <= r.max) ? t : (r.events[0] ? [...r.events].sort((a, b) => a.start < b.start ? -1 : 1)[0].start.slice(0, 7) : t); }
   const [yy, mm] = month.split("-").map(Number);
   const first = new Date(yy, mm - 1, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));   // weeks start Monday
   const byDay = new Map(); r.events.forEach(e => { if (!byDay.has(e.start)) byDay.set(e.start, []); byDay.get(e.start).push(e); });
-  const el = h(`<div class="cal"><div class="calh"><button class="btn sm" title="Previous month">‹</button><h4></h4><button class="btn sm">Today</button><button class="btn sm" title="Next month">›</button></div><div class="calg"></div></div>`);
-  $("h4", el).textContent = `${["January","February","March","April","May","June","July","August","September","October","November","December"][mm - 1]} ${yy}`;
+  const el = h(`<div class="cal big"><div class="calh"><button class="btn sm" title="Previous month">‹</button><h4></h4><button class="btn sm">Today</button><button class="btn sm" title="Next month">›</button></div><div class="calg"></div></div>`);
+  const mNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const mEv = r.events.filter(e => e.start.slice(0, 7) === month).length;
+  $("h4", el).textContent = `${mNames[mm - 1]} ${yy}  ·  ${mEv} outage(s)`;
   const shift = n => { const d = new Date(yy, mm - 1 + n, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
   const [bp, bt, bn] = el.querySelectorAll(".calh .btn");
   bp.onclick = () => shift(-1); bn.onclick = () => shift(1); bt.onclick = () => onMonth(today.slice(0, 7));
-  const grid = $(".calg", el);
-  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(d => { const x = h(`<div class="dow"></div>`); x.textContent = d; grid.append(x); });
+  const grid = $(".calg", el), days = r.days || {};
+  ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].forEach(d => { const x = h(`<div class="dow"></div>`); x.textContent = d; grid.append(x); });
   const weeks = Math.ceil((((first.getDay() + 6) % 7) + new Date(yy, mm, 0).getDate()) / 7);
+  const MAXV = 5;
   for (let i = 0; i < weeks * 7; i++){
-    const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d), evs = byDay.get(k) || [];
-    const cell = h(`<div class="day${d.getMonth() !== mm - 1 ? " oth" : ""}${k === today ? " today" : ""}${k === o.date ? " sel" : ""}"><div class="dn"><span></span><span class="muted"></span></div></div>`);
-    $(".dn span", cell).textContent = d.getDate(); if (evs.length) $(".dn .muted", cell).textContent = evs.length;
-    evs.slice(0, 3).forEach(e => { const ev = h(`<div class="ev"><i></i><span></span></div>`); $("i", ev).style.background = col(e.district); $("span", ev).textContent = e.title.replace(/^[^—]*—\s*/, ""); ev.title = e.title; cell.append(ev); });
-    if (evs.length > 3){ const m = h(`<div class="more"></div>`); m.textContent = `+${evs.length - 3} more`; cell.append(m); }
-    cell.title = evs.length ? evs.map(e => e.title).join("\n") : "No outages";
-    cell.onclick = () => onDay(k);
+    const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d), evs = byDay.get(k) || [], ds = days[k];
+    const inM = d.getMonth() === mm - 1;
+    const cell = h(`<div class="day${inM ? "" : " oth"}${k === today ? " today" : ""}${k === o.date ? " sel" : ""}${ds && ds.flag ? " flag" : ""}"><div class="dn"><span class="dnum"></span><span class="badges"></span></div><div class="evs"></div></div>`);
+    $(".dnum", cell).textContent = d.getDate();
+    if (inM && ds){
+      const bd = $(".badges", cell);
+      if (ds.poles) bd.append(h(`<span class="bdg" title="Recover poles">⬆${_n0(ds.poles)}</span>`));
+      if (ds.switches) bd.append(h(`<span class="bdg sw" title="Switches (Noja / Soule / ABSW)">⚡${_n0(ds.switches)}</span>`));
+      if (ds.tx) bd.append(h(`<span class="bdg sw" title="Transformers">TX${_n0(ds.tx)}</span>`));
+      if (ds.teams !== null && ds.teams !== undefined) bd.append(h(`<span class="bdg tm${ds.teams < ds.teams_total ? " low" : ""}" title="Complete teams available">👷${ds.teams}/${ds.teams_total}</span>`));
+    }
+    const box = $(".evs", cell);
+    evs.slice(0, MAXV).forEach(e => {
+      const ev = h(`<div class="ev2${e.id === o.sel ? " on" : ""}"><b></b><span class="l2"></span><span class="l3"></span></div>`);
+      ev.style.background = e.fill; ev.style.color = e.ink;
+      $("b", ev).textContent = [e.outage, e.scheme].filter(Boolean).join(" · ") || "Outage";
+      $(".l2", ev).textContent = [e.circuit, e.project].filter(Boolean).join(" · ");
+      $(".l3", ev).textContent = e.job || e.pm || "";
+      if (!$(".l3", ev).textContent) $(".l3", ev).remove();
+      ev.onmouseenter = x => Tip.show(x, evTip(e)); ev.onmousemove = x => Tip.move(x); ev.onmouseleave = () => Tip.hide();
+      ev.onclick = x => { x.stopPropagation(); Tip.hide(); onEv(k, e.id); };
+      box.append(ev);
+    });
+    if (evs.length > MAXV){ const m = h(`<div class="more"></div>`); m.textContent = `+${evs.length - MAXV} more – click the day`; box.append(m); }
+    const dn = $(".dn", cell);
+    if (inM && (ds || evs.length)){
+      dn.onmouseenter = x => Tip.show(x, {title: fmtDate(k), rows: [
+        {name: "Outages", value: String(evs.length)},
+        ...(ds ? [{name: "Recover poles", value: _n0(ds.poles)}, {name: "Switches", value: _n0(ds.switches)}, {name: "Transformers", value: _n0(ds.tx)}] : []),
+        ...(ds && ds.teams !== null && ds.teams !== undefined ? [{name: "Complete teams", value: `${ds.teams} of ${ds.teams_total}`}] : [])], note: "Click for the full day summary"});
+      dn.onmousemove = x => Tip.move(x); dn.onmouseleave = () => Tip.hide();
+    }
+    cell.onclick = () => { Tip.hide(); onDay(k); };
     grid.append(cell);
   }
   return el;
 }
-function dayPanel(day){
-  const w = h(`<div class="dgrid" style="margin-top:14px"></div>`);
-  const a = dcard(`Outages on ${fmtDate(day.date)}`, "", 12);
-  a.body.append(day.outages.rows.length ? dtable({columns: day.outages.columns, rows: day.outages.rows, name: "Outages " + day.date, search: false}) : emptyMsg("No outages on this date under the current filters."));
-  const b = dcard(`Poles & MD Poling tasks on ${fmtDate(day.date)}`, "From the Master file, under the filters above", 12);
-  if (day.note) b.body.append(note(day.note));
-  else if (!day.tasks || !day.tasks.rows.length) b.body.append(emptyMsg("No pole/task records for this date in the main dataset under the current filters."));
-  else { $("p", b).textContent = `${intf(day.pole_count)} pole(s) · ${intf(day.tasks.rows.length)} task row(s)`; b.body.append(poleTaskTable(day.tasks)); }
-  w.append(a, b); return w;
+function sectionsEl(sections){
+  const w = h(`<div class="ocs"></div>`);
+  sections.forEach(([title, items]) => {
+    const sec = h(`<div class="ocsec"><div class="octh"></div><table></table></div>`);
+    $(".octh", sec).textContent = title.toUpperCase();
+    const tb = $("table", sec);
+    items.forEach(([label, text, url]) => {
+      const tr = document.createElement("tr"), val = document.createElement("td");
+      val.className = "v";
+      if (label){
+        const l = document.createElement("td"); l.className = "l"; l.textContent = label;
+        if (url && /^file:/i.test(url) && label === "Outage Folder") val.append(sectionsLink(filePathOf(url), url, true));
+        else val.append(url ? sectionsLink(text, url) : text);
+        tr.append(l, val);
+      } else { val.colSpan = 2; val.append("• ", url ? sectionsLink(text, url) : text); tr.append(val); }
+      tb.append(tr);
+    });
+    w.append(sec);
+  });
+  return w;
+}
+const filePathOf = url => "\\\\" + decodeURIComponent(url.replace(/^file:\/+/i, "")).replace(/\//g, "\\");
+function sectionsLink(text, url, showPath){
+  if (/^file:/i.test(url)){   /* a browser can't open network folders from a web page – copy the path instead */
+    const path = filePathOf(url);
+    const s = h(`<span class="fpath"></span>`); s.textContent = text;
+    const cp = h(`<button class="btn sm ghost cpy" title="Copy the path, then paste it in File Explorer's address bar">Copy path</button>`);
+    cp.onclick = ev => { ev.stopPropagation(); ev.preventDefault(); navigator.clipboard.writeText(path).then(() => { cp.textContent = "Copied ✔"; setTimeout(() => cp.textContent = "Copy path", 1500); }); };
+    const w = h(`<span></span>`); w.title = path; w.append(s, " ", cp); return w;
+  }
+  const a = h(`<a target="_blank" rel="noopener"></a>`); a.href = url; a.textContent = text; return a;
+}
+function dayPanel(day, selId){
+  const w = h(`<div class="dgrid calwide" style="margin-top:14px"></div>`);
+  const a = dcard(`${fmtDate(day.date)} – day summary`, "Master figures (date field of the filter bar) and the team breakdown", 4);
+  const lines = [...(day.summary || [])];
+  if (day.team && day.team.length){ if (lines.length) lines.push(""); lines.push(...day.team); }
+  if (!lines.length) a.body.append(emptyMsg("No Master figures or team data for this day."));
+  else { const pre = h(`<div class="daysum"></div>`); lines.forEach(l => { const d = document.createElement("div"); d.textContent = l || "\u00a0";
+    if (/^(Team liders off - [1-9]|.* off: |Supervisors off - [1-9])/.test(l)) d.className = "warn"; pre.append(d); }); a.body.append(pre); }
+  const b = dcard(`Outages on ${fmtDate(day.date)}`, day.outages.length ? `${day.outages.length} outage(s) · the same details as the Outlook calendar` : "", 8);
+  if (!day.outages.length) b.body.append(emptyMsg("No outages on this date under the current filters."));
+  day.outages.forEach((ou, i) => {
+    const open = selId ? ou.id === selId : i === 0;
+    const det = h(`<details class="ocard"${open ? " open" : ""}><summary><i></i><span></span></summary></details>`);
+    $("i", det).style.background = ou.fill; $("span", det).textContent = ou.title;
+    det.append(sectionsEl(ou.sections));
+    if (ou.id === selId) setTimeout(() => det.scrollIntoView({behavior: "smooth", block: "center"}), 80);
+    b.body.append(det);
+  });
+  const c = dcard(`Poles & MD Poling tasks on ${fmtDate(day.date)}`, "From the Master file, under the filters above", 12);
+  if (day.note) c.body.append(note(day.note));
+  else if (!day.tasks || !day.tasks.rows.length) c.body.append(emptyMsg("No pole/task records for this date in the main dataset under the current filters."));
+  else { $("p", c).textContent = `${intf(day.pole_count)} pole(s) · ${intf(day.tasks.rows.length)} task row(s)`; c.body.append(poleTaskTable(day.tasks)); }
+  w.append(a, b, c); return w;
 }
 /* pole cell merged across that pole's task rows (same as the app's HTML table) */
 function poleTaskTable(t){

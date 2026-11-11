@@ -479,6 +479,11 @@ def nt_outages(outage_path, master_path=None, cols=None, filters=None, log=print
     return _dash(D.outages, _need(outage_path, "Outages Programme workbook"), mp, cols, filters, **kw)
 
 
+def nt_outage_folders(outage_path, log=print, **kw):
+    import dash_tracker as D
+    return _dash(D.outage_folders_for, _need(outage_path, "High level planning workbook"), **kw)
+
+
 def nt_ics(ics_path, log=print):
     import dash_tracker as D
     return _dash(D.ics, _need(ics_path, "calendar (.ics) file"))
@@ -487,6 +492,103 @@ def nt_ics(ics_path, log=print):
 def nt_forecast(path, log=print, **kw):
     import dash_tracker as D
     return _dash(D.forecast, _need(path, "Service Partner Workbank"), **kw)
+
+
+# ---------------------------------------------------------------------------
+# Outage Calendar (tool_outage_calendar.py): High level planning -> Excel calendar + Outlook .ics
+#   oc_load -> (oc_folders -> oc_enrich) -> oc_build
+# The parsed planning rows, folder look-ups, roster and absence data are kept for the session
+# and shared with the Planning dashboard's Jobs calendar.
+# ---------------------------------------------------------------------------
+def _oc_team(roster=None, absence=None):
+    import tool_outage_calendar as C
+    if roster is not None:
+        C.TEAM["roster"] = roster or ""
+    if absence is not None:
+        C.TEAM["absence"] = [p for p in absence if p]
+    try:
+        return C.team_context()
+    except RuntimeError as e:
+        raise UserError(f"Absence CSV: {e}")
+
+
+def oc_load(planning="", password="", master="", absence=None, roster=None, date_field="Plan1", log=print):
+    import tool_outage_calendar as C
+    _need(planning, "High level planning workbook")
+    try:
+        rows = C.programme(planning, password)
+    except (C.NeedPassword, RuntimeError) as e:
+        raise UserError(str(e))
+    dists = {}
+    for r in rows:
+        d = C._s(r.get("District"))
+        if d:
+            dists.setdefault(C._canonical_district(d), d.title() if d.isupper() else d)
+    res = {"rows": len(rows), "years": sorted({r["Outage Date"].year for r in rows}),
+           "districts": sorted(dists.values(), key=str.lower),
+           "links": len(C.outage_folders(rows)),
+           "enriched": sum(1 for f in C.outage_folders(rows) if f in C.ENRICHED),
+           "projects": sorted({C._s(r.get("Project")) for r in rows if C._s(r.get("Project"))}, key=str.lower)}
+    if master and os.path.exists(master):
+        try:
+            m = C.master_frame(master, date_field)
+        except Exception as e:
+            raise UserError(f"Master file: {e}")
+        res["projects"] = sorted(set(res["projects"]) | {p for p in m["project"].unique() if p}, key=str.lower)
+        res["master_days"] = int(m["date"].nunique())
+    tc = _oc_team(roster, absence)
+    roster_groups, leaders = C.parse_roster(C.TEAM.get("roster") or "")
+    res["roster"] = {"groups": len(roster_groups), "teams": sum(1 for g in roster_groups if g.lower().startswith("team ")),
+                     "people": sum(len(v) for v in roster_groups.values()), "leaders": len(leaders)}
+    res["absence"] = {"files": len(C.TEAM.get("absence") or []), "people": len(tc[2]) if tc else 0}
+    return res
+
+
+def oc_folders(planning="", password="", districts=None, years=None, projects=None, log=print):
+    """Outage folders (Windows paths) of the filtered rows that haven't been looked up yet."""
+    import tool_outage_calendar as C
+    rows = C.filter_rows(C.programme(_need(planning, "High level planning workbook"), password), districts, years,
+                         projects=projects)
+    folders = C.outage_folders(rows)
+    return {"folders": [f for f in folders if f not in C.ENRICHED], "all": len(folders), "base": C.BASE_UNC_PATH}
+
+
+def oc_enrich(dir="", found=None, log=print):
+    import tool_outage_calendar as C
+    return C.enrich_folders(found or {}, dir)
+
+
+def oc_build(planning="", password="", master="", date_field="Plan1", districts=None, projects=None, years=None,
+             include_comments=True, include_total=True, output_name="", log=print):
+    import tool_outage_calendar as C
+    rows = C.programme(_need(planning, "High level planning workbook"), password)
+    rows = C.with_enrichment(C.filter_rows(rows, districts, years, projects=projects))
+    mcf = None
+    if master and os.path.exists(master):
+        mcf = C.mcf_day_stats(C.master_frame(master, date_field), districts, projects, years)
+    tc = _oc_team()
+    if not rows and not mcf and not tc:
+        raise UserError("No outages, Master figures or team data match these filters.")
+    parts = []
+    if districts:
+        parts.append("District: " + ", ".join(sorted(districts)))
+    if projects:
+        parts.append("Project: " + ", ".join(sorted(projects)))
+    if years:
+        parts.append("Year: " + ", ".join(str(y) for y in sorted(years)))
+    summary = "; ".join(parts) or None
+    log(f"{len(rows)} outage(s) · {len(mcf or {})} Master day(s) · team breakdown {'on' if tc else 'off'}")
+    stem = os.path.splitext(_name(output_name, "", f"outage_calendar_{datetime.now():%Y%m%d}"))[0]
+    out = _outdir()
+    x = os.path.join(out, stem + ".xlsx")
+    C.build_calendar_workbook(rows, mcf_stats=mcf, filter_summary=summary, mcf_enabled=mcf is not None,
+                              include_comments=include_comments, team_ctx=tc,
+                              include_financial_total=include_total).save(x)
+    i = os.path.join(out, stem + ".ics")
+    with open(i, "w", encoding="utf-8", newline="") as fh:
+        fh.write(C.build_ics(rows, mcf_stats=mcf, mcf_enabled=mcf is not None, team_ctx=tc,
+                             include_financial_total=include_total))
+    return [x, i]
 
 
 # ---------------------------------------------------------------------------

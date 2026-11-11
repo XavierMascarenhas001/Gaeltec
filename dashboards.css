@@ -461,3 +461,54 @@ details.dmap[open] summary{margin-bottom:10px}
 .vtip .tli em{font-style:normal;font-variant-numeric:tabular-nums}
 .vtip .tlm{font-size:11px;opacity:.7;margin-top:2px}
 .sfpv td.dts{white-space:nowrap;color:#475569;font-variant-numeric:tabular-nums}
+
+/* ---- Jobs: High level planning calendar (big) ---- */
+.dcard.calwide,.dgrid.calwide{width:calc(100vw - 44px);max-width:2400px;position:relative;left:50%;transform:translateX(-50%)}
+.dgrid.calwide{display:grid}
+.calx{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;color:var(--muted);margin:0 0 10px}
+.calx .cxs{margin-right:6px}
+.calxp{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 12px;background:var(--bg)}
+.calleg{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12.5px;margin:0 0 10px}
+.calleg span{display:inline-flex;gap:3px;align-items:center}
+.calleg i{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid rgba(0,0,0,.08)}
+.calleg b{margin-left:4px;font-weight:600}
+.cal.big .calh h4{font-size:18px}
+.cal.big .calg .dow{font-size:12px;padding:8px 10px}
+.cal.big .calg .day{min-height:200px;padding:6px 7px;gap:5px}
+.cal.big .calg .day.flag .dn .dnum{color:#B91C1C}
+.cal.big .calg .day .dn .dnum{font-weight:800;padding:0 6px;border-radius:99px}
+.cal.big .calg .day.today .dn .dnum{background:var(--acc2);color:#fff}
+.cal.big .dn{display:flex;align-items:center;gap:6px;justify-content:space-between;font-size:13.5px}
+.cal.big .dn .badges{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end}
+.cal.big .bdg{font-size:10.5px;font-weight:700;padding:1px 5px;border-radius:99px;background:var(--bg);color:var(--muted);white-space:nowrap}
+.cal.big .bdg.sw{background:#FEE2E2;color:#B91C1C}
+.cal.big .bdg.tm{background:#DCFCE7;color:#166534}
+.cal.big .bdg.tm.low{background:#FEF3C7;color:#92400E}
+.cal.big .evs{display:flex;flex-direction:column;gap:4px;min-width:0}
+.cal.big .ev2{display:flex;flex-direction:column;border-radius:7px;padding:4px 7px;font-size:12px;line-height:1.3;min-width:0;cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.08);transition:transform .08s,box-shadow .12s}
+.cal.big .ev2:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.cal.big .ev2.on{outline:2px solid var(--acc2);outline-offset:1px}
+.cal.big .ev2 b,.cal.big .ev2 span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal.big .ev2 b{font-size:12.5px}
+.cal.big .ev2 .l2{opacity:.9}
+.cal.big .ev2 .l3{opacity:.75;font-size:11.5px}
+.cal.big .more{font-size:11.5px}
+@media (max-width:900px){.dcard.calwide,.dgrid.calwide{width:auto;left:auto;transform:none}.cal.big .calg .day{min-height:90px}.cal.big .ev2 .l2,.cal.big .ev2 .l3{display:none}}
+.daysum{font-family:inherit;font-size:13.5px;line-height:1.6;font-weight:600}
+.daysum .warn{color:#B91C1C}
+details.ocard{border:1px solid var(--line);border-radius:10px;margin:0 0 8px;background:var(--card)}
+details.ocard summary{cursor:pointer;padding:9px 12px;font-weight:700;display:flex;gap:8px;align-items:center;list-style:none}
+details.ocard summary::-webkit-details-marker{display:none}
+details.ocard summary i{width:12px;height:12px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.1)}
+details.ocard[open] summary{border-bottom:1px solid var(--line)}
+.ocs{padding:4px 12px 12px}
+.ocsec .octh{margin:12px 0 4px;padding:3px 8px;background:#1E3A8A;color:#fff;font:700 12px/1.6 inherit;border-radius:4px;letter-spacing:.03em}
+.ocsec table{border-collapse:collapse;font-size:13px}
+.ocsec td{padding:2px 10px 2px 8px;vertical-align:top}
+.ocsec td.l{color:var(--muted);font-weight:700;white-space:nowrap}
+.ocsec .fpath{word-break:break-all}
+.ocsec .cpy{padding:1px 7px;font-size:11px}
+.ocsec table{width:auto;table-layout:auto}
+.ocsec td{white-space:normal !important;overflow:visible !important;text-overflow:clip !important;max-width:none !important;border:0 !important;background:none !important}
+.ocsec tr:nth-child(even) td{background:rgba(30,58,138,.04) !important}
+.ocsec td.l{white-space:nowrap !important}

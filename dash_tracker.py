@@ -1316,37 +1316,150 @@ def _bytes(path):
     return _FILE_CACHE[key]
 
 
+_OC_MCF = {}
+
+
+def _outage_mcf(master_path, cols, filters, f):
+    """Master figures for the calendar, on the dashboard's filtered rows and date field (cached)."""
+    import tool_outage_calendar as C
+    key = (master_path, os.path.getmtime(master_path), repr(sorted((filters or {}).items())), repr(sorted((cols or {}).items())), len(f))
+    if key not in _OC_MCF:
+        _OC_MCF.clear()
+        m = C.mcf_frame(f, f["_date"], desc_col=cols["item_col"], qsub_col=cols["qsub_col"],
+                        total_col=cols.get("total_col") or "total", circuit_col=cols["circuit_col"],
+                        district_col=cols["district_col"], project_col=cols["project_col"],
+                        job_col=cols.get("job_col") or "job")
+        _OC_MCF[key] = (C.mcf_day_stats(m), C.mcf_outage_stats(m))
+    return _OC_MCF[key]
+
+
+_HLP_COLS = ["District", "Outage Date", "Weekday", "Outage Type", "Scheme", "Outage #", "Circuit", "Project",
+             "Outage Value", "PID", "SPEN PM", "POI", "Status"]
+
+
 def outages(outage_path, master_path=None, cols=None, filters=None, o_districts=None, o_pms=None,
-            o_from=None, o_to=None, selected_date=None):
-    outage_df, outage_err = load_outage_programme(_bytes(outage_path))
-    if outage_err:
-        raise ValueError("Couldn't read the High level planning workbook - check it has a sheet named '2026' with headers on row 7.\n\n"
-                         f"Details: {outage_err}")
-    res = {"rows_total": int(len(outage_df)),
-           "districts": sorted(str(v) for v in outage_df["District"].dropna().unique()),
-           "pms": sorted(str(v) for v in outage_df["SPEN PM"].dropna().unique())}
-    if outage_df["Outage Date"].notna().any():
-        res["min"], res["max"] = _s(outage_df["Outage Date"].min()), _s(outage_df["Outage Date"].max())
-    outage_f = outage_df.copy()
-    if o_districts:
-        outage_f = outage_f[outage_f["District"].astype(str).isin(o_districts)]
-    if o_pms:
-        outage_f = outage_f[outage_f["SPEN PM"].astype(str).isin(o_pms)]
-    if o_from and o_to:
-        o_start = pd.Timestamp(o_from)
-        o_end = pd.Timestamp(o_to) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-        outage_f = outage_f[outage_f["Outage Date"].between(o_start, o_end)]
-    res["rows"] = int(len(outage_f))
-    res["table"] = _table(outage_f)
-    cal_df = outage_f.dropna(subset=["Outage Date"])
-    res["events"] = build_calendar_events(cal_df) if not cal_df.empty else []
-    for _e, _d in zip(res["events"], cal_df["District"].tolist()):   # district for the page's colour key
-        _e["district"] = "" if pd.isna(_d) else str(_d).strip()
+            o_from=None, o_to=None, selected_date=None, password="", roster=None, absence=None, month=None):
+    """High level planning calendar for the Jobs tab: one chip per outage (district colour,
+    project, circuit, job), hover figures (recover poles, transformers, Noja, ABSW, Soule,
+    customers, teams available) and, for a clicked day, the same information as the Outlook
+    calendar events (day summary + each outage's sections)."""
+    import tool_outage_calendar as C
+    try:
+        rows_all = C.programme(outage_path, password or "")
+    except C.NeedPassword as e:
+        return {"need_password": True, "message": str(e)}
+    except RuntimeError as e:
+        raise ValueError(f"Couldn't read the High level planning workbook: {e}")
+    if roster is not None:
+        C.TEAM["roster"] = roster or ""
+    if absence is not None:
+        C.TEAM["absence"] = [p_ for p_ in absence if p_]
+    try:
+        tc = C.team_context()
+    except RuntimeError as e:
+        tc = None
+    rows_all = C.with_enrichment(rows_all)
+    res = {"rows_total": len(rows_all),
+           "districts": sorted({C._s(r.get("District")) for r in rows_all if C._s(r.get("District"))}, key=str.lower),
+           "pms": sorted({C._s(r.get("SPEN PM")) for r in rows_all if C._s(r.get("SPEN PM"))}, key=str.lower)}
+    ds = [r["Outage Date"] for r in rows_all]
+    res["min"], res["max"] = (min(ds).isoformat(), max(ds).isoformat()) if ds else ("", "")
+    f_from = pd.Timestamp(o_from).date() if o_from else None
+    f_to = pd.Timestamp(o_to).date() if o_to else None
+    rows = C.filter_rows(rows_all, o_districts, None, f_from, f_to, o_pms)
+    res["rows"] = len(rows)
+    res["table"] = {"columns": _HLP_COLS,
+                    "rows": [[(r[c].isoformat() if c == "Outage Date" else C._format_outage_value(r[c]) if c == "Outage Value" else C._s(r[c]))
+                              for c in _HLP_COLS] for r in rows]}
+
+    day_stats, out_stats = {}, {}
+    if master_path:
+        try:
+            _df, f, cols_, _meta = _filtered(master_path, cols, filters)
+            if f["_date"].notna().any():
+                day_stats, out_stats = _outage_mcf(master_path, cols_, filters, f)
+        except Exception as e:  # the calendar still works without the Master figures
+            res["master_note"] = f"Master figures not available: {e}"
+    res["has_master"] = bool(master_path)
+    res["has_team"] = bool(tc)
+    colors = C.district_color_map(rows_all)
+    res["legend"] = [{"district": d.title(), "green": "#" + C.event_fill_color(colors, d, "Green"),
+                      "risk": "#" + C.event_fill_color(colors, d, "At Risk")}
+                     for d in sorted({C._canonical_district(r.get("District")) for r in rows if C._s(r.get("District"))})]
+    res["cancelled"] = "#" + C.CANCELED_COLOR
+    team_cache = {}
+
+    def teams_on(d):
+        if not tc:
+            return None
+        if d not in team_cache:
+            team_cache[d] = C.team_breakdown(d, *tc)
+        return team_cache[d]
+
+    evs = []
+    for r in sorted(rows, key=lambda r: (r["Outage Date"], C._s(r.get("Outage #")), C._s(r.get("Scheme")))):
+        d = r["Outage Date"]
+        fill = C.event_fill_color(colors, C._s(r.get("District")), r.get("Status"))
+        st = out_stats.get((d, C._s(r.get("Circuit")).upper())) or {}
+        sw = st.get("switch_breakdown", {})
+        tb = teams_on(d)
+        t0, t1 = r.get("_start_time"), r.get("_end_time")
+        evs.append({
+            "id": r["_id"], "start": d.isoformat(), "district": C._s(r.get("District")),
+            "fill": "#" + fill, "ink": "#" + C.readable_text_color(fill), "status": C._status_label(r.get("Status")),
+            "scheme": C._s(r.get("Scheme")), "outage": C._s(r.get("Outage #")), "circuit": C._s(r.get("Circuit")),
+            "project": C._s(r.get("Project")), "pm": C._s(r.get("SPEN PM")), "job": st.get("job", ""),
+            "value": C._format_outage_value(r.get("Outage Value")),
+            "time": f"{t0:%H:%M} – {t1:%H:%M}" if t0 and t1 else "",
+            "poles": st.get("pole_recover", 0), "tx": st.get("transformer_breakdown", {}),
+            "noja": sw.get("Noja", 0), "soule": sw.get("Soule", 0),
+            "absw": sw.get("ABSW 11kV", 0) + sw.get("ABSW 33kV", 0),
+            "customers": C._s(r.get("_customers")),
+            "teams": tb["complete_teams"] if tb else None, "folder": bool(r.get("_outage_link")),
+            "looked": bool(r.get("_outage_request") or r.get("_site_info") or r.get("_map_groups") or r.get("_generator_pdfs")),
+        })
+    res["events"] = evs
+
+    # day badges for the visible month: poles / switches / transformers and the teams available
+    if month:
+        y, mth = (int(x) for x in month.split("-"))
+        import calendar as _cal
+        days = {}
+        for dd in range(1, _cal.monthrange(y, mth)[1] + 1):
+            d = date(y, mth, dd)
+            st = day_stats.get(d)
+            tb = teams_on(d)
+            if not st and not tb:
+                continue
+            days[d.isoformat()] = {
+                "poles": st["pole_recover"] if st else 0,
+                "switches": st["switch_count"] if st else 0, "tx": sum(st["transformer_breakdown"].values()) if st else 0,
+                "flag": bool((st or {}).get("has_tx_or_switch")) or bool(tb and tb["leaders_off"]),
+                "teams": tb["complete_teams"] if tb else None, "teams_total": (tb["complete_teams"] + tb["incomplete_teams"]) if tb else None,
+            }
+        res["days"] = days
 
     if selected_date:
         sel = pd.Timestamp(selected_date).date()
-        day_rows = outage_f[outage_f["Outage Date"].dt.date == sel]
-        day = {"date": sel.isoformat(), "outages": _table(day_rows), "tasks": None, "note": ""}
+        day_rows = [r for r in rows if r["Outage Date"] == sel]
+        st = day_stats.get(sel)
+        lines = C._day_breakdown_lines(st, include_financial_total=False) if st else []
+        tb = teams_on(sel)
+        team_lines = C._team_breakdown_lines(tb) if tb else []
+        out = []
+        for r in day_rows:
+            secs = C.event_sections(r)
+            ost = out_stats.get((sel, C._s(r.get("Circuit")).upper()))
+            if ost:
+                fig = [("Recover poles", f"{ost['pole_recover']:g}", None)]
+                fig += [(k, f"{v:g}", None) for k, v in ost["switch_breakdown"].items()]
+                fig += [(k, f"{v:g}", None) for k, v in sorted(ost["transformer_breakdown"].items())]
+                if ost.get("job"):
+                    fig.append(("Job (Master)", ost["job"], None))
+                secs.insert(1 if secs else 0, ("Master figures – this circuit", fig))
+            out.append({"id": r["_id"], "title": C._event_title(r), "fill": "#" + C.event_fill_color(colors, C._s(r.get("District")), r.get("Status")),
+                        "sections": [[t, [list(i) for i in items]] for t, items in secs]})
+        day = {"date": sel.isoformat(), "summary": lines, "team": team_lines, "outages": out, "tasks": None, "note": ""}
         if master_path:
             _df, f, cols_, _meta = _filtered(master_path, cols, filters)
             if cols_.get("date_col") is None or f["_date"].isna().all():
@@ -1361,6 +1474,16 @@ def outages(outage_path, master_path=None, cols=None, filters=None, o_districts=
             day["note"] = "Load the Master file to see the poles & MD Poling tasks for this day."
         res["day"] = day
     return res
+
+
+def outage_folders_for(outage_path, password="", o_districts=None, o_pms=None, month=None):
+    """Linked folders of the outages in the visible month that haven't been looked up yet."""
+    import tool_outage_calendar as C
+    rows = C.filter_rows(C.programme(outage_path, password or ""), o_districts, None, None, None, o_pms)
+    if month:
+        rows = [r for r in rows if r["Outage Date"].strftime("%Y-%m") == month]
+    fs = C.outage_folders(rows)
+    return {"folders": [f_ for f_ in fs if f_ not in C.ENRICHED], "all": len(fs)}
 
 
 def ics(ics_path):
