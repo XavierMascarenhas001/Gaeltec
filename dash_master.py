@@ -248,8 +248,11 @@ _TEAM_SEP = re.compile(r"^[A-Z](?:\s*[,/&+\-]?\s*[A-Z])*$")
 def split_team(v):
     """'A' -> ['A'];  'AB', 'A/B', 'A & D', 'Team AC' -> ['A','B'] … (each letter = one team);
     anything else (e.g. 'T1') is kept as one team; blank -> ['No team']."""
-    if v is None or (isinstance(v, float) and v != v):
-        return [NO_TEAM]
+    try:
+        if v is None or pd.isna(v):
+            return [NO_TEAM]
+    except (TypeError, ValueError):
+        pass
     t = str(v).strip().upper()
     if not t or t in ("NAN", "NONE"):
         return [NO_TEAM]
@@ -263,9 +266,10 @@ def split_team(v):
 
 def _team_parts(team_series):
     """Rows exploded per team letter, with the share of the row each team gets (equal split)."""
-    uniq = pd.unique(team_series.astype(object))
-    m = {u: split_team(u) for u in uniq}
-    parts = team_series.astype(object).map(lambda u: m.get(u, [NO_TEAM]) if u == u else [NO_TEAM])
+    ts = team_series.astype(object)
+    ts = ts.where(ts.notna(), None)                       # pd.NA / NaN -> None (pd.NA can't be compared)
+    m = {u: split_team(u) for u in pd.unique(ts) if u is not None}
+    parts = ts.map(lambda u: m.get(u, [NO_TEAM]) if u is not None else [NO_TEAM])
     ex = parts.explode().rename("team_one")
     share = (1.0 / parts.map(len)).reindex(ex.index)
     return ex, share
@@ -288,7 +292,8 @@ def _team_list(df):
             .set_index("team_one")["team lider"])
     out = []
     for t in sorted(rows.index, key=lambda x: (x == NO_TEAM, len(str(x)), str(x))):
-        out.append({"team": str(t), "leader": _s(lead.get(t)), "rows": int(rows[t]), "shared": int(shared.get(t, 0))})
+        out.append({"team": str(t), "leader": "" if t == NO_TEAM else _s(lead.get(t)),
+                    "rows": int(rows[t]), "shared": int(shared.get(t, 0))})
     return out
 
 

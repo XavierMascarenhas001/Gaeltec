@@ -235,12 +235,12 @@ def read_tracker(plain: bytes) -> dict:
     if not cols["days"] and cols["finish"]:
         nxt = idx_to_col(col_to_idx(cols["finish"]) + 1)
         used = {v for v in cols.values() if v}
-        if nxt in hdr.values() and nxt not in used:
+        if nxt not in used:                       # header may even be empty
             cols["days"] = nxt
     missing = [k for k in ("district", "date", "outage", "circuit", "pm") if not cols[k]]
     if missing:
         raise RuntimeError(f"Generator Tracker: columns not found: {missing}")
-    max_col = max(col_to_idx(c) for c in hdr.values())
+    max_col = max([col_to_idx(c) for c in hdr.values()] + [col_to_idx(v) for v in cols.values() if v])
     idx = {k: col_to_idx(v) - 1 for k, v in cols.items() if v}
 
     rows, last_used = [], TRACKER_HEADER_ROW
@@ -1039,7 +1039,14 @@ def _time_of(v) -> dt.time | None:
     if isinstance(v, (int, float)) and 0 <= float(v) < 1:          # Excel time fraction
         mins = round(float(v) * 24 * 60)
         return dt.time(mins // 60 % 24, mins % 60)
-    m = re.search(r"(\d{1,2})[:.h](\d{2})\s*([ap]m)?", str(v), re.I) or re.search(r"\b(\d{1,2})\s*([ap]m)\b", str(v), re.I)
+    if isinstance(v, (int, float)) and 1 <= float(v) <= 2359 and float(v).is_integer():   # 830 / 0830 / 8
+        n = int(v)
+        return dt.time(n // 100 % 24, n % 100 % 60) if n >= 100 else (dt.time(n, 0) if n < 24 else None)
+    t = str(v).strip()
+    m4 = re.fullmatch(r"(\d{1,2})(\d{2})\s*(?:hrs?|h)?", t, re.I)
+    if m4:
+        return dt.time(int(m4.group(1)) % 24, int(m4.group(2)) % 60)
+    m = re.search(r"(\d{1,2})[:.h](\d{2})\s*([ap]m)?", t, re.I) or re.search(r"\b(\d{1,2})\s*([ap]m)\b", t, re.I)
     if not m:
         return None
     g = m.groups()
@@ -1175,7 +1182,7 @@ def build_email(rows: list[dict]) -> dict:
     n_gens = sum(int(float(_num_txt(r.get("multiplier")))) if _is_num(_num_txt(r.get("multiplier"))) and _num_txt(r.get("multiplier")) != "0" else 1 for r in rows)
     these, gens, be = ("these", "generators", "these") if n_gens > 1 else ("this", "generator", "this")
     if one_span:
-        when = _span(first, last)
+        when = fmt_d(first) if first == last else f"from {fmt_d(first)} to {fmt_d(last)}"
         n_days = (last - first).days + 1
         req = (f"Please note that {these} {gens} will only be required for one day."
                if n_days == 1 else
@@ -1187,7 +1194,7 @@ def build_email(rows: list[dict]) -> dict:
              if len(times) == 1 else "Can these be ready for connection by the times shown above please.")
     plural = len(rows) > 1
     intro = (f"Please could you assist us with the attached generator request{'s' if plural else ''} "
-             f"for {when} at the below area{'s' if len(areas) > 1 else ''}?")
+             f"{'' if when.startswith('from ') else 'for '}{when} at the below area{'s' if len(areas) > 1 else ''}?")
     closing = [f"If you can provide {these} {gens}, could you please send over the schedule builder as soon as possible?",
                "The password for the attachment will follow on separately."]
 
@@ -1215,7 +1222,7 @@ def build_email(rows: list[dict]) -> dict:
 
     one = next(iter(areas.values()))["line"].split(" – ")
     name = one[1] if len(one) > 1 else one[0]
-    subject = f"Generator request – {when}" + (f" – {name}" if len(areas) == 1 else f" – {len(areas)} areas")
+    subject = f"Generator request – {when.replace('from ', '').replace(' to ', ' – ')}" + (f" – {name}" if len(areas) == 1 else f" – {len(areas)} areas")
     return {"subject": subject, "text": text, "html": html_doc, "n_rows": len(rows), "n_areas": len(areas)}
 
 

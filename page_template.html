@@ -305,6 +305,18 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
 .mailbox .mrow input{flex:1}
 .mailbox .mbody{border:1px solid var(--line,#dde3ea);border-radius:8px;padding:14px 16px;min-height:220px;max-height:520px;overflow:auto;background:#fff;color:#000;font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.35}
 .mailbox .mbody:focus{outline:2px solid var(--accent,#0d7d78);outline-offset:-1px}
+
+.gtabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0 6px}
+.gtab{display:flex;gap:12px;align-items:center;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid var(--line,#dde3ea);background:var(--card,#fff);cursor:pointer;color:inherit;font:inherit;transition:border-color .15s,box-shadow .15s,background .15s}
+.gtab:hover{border-color:var(--accent,#0d7d78)}
+.gtab .gi{flex:none;width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:rgba(13,125,120,.1);color:var(--accent,#0d7d78)}
+.gtab .gi svg{width:22px;height:22px}
+.gtab .gl{display:flex;flex-direction:column;gap:2px;line-height:1.25}
+.gtab .gl b{font-size:14px}
+.gtab .gl small{font-size:12px;opacity:.65}
+.gtab.on{border-color:var(--accent,#0d7d78);box-shadow:0 0 0 2px var(--accent,#0d7d78) inset;background:rgba(13,125,120,.05)}
+.gtab.on .gi{background:var(--accent,#0d7d78);color:#fff}
+@media (max-width:900px){.gtabs{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -312,7 +324,7 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 11-Nov-2026</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 11-Nov-2026b</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -1202,6 +1214,9 @@ function pageWI(t){
 
 /* ---------------- Generators ⇄ High-level planning ---------------- */
 const NEED_GS_CRYPT = ["cryptography"];   // only loaded when a workbook is password protected
+I.pullIn = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="16" rx="1.5"/><path d="M3 9h8M3 14h8"/><path d="M14 12h7"/><path d="m17 9 -3 3 3 3"/></svg>';
+I.pushOut = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M13 9h8M13 14h8"/><path d="M3 12h7"/><path d="m7 9 3 3-3 3"/></svg>';
+I.mail = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>';
 function pageGen(t){
   let trkLoaded = false;
   let loaded = false, needCrypt = false, preview = null, choiceEls = new Map(), days = [], run = null;
@@ -1221,7 +1236,7 @@ function pageGen(t){
   pwIn.addEventListener("keydown", e => { if (e.key === "Enter") readFiles(true); });
 
   async function readFiles(explicit){
-    if (!trk.get()){ fStat.className = "status"; fStat.textContent = pln.get() ? "Drop the Generator Tracker too." : "Drop both workbooks (only the Generator Tracker is needed for the email, step 6)."; return; }
+    if (!trk.get()){ fStat.className = "status"; fStat.textContent = pln.get() ? "Drop the Generator Tracker too." : "Drop both workbooks (only the Generator Tracker is needed for the Mail tab)."; return; }
     fStat.className = "status"; fStat.textContent = PY.ready ? "Reading the workbooks…" : "Starting Python and reading the workbooks (first time ~30 s)…";
     try {
       const p = (await PY.call("gs_probe", {tracker: trk.get(), planning: pln.get()})).result;
@@ -1234,7 +1249,7 @@ function pageGen(t){
       const s = (await PY.call("gs_load", {tracker: trk.get(), planning: pln.get(), password: pwIn.value},
                                {needs: needCrypt ? NEED_GS_CRYPT : []})).result;
       loaded = !!s.planning; trkLoaded = true;
-      fStat.className = "status ok"; fStat.textContent = `✔ ${s.tracker}\n` + (s.planning ? `✔ ${s.planning}` : "High level planning not dropped – only needed for tasks 1 and 2 (the email in step 6 works without it).");
+      fStat.className = "status ok"; fStat.textContent = `✔ ${s.tracker}\n` + (s.planning ? `✔ ${s.planning}` : "High level planning not dropped – only needed for the two Pull tabs (the Mail tab works without it).");
     } catch(e){
       loaded = false; trkLoaded = false;
       fStat.className = "status err";
@@ -1244,25 +1259,32 @@ function pageGen(t){
     }
   }
 
-  /* 2 - task + dates */
-  const b2 = box(2, "Choose the task and the dates");
-  const tasks = h(`<div class="seg" style="margin-bottom:14px">
-      <label><input type="radio" name="gstask" value="1" checked><span>1 · Planning → Generator Tracker</span></label>
-      <label><input type="radio" name="gstask" value="2"><span>2 · Generator Tracker → Planning</span></label></div>`);
+  /* tabs: 1 Planning -> Genny Tracker · 2 Gennys -> Planning · 3 Email */
+  let gTab = 1;
+  const GT = [
+    [1, "Pull outages from High level planning to Genny Tracker", I.pullIn, "Planning → Tracker"],
+    [2, "Pull Gennys to High level planning", I.pushOut, "Tracker → Planning"],
+    [3, "Mail for the generator provider (Outlook)", I.mail, "Email"]];
+  const tabBar = h(`<div class="gtabs" role="tablist"></div>`);
+  GT.forEach(([n, label, icon, short]) => {
+    const bt = h(`<button type="button" class="gtab" role="tab"><span class="gi">${icon}</span><span class="gl"><b></b><small></small></span></button>`);
+    $("b", bt).textContent = label; $("small", bt).textContent = short;
+    bt.onclick = () => showTab(n); bt.dataset.n = n; tabBar.append(bt);
+  });
+  const b2 = box(2, "Choose the dates");
   const taskHint = h(`<p class="hint" style="margin:0 0 12px"></p>`);
-  const task = () => +$("input[name=gstask]:checked", tasks).value;
+  const task = () => gTab;
   const setHint = () => { taskHint.innerHTML = task() === 1
-    ? "Adds <b>District, Date, Weekday, Outage, Circuit and PM</b> of the chosen outages to the first free rows of the Generators table."
+    ? "Adds <b>District, Date, Weekday, Outage, Circuit and PM</b> of the chosen outages to the Genny Tracker, in date order."
     : "Writes the <b>Generator</b> rows into the planning <b>Generators</b> column (e.g. <i>No Access, (x1) Generator from GWF, 3 phase 10 kVa, Setubal, 30 m of cable needed.</i>) and the <b>Battery pod</b> multipliers into <b>Battery Pods</b>."; };
   setHint();
-  tasks.querySelectorAll("input").forEach(i => i.onchange = () => { setHint(); resetDays(); });
   const today = new Date(), iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 10);
   const dr = h(`<div class="row" style="align-items:flex-end"><div class="field"><label>From</label><input type="date"></div><div class="field"><label>To</label><input type="date"></div><button class="btn primary">${I.cal} Show days &amp; outages</button><span class="status"></span></div>`);
   const [dFrom, dTo] = dr.querySelectorAll("input");
   dFrom.value = iso(today); dTo.value = iso(new Date(today.getTime() + 7 * 864e5));
   [dFrom, dTo].forEach(i => i.onchange = resetDays);
   const dStat = $(".status", dr);
-  b2.append(tasks, taskHint, dr);
+  b2.append(taskHint, dr);
 
   /* 3 - days and outages */
   const b3 = box(3, "Tick the days, then the outages", "Tick a day, then untick the outages you don't want.");
@@ -1315,66 +1337,65 @@ function pageGen(t){
   bAll.onclick = () => { days.forEach(d => { if (!d.cb.checked){ d.cb.checked = true; d.cb.onchange(); } }); };
   bNone.onclick = () => { days.forEach(d => { if (d.cb.checked){ d.cb.checked = false; d.cb.onchange(); } }); };
 
-  /* 4 - preview + decisions */
-  const b4 = box(4, "Preview", "Anything already filled in: choose keep or replace.");
-  const pv = h(`<div class="runbar"><button class="btn">${I.search} Preview</button><span class="status"></span></div>`);
-  const pvStat = $(".status", pv);
+  /* 4 - apply (works out the changes first; asks keep / replace only when something is already filled in) */
+  const pvStat = h(`<span class="status"></span>`);
   const pvOut = h(`<div style="margin-top:12px"></div>`);
   const conf = h(`<div style="margin-top:12px"></div>`);
-  b4.append(pv, pvOut, conf);
-  function clearPreview(){ preview = null; choiceEls = new Map(); pvOut.innerHTML = ""; conf.innerHTML = ""; pvStat.textContent = ""; if (run) run.button.disabled = true; }
-  $(".btn", pv).onclick = async () => {
-    clearPreview();
+  function clearPreview(){ preview = null; choiceEls = new Map(); pvOut.innerHTML = ""; conf.innerHTML = ""; pvStat.textContent = ""; }
+  async function makePreview(){
     const sel = ids();
-    if (!days.length){ pvStat.className = "status err"; pvStat.textContent = "Click Show days & outages first (step 2)."; return; }
-    if (!sel.length){ pvStat.className = "status err"; pvStat.textContent = "Tick at least one day (and outage)."; return; }
-    pvStat.className = "status"; pvStat.textContent = "Working out what will change…";
-    try {
-      const r = (await PY.call("gs_preview", {task: task(), ids: sel})).result;
-      preview = r;
-      pvStat.className = "status ok"; pvStat.textContent = r.summary;
-      pvOut.append(tableEl(r.columns, r.rows));
-      if (r.conflicts.length){
-        const opts = `<option value="">— choose —</option>` + r.choices.map(c => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join("");
-        const head = h(`<div class="row" style="align-items:center;margin:4px 0 10px"><b style="color:#b26a00">${r.conflicts.length} item(s) already have information in the file – what do you want to do?</b>
-            <div class="field"><label>Set all to</label><select style="min-width:260px">${opts}</select></div></div>`);
-        const all = $("select", head);
-        conf.append(head);
-        r.conflicts.forEach(c => {
-          const card = h(`<div style="display:flex;gap:14px;align-items:center;border-left:3px solid #e69500;background:rgba(230,149,0,.08);border-radius:6px;padding:8px 10px;margin:6px 0">
-              <div style="flex:1;font-size:13px;line-height:1.45"><b></b><div class="cur"></div><div class="new"></div></div><select style="min-width:260px">${opts}</select></div>`);
-          $("b", card).textContent = c.where;
-          $(".cur", card).innerHTML = "Current: " + esc(c.current).replace(/\n/g, "<br>");
-          $(".new", card).innerHTML = "New: " + esc(c.new).replace(/\n/g, "<br>");
-          const s = $("select", card); choiceEls.set(c.i, s);
-          conf.append(card);
-        });
-        all.onchange = () => { if (all.value) choiceEls.forEach(s => s.value = all.value); };
-      }
-      run.button.disabled = !r.can_apply;
-    } catch(e){ pvStat.className = "status err"; pvStat.textContent = e.message; }
-  };
+    if (!days.length) throw new Error("Click Show days & outages first (step 2).");
+    if (!sel.length) throw new Error("Tick at least one day (and outage).");
+    const r = (await PY.call("gs_preview", {task: task(), ids: sel})).result;
+    preview = r; choiceEls = new Map(); conf.innerHTML = "";
+    pvStat.className = "status"; pvStat.textContent = r.summary;
+    if (r.conflicts.length){
+      const opts = `<option value="">— choose —</option>` + r.choices.map(c => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join("");
+      const head = h(`<div class="row" style="align-items:center;margin:4px 0 10px"><b style="color:#b26a00">${r.conflicts.length} item(s) already have information in the file – what do you want to do? Then click Apply again.</b>
+          <div class="field"><label>Set all to</label><select style="min-width:260px">${opts}</select></div></div>`);
+      const all = $("select", head);
+      conf.append(head);
+      r.conflicts.forEach(c => {
+        const card = h(`<div style="display:flex;gap:14px;align-items:center;border-left:3px solid #e69500;background:rgba(230,149,0,.08);border-radius:6px;padding:8px 10px;margin:6px 0">
+            <div style="flex:1;font-size:13px;line-height:1.45"><b></b><div class="cur"></div><div class="new"></div></div><select style="min-width:260px">${opts}</select></div>`);
+        $("b", card).textContent = c.where;
+        $(".cur", card).innerHTML = "Current: " + esc(c.current).replace(/\n/g, "<br>");
+        $(".new", card).innerHTML = "New: " + esc(c.new).replace(/\n/g, "<br>");
+        const sl = $("select", card); choiceEls.set(c.i, sl);
+        conf.append(card);
+      });
+      all.onchange = () => { if (all.value) choiceEls.forEach(x => x.value = all.value); };
+    }
+    return r;
+  }
 
-  /* 5 - apply */
-  const b5 = box(5, "Apply & download", "Downloads an updated copy – the original isn't touched.");
+  /* 4 - apply */
+  const b5 = box(4, "Apply & download", "Downloads an updated copy – the original isn't touched. If something is already filled in, you're asked to keep or replace it.");
   run = runArea("Apply & download", "save");
-  run.button.disabled = true;
-  b5.append(run);
+  b5.append(run, pvStat, conf);
   run.button.onclick = async () => {
-    if (!preview){ run.fail("Click Preview first (step 4)."); return; }
+    try {
+      if (!preview){
+        run.button.disabled = true; pvStat.className = "status"; pvStat.textContent = "Working out what will change…";
+        const r = await makePreview();
+        run.button.disabled = false;
+        if (r.conflicts.length){ run.fail(`${r.conflicts.length} item(s) already have information – choose keep / replace below, then click Apply again.`); return; }
+        if (!r.can_apply){ run.fail("Nothing to change – everything is already in the file."); clearPreview(); return; }
+      }
+    } catch(e){ run.button.disabled = false; run.fail(e.message); clearPreview(); return; }
     const choices = {};
     let missing = 0;
-    choiceEls.forEach((s, i) => { if (s.value) choices[i] = s.value; else missing++; });
+    choiceEls.forEach((sl, i) => { if (sl.value) choices[i] = sl.value; else missing++; });
     if (missing){ run.fail(`Choose keep / replace for the ${missing} item(s) that already have information (or use 'Set all to').`); return; }
     const r = await run.run("gs_apply", {choices}, {needs: needCrypt ? NEED_GS_CRYPT : [], busy: "Writing the workbook…"});
     if (!r) return;
-    preview = null; choiceEls = new Map(); conf.innerHTML = ""; pvOut.innerHTML = ""; run.button.disabled = true;
-    pvStat.className = "status ok"; pvStat.textContent = "Applied – click Show days & outages / Preview again for another run (it continues from the updated copy).";
-    try { const s = (await PY.call("gs_status", {})).result; fStat.textContent = `✔ ${s.tracker}\n✔ ${s.planning}`; } catch(e){}
+    clearPreview();
+    pvStat.className = "status ok"; pvStat.textContent = "Applied – tick more and Apply again to continue from the updated copy.";
+    try { const st = (await PY.call("gs_status", {})).result; fStat.textContent = `✔ ${st.tracker}\n✔ ${st.planning}`; } catch(e){}
   };
 
-  /* 6 - email to the generator provider (Outlook) */
-  const b6 = box(6, "Email for the generator provider (Outlook)", "From the Generator Tracker: tick the generators, then copy the email or open it as an Outlook draft.");
+/* 6 - email to the generator provider (Outlook) */
+  const b6 = box(2, "Mail for the generator provider (Outlook)", "From the Generator Tracker: tick the generators, then copy the email or open it as an Outlook draft.");
   const er = h(`<div class="row" style="align-items:flex-end"><div class="field"><label>From</label><input type="date"></div><div class="field"><label>To</label><input type="date"></div><button class="btn primary">${I.generator} Show generators</button><span class="status"></span></div>`);
   const [eFrom, eTo] = er.querySelectorAll("input"); const eStat = $(".status", er);
   eFrom.value = iso(today); eTo.value = iso(new Date(today.getTime() + 7 * 864e5));
@@ -1464,8 +1485,16 @@ function pageGen(t){
     } catch(e){ st.className = "status err"; st.textContent = e.message; }
   };
 
-  resetDays(); resetMail();
-  app.append(b1, b2, b3, b4, b5, b6);
+  const pTask = h(`<div></div>`), pMail = h(`<div></div>`);
+  pTask.append(b2, b3, b5); pMail.append(b6);
+  function showTab(n){
+    const changed = n !== gTab; gTab = n;
+    tabBar.querySelectorAll(".gtab").forEach(x => x.classList.toggle("on", +x.dataset.n === n));
+    pTask.classList.toggle("hidden", n === 3); pMail.classList.toggle("hidden", n !== 3);
+    if (n !== 3 && changed){ setHint(); resetDays(); }
+  }
+  resetDays(); resetMail(); showTab(1);
+  app.append(b1, tabBar, pTask, pMail);
 }
 
 /* ======================================================================
@@ -1508,17 +1537,17 @@ const GUIDES = {
     tips: ["Need only one step? Links under box 4: Aggregate only, or Master from a CF_aggregated."]},
   gens: {title: "Generators ⇄ High level planning", icon: "generator", c: "c6",
     need: [["file", "Generator Tracker", ".xlsx"], ["grid", "High level planning", "High-level_planning_2026.xlsx"], ["help", "Password", "only if a file is protected"]],
-    steps: [["drop", "Drop both workbooks", "Type the password if asked, then Read files."],
-            ["cal", "Task and dates", "1 · Planning → Tracker, or 2 · Tracker → Planning. Then Show days & outages."],
-            ["check", "Tick days, then outages", "A ticked day shows its outages – untick any you don't want."],
-            ["search", "Preview", "Anything already filled in: choose keep or replace (or “Set all to”)."],
-            ["save", "Apply & download", "An updated copy downloads – the original isn't touched."]],
+    steps: [["drop", "Drop the workbooks", "Type the password if asked, then Read files. The Mail tab only needs the Genny Tracker."],
+            ["grid", "Pick a tab", "Pull outages from High level planning to Genny Tracker · Pull Gennys to High level planning · Mail for the generator provider."],
+            ["check", "Dates, then tick days and outages", "Show days & outages, then untick any you don't want."],
+            ["save", "Apply & download", "Already filled in? You're asked keep or replace (or “Set all to”), then Apply again. The original isn't touched."],
+            ["file", "Mail tab", "Tick the generators → Write email → Copy email or Open in Outlook."]],
     result: "<name>_updated_<date>.xlsx – pivots, charts and the password kept",
     tips: ["Task 2 writes e.g. “No Access, (x1) Generator from GWF, 3 phase 10 kVa, Setubal, 30 m of cable needed.”",
            "Battery pods: the multiplier goes into the Battery Pods column.",
            "Task 1 keeps the tracker in date order – a date that falls between existing ones gets a new row there.",
            "A second run continues from the updated copy – drop a file again to start fresh.",
-           "Step 6 writes the provider email from the tracker (PTE – address – what3words, then multiplier, phase, kVa, cable). Days needed = the column after Schedule - Finish (blank = 1 day). The time = Schedule - start."]},
+           "The Mail tab writes the provider email from the tracker (PTE – address – what3words, then multiplier, phase, kVa, cable). Days needed = the column after Schedule - Finish (blank = 1 day; more = from … to … in the email). The time = Schedule - start (08:30am if blank)."]},
   outputs: {title: "Outputs (CV Excel Report)", icon: "chart", c: "c4",
     need: [["db", "Master file", ".parquet / .csv – from Your files"], ["file", "Logos (optional)", "remembered"], ["db", "miscelaneous.parquet (optional)", "service codes – remembered"]],
     steps: [["db", "Load the Master", "Picked up from Your files, or drop it in box 1."],

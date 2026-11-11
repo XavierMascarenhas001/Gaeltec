@@ -2,7 +2,7 @@ Gaeltec Tools page - version 11-Nov-2026
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 11-Nov-2026".
+The header should say "version 11-Nov-2026b".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -60,3 +60,14 @@ What changed
     m of cable; the time = Schedule - start (08:30am if blank); days needed = the
     column right after Schedule - Finish (blank = 1 day, a number = that many days,
     a date = last day).
+
+11-Nov-2026b
+  - Fixed the Financial dashboard error "boolean value of NA is ambiguous" (blank
+    team cells in the Master).
+  - Generators page now has 3 tabs: "Pull outages from High level planning to Genny
+    Tracker", "Pull Gennys to High level planning" and "Mail for the generator
+    provider (Outlook)". No Preview step: Apply & download works it out; if something
+    is already filled in it asks keep / replace, then click Apply again.
+  - Email: when the days column is more than 1 it says "from 10/11/2026 to
+    12/11/2026" (blank = one day). The days column is found even without a header.
+    Start time read from Schedule - start (08:30, 0830, 8:30am, 7.45 …), 08:30am if blank.
