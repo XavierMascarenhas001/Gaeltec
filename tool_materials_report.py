@@ -1527,7 +1527,7 @@ def generate_excel(df, categories, cv_groups, selected_cv_groups=None, extra_dat
     # =========================
     # SUMMARY BUILD
     # =========================
-    if "project" in df.columns:
+    if "project" in df.columns and not df.empty:
  
         group_cols = []
         if "shire" in df.columns:

@@ -135,7 +135,24 @@ label.ck{display:inline-flex;gap:8px;align-items:center;font-size:13.5px;cursor:
 label.ck input{width:16px;height:16px}
 
 /* ---------- Materials combobox (tick list + custom value) ---------- */
-.mfilters{display:flex;flex-wrap:wrap;gap:14px}
+.mfilters{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+.mfilters.datesrow{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
+label.fic{display:flex;align-items:center;gap:7px;font-size:13.5px !important;font-weight:700 !important;color:var(--ink) !important;text-transform:none !important;letter-spacing:0 !important}
+label.fic svg{width:17px;height:17px;color:var(--sky)}
+.presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-bottom:2px}
+.presets .btn.on{background:var(--sky-soft);border-color:var(--sky);color:var(--navy)}
+.wk{overflow:visible}
+.wk table{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:13.5px}
+.wk th{background:none !important;position:static !important;text-align:left;font-size:12.5px;color:var(--muted);font-weight:700;padding:0 8px;white-space:nowrap}
+.wk th svg{width:15px;height:15px;vertical-align:-3px;margin-right:5px;color:var(--sky)}
+.wk td{background:var(--bg);padding:6px 8px;vertical-align:middle}
+.wk td:first-child{border-radius:10px 0 0 10px;width:28px}
+.wk td:last-child{border-radius:0 10px 10px 0}
+.wk td.nm{font-weight:700;color:var(--navy);white-space:nowrap}
+.wk tr.off td{opacity:.45}
+.wk .msc{margin:0}
+.wk input[type=checkbox]{width:17px;height:17px}
+.wk select,.wk input[type=date]{padding:6px 8px}
 .msc{position:relative}
 .msc>button{min-width:170px;justify-content:space-between}
 .msc>button .v{overflow:hidden;text-overflow:ellipsis;max-width:190px}
@@ -318,6 +335,9 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
 .gtab .gi svg{width:22px;height:22px}
 .gtab .gl{display:flex;flex-direction:column;gap:2px;line-height:1.25}
 .gtab .gl b{font-size:14px}
+.witabs{margin:0 0 18px}
+.witabs .gtab{padding:14px 16px}
+.witabs .gtab .gl b{font-size:15.5px}
 .gtab .gl small{font-size:12px;opacity:.65}
 .gtab.on{border-color:var(--accent,#0d7d78);box-shadow:0 0 0 2px var(--accent,#0d7d78) inset;background:rgba(13,125,120,.05)}
 .gtab.on .gi{background:var(--accent,#0d7d78);color:#fff}
@@ -329,7 +349,7 @@ header .gbtn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,25
   <span class="hlogo" data-img="GaeltecImage"></span>
   <div class="brand">
     <h1>Gaeltec Tools</h1>
-    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 11-Nov-2026d</b></p>
+    <p>SPEN Planning · OHLT UK — control files, master data and reports · <b>version 12-Nov-2026</b></p>
   </div>
   <div class="spacer"></div>
   <span class="hlogo" data-img="SPEN"></span>
@@ -960,69 +980,53 @@ function logoField(label, key, imgName){
   return el;
 }
 
+I.project = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></svg>';
+I.bolt = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>';
+I.tag = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>';
+/* a filter with an icon in its (slightly bigger) title */
+function iconFilter(label, icon, width){
+  const el = comboFilter(label, width);
+  const l = $("label", el); l.classList.add("fic"); l.innerHTML = `${icon}<span></span>`; $("span", l).textContent = label;
+  return el;
+}
+/* weeks start on Monday */
+const _d0 = d => { const x = new Date(d); x.setHours(12, 0, 0, 0); return x; };
+const _addD = (d, n) => { const x = _d0(d); x.setDate(x.getDate() + n); return x; };
+const _mon = d => _addD(d, -((_d0(d).getDay() + 6) % 7));
+const _isoD = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const _dmy = isoStr => isoStr ? isoStr.split("-").reverse().join("-") : "";
+function datePresets(){
+  const t = new Date(), m0 = new Date(t.getFullYear(), t.getMonth(), 1, 12);
+  const mEnd = (y, m) => new Date(y, m + 1, 0, 12);
+  const lw = _addD(_mon(t), -7);
+  return [["Last week", lw, _addD(lw, 6)],
+          ["Last month", new Date(t.getFullYear(), t.getMonth() - 1, 1, 12), mEnd(t.getFullYear(), t.getMonth() - 1)],
+          ["This month", m0, mEnd(t.getFullYear(), t.getMonth())],
+          ["Next month", new Date(t.getFullYear(), t.getMonth() + 1, 1, 12), mEnd(t.getFullYear(), t.getMonth() + 1)]];
+}
+const WEEKLY_DISTRICTS = ["Ayrshire", "Lanark", "Glasgow"];
+const WEEKLY_PROJECTS = ["11kV Refurb", "33kV Refurb", "Aurs Road", "Lanark", "LV"];
+
 function pageOutputs(t){
-  let path = "";
-  const b1 = box(1, "Load CSV / Parquet");
+  let path = "", opts = null;
+  const b1 = box(1, "Master file");
   const loadStat = h(`<p class="status" style="margin:10px 0 0"></p>`);
   const src = sharedSlotField("master", v => { path = v; if (v) load(); else { loadStat.className = "status"; loadStat.textContent = ""; } },
-                              "Master .parquet or .csv – shared with the other tools and dashboards");
+                              "Master .parquet or .csv");
   b1.append(src, loadStat);
 
-  const b2 = box(2, "Filters", "“All” = no restriction.");
-  const cols = ["shire", "project", "circuit", "project_name", "cat"];
-  const labels = {cat: "Category"};
-  const boxes = {};
-  const fr = h(`<div class="mfilters"></div>`);
-  cols.forEach(c => { boxes[c] = comboFilter(labels[c] || c); fr.append(boxes[c]); });
-  b2.append(fr);
-  const dateRow = h(`<div class="row" style="margin-top:14px"></div>`);
-  const dateBox = comboFilter("Date Filter", 230);
-  const start = h(`<div class="field"><label>Start</label><input type="date"></div>`);
-  const end = h(`<div class="field"><label>End</label><input type="date"></div>`);
-  dateRow.append(dateBox, start, end);
-  b2.append(dateRow);
-  const cvRow = h(`<div class="row" style="margin-top:14px"></div>`);
-  const cvBox = comboFilter("CV Groups (All = every group)", 230);
-  cvRow.append(cvBox); b2.append(cvRow);
-  const applyRow = h(`<div class="runbar" style="margin-top:16px"><button class="btn">${I.filter} Apply Filters</button><span class="status"></span></div>`);
-  b2.append(applyRow);
-  const applyStat = $(".status", applyRow);
-
-  const payload = () => ({path, filters: Object.fromEntries(cols.map(c => [c, boxes[c].get()])), dates: dateBox.get(),
-                          start: $("input", start).value, end: $("input", end).value});
-  async function load(){
-    loadStat.className = "status"; loadStat.textContent = PY.ready ? "Loading the file…" : "Starting Python and loading the file (first time ~30 s)…";
-    try {
-      const o = (await PY.call("outputs_options", {path}, {needs: NEED_OUTPUTS})).result;
-      cols.forEach(c => { boxes[c].setValues(o.options[c] || []); boxes[c].clear(); });
-      dateBox.setValues(o.date_options); dateBox.setSelection(o.date_default);
-      cvBox.setValues(o.cv_groups); cvBox.clear();
-      loadStat.className = "status ok"; loadStat.textContent = `Loaded ${o.rows} rows`;
-      applyStat.textContent = "";
-    } catch(e){ loadStat.className = "status err"; loadStat.textContent = e.message; }
-  }
-  $(".btn", applyRow).onclick = async () => {
-    if (!path) { applyStat.className = "status err"; applyStat.textContent = "Load a file first."; return; }
-    applyStat.className = "status"; applyStat.textContent = "Filtering…";
-    try { const r = (await PY.call("outputs_apply", payload(), {needs: NEED_OUTPUTS})).result; applyStat.className = "status ok"; applyStat.textContent = `Filtered rows: ${r.rows}`; }
-    catch(e){ applyStat.className = "status err"; applyStat.textContent = e.message; }
-  };
-
-  const b3 = box(3, "Export Excel", "Summary, Outputs, Variations, one sheet per category, CV8 / CV31.");
+  /* 2 - report settings, used by both the weekly reports and the custom report */
+  const b2 = box(2, "Report settings");
   const lr = h(`<div class="row"></div>`);
-  const logoL = logoField("Gaeltec logo (GaeltecImage.png)", "logo_left", "GaeltecImage.png");
-  const logoR = logoField("SPEN logo (SPEN.png)", "logo_right", "SPEN.png");
-  lr.append(logoL, logoR);
-  const scr = h(`<div class="row" style="margin-top:12px"></div>`);
-  const scFile = dropField({label: "miscelaneous.parquet – service codes", kind: "file", types: [["Parquet", ".parquet"]],
-                            hint: "fills the “service code” column (Column_1 = description, Column_3 = code) – remembered in this browser",
+  const logoL = logoField("Gaeltec logo", "logo_left", "GaeltecImage.png");
+  const logoR = logoField("SPEN logo", "logo_right", "SPEN.png");
+  const scFile = dropField({label: "miscelaneous.parquet (service codes)", kind: "file", types: [["Parquet", ".parquet"]],
     onChange: (v) => {
       if (!v) { store.set("outputs_misc", null); scFile._lastFile = null; return; }
       const f = scFile._lastFile; if (!f || f.size > 3e6) return;
       const rd = new FileReader(); rd.onload = () => store.set("outputs_misc", {name: f.name, data: rd.result}); rd.readAsDataURL(f);
     }});
   {
-    /* remember the miscelaneous file like the logos, so it's only dropped once */
     const inp = $("input", scFile), dz = $(".dz", scFile);
     inp.addEventListener("change", () => { if (inp.files[0]) scFile._lastFile = inp.files[0]; }, true);
     dz.addEventListener("drop", (e) => { if (e.dataTransfer.files[0]) scFile._lastFile = e.dataTransfer.files[0]; }, true);
@@ -1031,17 +1035,101 @@ function pageOutputs(t){
       const dt = new DataTransfer(); dt.items.add(new File([b], saved.name)); inp.files = dt.files; inp.dispatchEvent(new Event("change"));
     }).catch(() => {});
   }
-  scr.append(scFile);
-  const scSheet = h(`<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox"> Also add the <b>Variations_service codes</b> sheet (every service code with qty, qsub, Orig, Total and Variation, plus Traffic Management, Sand / Chips / Miscellaneous Works and Non Free Issue material lines)</label>`);
-  const nm = nameField("Output file name", "Outputs_Report.xlsx");
-  const run = runArea("Export Excel", "save");
-  b3.append(lr, scr, scSheet, h(`<div style="height:12px"></div>`), nm, h(`<div style="height:12px"></div>`), run);
-  run.button.onclick = () => {
-    if (!path) { run.fail("Load a file first (step 1)."); return; }
-    run.run("outputs_export", {...payload(), cv_groups: cvBox.get(), output_name: nm.get(), logo_left: logoL.get(), logo_right: logoR.get(),
-                               misc: scFile.get(), service_code_sheet: $("input", scSheet).checked}, {needs: NEED_OUTPUTS, busy: "Generating the Excel file…"});
+  lr.append(logoL, logoR, scFile);
+  const scSheet = h(`<label class="ck" style="margin-top:14px"><input type="checkbox"> Add variations</label>`);
+  const scOn = () => $("input", scSheet).checked;
+  b2.append(lr, scSheet);
+  const common = () => ({logo_left: logoL.get(), logo_right: logoR.get(), misc: scFile.get(), service_code_sheet: scOn()});
+
+  /* 3 - weekly district reports: 6 files, one button */
+  const b3 = box(3, "Weekly Outputs");
+  const today = new Date(), thisMon = _mon(today), lastMon = _addD(thisMon, -7);
+  const docs = [];
+  WEEKLY_DISTRICTS.forEach(d => {
+    docs.push({district: d, kind: "done", date_col: "done", start: _isoD(lastMon), end: _isoD(_addD(lastMon, 6))});
+    docs.push({district: d, kind: "planned", date_col: "plan1", start: _isoD(thisMon), end: _isoD(_addD(thisMon, 4))});
+  });
+  const wk = h(`<div class="wk"><table><thead><tr><th></th><th>File</th><th>${I.map}District</th><th>${I.project}Projects</th><th>${I.cal}Date</th><th>From</th><th>To</th></tr></thead><tbody></tbody></table></div>`);
+  const tb = $("tbody", wk);
+  docs.forEach(doc => {
+    const tr = h(`<tr><td><input type="checkbox" checked></td><td class="nm"></td><td class="ds"></td><td class="pj"></td>
+      <td><select><option value="done">Done</option><option value="plan1">Plan1</option><option value="plan2">Plan2</option></select></td>
+      <td><input type="date" class="d1"></td><td><input type="date" class="d2"></td></tr>`);
+    const cb = $("input[type=checkbox]", tr), sel = $("select", tr), d1 = $(".d1", tr), d2 = $(".d2", tr);
+    const pj = comboFilter("", 170); $("label", pj).remove(); $(".pj", tr).append(pj);
+    pj.setValues(WEEKLY_PROJECTS); pj.setSelection(WEEKLY_PROJECTS);
+    const dsel = h(`<select></select>`); $(".ds", tr).append(dsel);
+    dsel.fill = vals => { const cur = dsel.value || doc.district; dsel.textContent = ""; [...new Set([cur, ...vals])].forEach(v => { const o = document.createElement("option"); o.textContent = v; dsel.append(o); }); dsel.value = cur; };
+    dsel.fill(WEEKLY_DISTRICTS);
+    sel.value = doc.date_col; d1.value = doc.start; d2.value = doc.end;
+    const name = () => `${dsel.value || doc.district}_${doc.kind}_${_dmy(d1.value)}`;
+    const upd = () => { $(".nm", tr).textContent = name() + ".xlsx"; tr.classList.toggle("off", !cb.checked); };
+    cb.onchange = upd; d1.onchange = upd; dsel.onchange = upd;
+    doc.el = {cb, sel, d1, d2, pj, dsel, name}; upd();
+    tb.append(tr);
+  });
+  const run3 = runArea("Outputs", "save");
+  b3.append(wk, h(`<div style="height:14px"></div>`), run3);
+  run3.button.onclick = () => {
+    if (!path) { run3.fail("Load the Master first (box 1)."); return; }
+    const list = docs.filter(d => d.el.cb.checked).map(d => ({name: d.el.name(), district: d.el.dsel.value || d.district,
+      projects: d.el.pj.get(), date_col: d.el.sel.value, start: d.el.d1.value, end: d.el.d2.value}));
+    if (!list.length) { run3.fail("Tick at least one file."); return; }
+    run3.run("outputs_weekly", {path, docs: list, cv_groups: [], ...common()}, {needs: NEED_OUTPUTS, busy: `Making ${list.length} report(s)…`});
   };
-  app.append(b1, b2, b3);
+
+  /* 4 - custom report */
+  const b4 = box(4, "Custom report");
+  const cols = ["shire", "project", "circuit", "project_name", "cat"];
+  const meta = {shire: ["District", I.map], project: ["Project", I.project], circuit: ["Circuit", I.bolt], project_name: ["Project name", I.tag], cat: ["Category", I.grid]};
+  const boxes = {};
+  const fr = h(`<div class="mfilters"></div>`);
+  cols.forEach(c => { boxes[c] = iconFilter(meta[c][0], meta[c][1]); fr.append(boxes[c]); });
+  const cvBox = iconFilter("CV groups", I.layers, 200); fr.append(cvBox);
+  const dateRow = h(`<div class="mfilters datesrow"></div>`);
+  const dateBox = iconFilter("Dates", I.cal, 200);
+  const start = h(`<div class="field"><label class="fic">From</label><input type="date"></div>`);
+  const end = h(`<div class="field"><label class="fic">To</label><input type="date"></div>`);
+  const pres = h(`<div class="presets"></div>`);
+  datePresets().forEach(([lab, a, z]) => { const bt = h(`<button class="btn sm" type="button"></button>`); bt.textContent = lab;
+    bt.onclick = () => { $("input", start).value = _isoD(a); $("input", end).value = _isoD(z); pres.querySelectorAll(".btn").forEach(x => x.classList.toggle("on", x === bt)); }; pres.append(bt); });
+  dateRow.append(dateBox, start, end, pres);
+  [start, end].forEach(x => $("input", x).addEventListener("input", () => pres.querySelectorAll(".btn").forEach(b => b.classList.remove("on"))));
+  const applyRow = h(`<div class="runbar" style="margin-top:16px"><button class="btn">${I.filter} Apply filters</button><span class="status"></span></div>`);
+  const applyStat = $(".status", applyRow);
+  const nm = nameField("File name", "Outputs_Report.xlsx");
+  const run = runArea("Export Excel", "save");
+  b4.append(fr, dateRow, applyRow, h(`<div style="height:14px"></div>`), nm, h(`<div style="height:12px"></div>`), run);
+
+  const payload = () => ({path, filters: Object.fromEntries(cols.map(c => [c, boxes[c].get()])), dates: dateBox.get(),
+                          start: $("input", start).value, end: $("input", end).value});
+  async function load(){
+    loadStat.className = "status"; loadStat.textContent = PY.ready ? "Loading the file…" : "Starting Python and loading the file (first time ~30 s)…";
+    try {
+      opts = (await PY.call("outputs_options", {path}, {needs: NEED_OUTPUTS})).result;
+      cols.forEach(c => { boxes[c].setValues(opts.options[c] || []); boxes[c].clear(); });
+      dateBox.setValues(opts.date_options); dateBox.setSelection(opts.date_default);
+      cvBox.setValues(opts.cv_groups); cvBox.clear();
+      /* weekly reports: use the project / district names exactly as they are in this Master */
+      const fit = (want, have) => want.map(w => (have || []).find(x => x.toLowerCase() === w.toLowerCase()) || w);
+      docs.forEach(d => { d.el.pj.setValues(fit(WEEKLY_PROJECTS, opts.options.project).concat((opts.options.project || []).filter(x => !/^all \(/i.test(x))));
+        d.el.pj.setSelection(fit(d.el.pj.get(), opts.options.project));
+        const v = fit([d.el.dsel.value], opts.options.shire)[0]; d.el.dsel.fill([v, ...(opts.options.shire || [])]); d.el.dsel.value = v; $(".nm", d.el.cb.closest("tr")).textContent = d.el.name() + ".xlsx"; });
+      loadStat.className = "status ok"; loadStat.textContent = `Loaded ${intf(opts.rows)} rows`;
+      applyStat.textContent = "";
+    } catch(e){ loadStat.className = "status err"; loadStat.textContent = e.message; }
+  }
+  $(".btn", applyRow).onclick = async () => {
+    if (!path) { applyStat.className = "status err"; applyStat.textContent = "Load the Master first."; return; }
+    applyStat.className = "status"; applyStat.textContent = "Filtering…";
+    try { const r = (await PY.call("outputs_apply", payload(), {needs: NEED_OUTPUTS})).result; applyStat.className = "status ok"; applyStat.textContent = `${intf(r.rows)} rows`; }
+    catch(e){ applyStat.className = "status err"; applyStat.textContent = e.message; }
+  };
+  run.button.onclick = () => {
+    if (!path) { run.fail("Load the Master first (box 1)."); return; }
+    run.run("outputs_export", {...payload(), cv_groups: cvBox.get(), output_name: nm.get(), ...common()}, {needs: NEED_OUTPUTS, busy: "Generating the Excel file…"});
+  };
+  app.append(b1, b2, b3, b4);
 }
 
 /* ---------------- Tool 5: Work Instructions & Map check ---------------- */
@@ -1067,7 +1155,10 @@ function pageWI(t){
   let path = "";
   let pdfEntries = [];
   const scanRoots = [];
-  const tabs = h(`<div class="tabs"><button class="tab on"><span class="num">1</span>Load &amp; Filter</button><button class="tab"><span class="num">2</span>Generate Work Instructions</button><button class="tab"><span class="num">3</span>Check WorkPacks vs Control Files</button></div>`);
+  const tabs = h(`<div class="gtabs witabs" role="tablist">
+      <button type="button" class="gtab on"><span class="gi">${I.filter}</span><span class="gl"><b>Load &amp; Filter</b><small>Master + dates and filters</small></span></button>
+      <button type="button" class="gtab"><span class="gi">${I.word}</span><span class="gl"><b>Work Instructions</b><small>Word document</small></span></button>
+      <button type="button" class="gtab"><span class="gi">${I.map}</span><span class="gl"><b>WorkPacks vs Control Files</b><small>Map check report</small></span></button></div>`);
   const panes = [h(`<div></div>`), h(`<div class="hidden"></div>`), h(`<div class="hidden"></div>`)];
   [...tabs.children].forEach((b, i) => b.onclick = () => { [...tabs.children].forEach((x, j) => x.classList.toggle("on", i === j)); panes.forEach((p, j) => p.classList.toggle("hidden", i !== j)); });
   app.append(tabs, ...panes);
@@ -1082,11 +1173,11 @@ function pageWI(t){
       path = v; load();
     }, "Master .parquet – shared with the other tools and dashboards");
   a1.append(src, loadStat);
-  const a2 = box(null, `${I.filter.replace("<svg","<svg width=18 height=18")} Filters`, "Click to tick · empty = no restriction.");
+  const a2 = box(null, `${I.filter.replace("<svg","<svg width=18 height=18")} Filters`);
   const dr = h(`<div class="row" style="margin-bottom:12px"></div>`);
   const dFrom = h(`<div class="field"><label>Date from</label><input type="date"></div>`);
   const dTo = h(`<div class="field"><label>Date to</label><input type="date"></div>`);
-  dr.append(dFrom, dTo, h(`<span class="status">(this range also drives the map scan on tab 3)</span>`));
+  dr.append(dFrom, dTo);
   a2.append(dr);
   const fdefs = [["shires","District"],["projects","Project"],["circuits","Circuit"],["sourcefiles","Sourcefile"],["poles","Pole"],["categories","Category (Const / Mat)"]];
   const lf = {}; const grid = h(`<div class="lfilters"></div>`);
@@ -1814,8 +1905,18 @@ const DATE_GUIDE = [
   ["var(--s4)", "Plan1 · Plan2 · Done", "Only that date. Most repeated comments show under the Overview for Combined date, Plan1, Plan2, Blanks and Unplanned."],
   ["var(--s8)", "Blanks", "Planning dashboard: Plan1 date already passed and no Done date yet (dated by Plan1)."],
 ];
+const FILE_PLACES = {
+  master: ["Master_DD-MM-YYYY.parquet", "21.Planning › 28.Project Tracker"],
+  materials: ["materials_all.parquet", "21.Planning › 28.Project Tracker › Programs › Program files"],
+  misc: ["miscelaneous.parquet", "21.Planning › 28.Project Tracker › Programs › Program files"],
+  tracker: ["project tracker.parquet", "21.Planning › 28.Project Tracker › Programs › Program files"],
+  hlp: ["High-level_planning_2026.xlsx", "21.Planning › 1 - Outages Programme"],
+  workbank: ["Service Partner Workbank_2026_updated.xlsx", "36. Workbank › 2026"],
+  outages: ["Outage folders (maps, Outage Requests…)", "21.Planning › 1 - Outages Programme › <year> › <month>"],
+};
 const GUIDES = {
   home: {title: "Using Gaeltec Tools", icon: "grid", c: "c1", intro: "Everything runs here in your browser – your files never leave your PC.",
+    where: ["master", "materials", "misc", "tracker", "hlp", "workbank", "outages"],
     steps: [["drop", "Drop your files once", "In “Your files” at the top – every tool and dashboard picks them up."],
             ["grid", "Open a tool or a dashboard", "Click a tile. Each one has its own page."],
             ["play", "Follow the numbered boxes", "Top to bottom: files, options, then the Run button."],
@@ -1832,6 +1933,7 @@ const GUIDES = {
     result: "“<Control File>_<Scheme Title>” – downloads automatically",
     tips: ["Skipping the check is allowed – similar lines then default to line 1."]},
   build: {title: "Build Master File", icon: "db", c: "c2",
+    where: ["tracker", "misc"],
     need: [["file", "Control Files", ".xlsb .xlsx .xlsm – or a whole folder"], ["db", "Project Tracker.parquet", "PID / PO"], ["db", "miscelaneous.parquet", "MD Poling, Man_day"]],
     steps: [["drop", "Drop the Control Files", "As many as you like, or a folder."],
             ["drop", "Drop the Project Tracker and miscelaneous", "Box 2. A file in the wrong box is caught before anything runs."],
@@ -1840,6 +1942,7 @@ const GUIDES = {
     result: "Master_DD-MM-YYYY.parquet + .xlsx",
     tips: ["Need only one step? Links under box 4: Aggregate only, or Master from a CF_aggregated."]},
   gens: {title: "Generators ⇄ High level planning", icon: "generator", c: "c6",
+    where: ["hlp"],
     need: [["file", "Generator Tracker", ".xlsx"], ["grid", "High level planning", "High-level_planning_2026.xlsx"], ["help", "Password", "only if a file is protected"]],
     steps: [["drop", "Drop the workbooks", "Type the password if asked, then Read files. The Mail tab only needs the Genny Tracker."],
             ["grid", "Pick a tab", "Pull outages from High level planning to Genny Tracker · Pull Gennys to High level planning · Mail for the generator provider."],
@@ -1853,6 +1956,7 @@ const GUIDES = {
            "A second run continues from the updated copy – drop a file again to start fresh.",
            "The Mail tab writes the provider email from the tracker (PTE – address – what3words, then multiplier, phase, kVa, cable). Days needed = the column after Schedule - Finish (blank = 1 day; more = from … to … in the email). The time = Schedule - start (08:30am if blank)."]},
   cal: {title: "Outage Calendar", icon: "cal", c: "c7",
+    where: ["hlp", "master", "outages"],
     need: [["grid", "High level planning", ".xlsx (password if protected)"], ["db", "Master file (optional)", ".parquet – poles, switches, transformers"],
            ["file", "Roster + absence CSVs (optional)", "team breakdown"], ["folder", "Outage folders (optional)", "Edge / Chrome"]],
     steps: [["drop", "Drop the files", "Then Read files. Master date: Plan1 (as before), Combined date or Done."],
@@ -1865,31 +1969,44 @@ const GUIDES = {
            "The absence link and the roster never go into the website – they stay in your browser.",
            "The look-ups and roster are also used by the calendar in the Planning dashboard (Jobs)."]},
   outputs: {title: "Outputs (CV Excel Report)", icon: "chart", c: "c4",
-    need: [["db", "Master file", ".parquet / .csv – from Your files"], ["file", "Logos (optional)", "remembered"], ["db", "miscelaneous.parquet (optional)", "service codes – remembered"]],
-    steps: [["db", "Load the Master", "Picked up from Your files, or drop it in box 1."],
-            ["filter", "Set the filters", "“All” = no restriction. Date Filter + Start / End for dates."],
-            ["search", "Apply Filters", "Shows how many rows are left."],
-            ["save", "Export Excel", "Pick CV groups (All = every group), then export."]],
-    result: "Outputs_Report.xlsx – Summary, Outputs, Variations, a sheet per category, CV8 / CV31",
-    tips: ["Tick “Variations_service codes” for that extra sheet (needs miscelaneous.parquet)."]},
+    where: ["master", "misc"],
+    need: [["db", "Master file", ".parquet / .csv – picked up from Your files"], ["file", "Logos (optional)", "GaeltecImage.png / SPEN.png – remembered"],
+           ["db", "miscelaneous.parquet (optional)", "fills the service code column – remembered"]],
+    steps: [["db", "Master file", "Box 1 – picked up from Your files, or drop it there."],
+            ["file", "Report settings", "Box 2 – logos, miscelaneous and “Add variations” are used by both reports below."],
+            ["save", "Weekly Outputs", "Box 3 – one click on Outputs makes 6 files: per district (Ayrshire, Lanark, Glasgow) last week's Done (Mon–Sun) and this week's Plan1 (Mon–Fri). Untick a row to skip it; change projects, date or dates per row if needed."],
+            ["filter", "Custom report", "Box 4 – District, Project, Circuit, Project name, Category and CV groups, then the dates at the bottom: pick the date column(s) and From / To, or a quick range (Last week, Last month, This month, Next month)."],
+            ["search", "Apply filters", "Optional – shows how many rows are left."],
+            ["save", "Export Excel", "Downloads the custom report."]],
+    result: "Ayrshire_done_02-11-2026.xlsx, Lanark_planned_09-11-2026.xlsx … (dated by the Monday) · Outputs_Report.xlsx",
+    tips: ["Each file: Summary, Outputs, Variations, a sheet per category, CV8 / CV31.",
+           "Add variations = the extra “Variations_service codes” sheet: every service code with qty, qsub, Orig, Total and Variation, plus Traffic Management, Sand / Chips / Miscellaneous Works and Non Free Issue material lines (needs miscelaneous.parquet).",
+           "Weekly projects: 11kV Refurb, 33kV Refurb, Aurs Road, Lanark and LV.",
+           "“All” in a filter = no restriction. Project “All (No Connections)” leaves Connections out.",
+           "Several date columns ticked = a row counts if any of them is in the range."]},
   wi: {title: "Work Instructions & Map Check", icon: "map", c: "c5",
+    where: ["master", "outages"],
     need: [["db", "Master .parquet", "from Your files"], ["folder", "Maps", "Outages Programme folders, or PDFs"]],
+    tabs: [["filter", "Load & Filter", "Master + dates and filters."], ["word", "Work Instructions", "The Word document."], ["map", "WorkPacks vs Control Files", "The map check report."]],
     steps: [["filter", "Tab 1 · Load & filter", "Set the dates and filters – the dates also drive the map scan."],
             ["folder", "Tab 3 · Add maps", "Drop year / month / outage folders, or add PDFs by hand."],
             ["word", "Tab 2 · Work Instructions", "Generate the Word document from the filtered rows."],
             ["chart", "Tab 3 · Cross-reference", "Generate the report: Control File vs maps."]],
     result: "Work_Instructions.docx · Pole_PDF_CrossReference_Report.xlsx",
-    tips: ["Set a date range before scanning – otherwise every outage folder is read.",
+    tips: ["Filters: click to tick · empty = no restriction.",
+           "The date range on tab 1 also drives the map scan – set it before scanning, otherwise every outage folder is read.",
            "Map names in the report link to the real network folder (or your drive letter)."]},
   aggregate: {title: "Aggregate Control Files", icon: "layers", c: "c2",
     need: [["file", "Control Files", "or a whole folder"]],
     steps: [["drop", "Drop the Control Files", "Box 1."], ["play", "Aggregate", "Box 3."]],
     result: "CF_aggregated.xlsx + _aggregated.parquet + _resume.parquet"},
   master: {title: "Build Master Parquet", icon: "db", c: "c3",
+    where: ["tracker", "misc"],
     need: [["db", "CF_aggregated.parquet", ""], ["db", "Project Tracker.parquet", ""], ["db", "miscelaneous.parquet", ""]],
     steps: [["drop", "Drop the three files", "Box 1."], ["play", "Build Master", "Box 3."]],
     result: "Master_DD-MM-YYYY.parquet + .xlsx"},
   "dash/tracker": {title: "Planning Dashboard", icon: "grid", c: "c2",
+    where: ["master", "hlp", "workbank", "misc"],
     need: [["db", "Master file", "required"], ["grid", "High level planning", "optional · Jobs calendar"], ["chart", "Service Partner Workbank", "optional · Pole Position"],
            ["file", "Outage calendar .ics", "optional"], ["file", "miscelaneous.parquet", "optional · service codes in Totals"]],
     steps: [["drop", "Drop the Master", "In the strip at the top – the optional files can be added any time."],
@@ -1904,6 +2021,7 @@ const GUIDES = {
     dates: DATE_GUIDE.concat([["var(--neutral)", "Unplanned", "Rows with no Plan1 and no Done date."]]),
     tips: ["Hover a chart for its numbers; the Chart / Table switch shows them as a table, CSV downloads it."]},
   "dash/master": {title: "Financial Dashboard", icon: "pound", c: "c1",
+    where: ["master"],
     need: [["db", "Master file", "required"]],
     steps: [["drop", "Drop the Master", "In the strip at the top (or Your files on the home page)."],
             ["cal", "Date field, range and Group by", "Group by Auto picks Day / Week / Month / Year for the range."],
@@ -1916,6 +2034,7 @@ const GUIDES = {
     dates: DATE_GUIDE,
     tips: ["Rows whose job doesn't start with M - or C - are left out of the charts."]},
   "dash/materials": {title: "Materials Breakdown", icon: "box3", c: "c3",
+    where: ["materials", "master"],
     need: [["box3", "materials_all.parquet", "required"], ["db", "Master file", "required"]],
     steps: [["drop", "Drop both files", "In the strip at the top."],
             ["cal", "Date field and From / To", "Blank From / To = no limit."],
@@ -1952,6 +2071,10 @@ function openGuide(id, opener){
     if (g.need){ const w = h(`<div class="gd-need"></div>`);
       g.need.forEach(([ic, name, hint]) => { const c = h(`<div class="gd-file"><span class="gi">${gIcon(ic, 16)}</span><span><b></b><small></small></span></div>`);
         $("b", c).textContent = name; $("small", c).textContent = hint || ""; w.append(c); }); sec("What you need", w); }
+    if (g.where){ const w = h(`<div class="gd-need"></div>`);
+      g.where.forEach(k => { const [file, folder] = FILE_PLACES[k]; const c = h(`<div class="gd-file"><span class="gi">${gIcon("folder", 16)}</span><span><b></b><small></small></span></div>`);
+        $("b", c).textContent = file; $("small", c).textContent = folder; w.append(c); });
+      sec("Where the files are (in 03.SPEN)", w); }
     if (g.steps){ const w = h(`<ol class="gd-steps"></ol>`);
       g.steps.forEach(([ic, name, text], i) => { const li = h(`<li><span class="gn">${i + 1}</span><div class="gt"><b><span class="gsi">${gIcon(ic, 15)}</span><span></span></b><p></p></div></li>`);
         $("b span:last-child", li).textContent = name; $("p", li).textContent = text; w.append(li); }); sec("Steps", w); }
@@ -2089,8 +2212,11 @@ const uiClick = (() => {
     } catch(e){}
   };
 })();
+/* home page options + buttons / tabs / drop boxes inside the tools – never on the dashboards */
 document.addEventListener("pointerdown", e => {
-  if (e.button === 0 && e.target.closest && e.target.closest("#app .tile, #app .lcard")) uiClick();
+  if (e.button !== 0 || !e.target.closest) return;
+  if (/^#\/?dash/.test(location.hash)) return;
+  if (e.target.closest("#app .tile, #app .lcard, #app button, #app .btn, #app .dz, #app label.ck, #app select, header button, .gd button")) uiClick();
 }, {passive: true});
 </script>
 </body>

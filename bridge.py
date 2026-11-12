@@ -249,6 +249,35 @@ def outputs_export(path, filters=None, dates=None, start="", end="", cv_groups=N
                     include_service_code_sheet=bool(service_code_sheet), log=log)
 
 
+def outputs_weekly(path, docs=None, cv_groups=None, logo_left="", logo_right="", misc="",
+                   service_code_sheet=False, log=print):
+    """The weekly district reports in one go – one Excel per doc:
+    docs = [{name, district, projects: [...], date_col: "done"/"plan1", start, end}]."""
+    import tool_materials_report as M
+    if not docs:
+        raise UserError("Tick at least one weekly report.")
+    M.IMG_LEFT = logo_left if logo_left and os.path.exists(logo_left) else M.IMG_LEFT
+    M.IMG_RIGHT = logo_right if logo_right and os.path.exists(logo_right) else M.IMG_RIGHT
+    if not misc:
+        misc = _find_loaded_misc()
+    if service_code_sheet and not misc:
+        raise UserError("Drop miscelaneous.parquet to add variations (the service codes come from that file).")
+    base = _outputs_df(path)
+    out_dir, files = _outdir(), []
+    for d in docs:
+        try:
+            df, date_filters = M.apply_filters(base, {"shire": [d["district"]], "project": d.get("projects") or []},
+                                               [d.get("date_col") or "done"], d.get("start") or "", d.get("end") or "")
+        except (ValueError, TypeError) as e:
+            raise UserError(f"{d.get('name')}: could not apply the date filter: {e}")
+        name = _name(d.get("name"), ".xlsx", "Outputs.xlsx")
+        log(f"{name}: {len(df):,} row(s)")
+        files += M.export(df, date_filters, cv_groups or [], os.path.join(out_dir, name),
+                          service_codes_path=misc or "", include_service_code_sheet=bool(service_code_sheet),
+                          log=lambda *_a, **_k: None)
+    return files
+
+
 # ---------------------------------------------------------------------------
 # Tool 5 - Work Instructions & map check
 # ---------------------------------------------------------------------------

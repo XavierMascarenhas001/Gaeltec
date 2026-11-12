@@ -1,8 +1,8 @@
-Gaeltec Tools page - version 11-Nov-2026d
+Gaeltec Tools page - version 12-Nov-2026
 
 QUICKEST: upload index.html to GitHub, replacing the old index.html (keep the name
 index.html, all lowercase). Wait 1-2 minutes, then open the page with Ctrl + F5.
-The header should say "version 11-Nov-2026d".
+The header should say "version 12-Nov-2026".
 
 TO KEEP BUILDING IT YOURSELF: copy the other files in this folder into your page
 folder (next to build_page.py), replacing the old ones, then run:
@@ -90,3 +90,16 @@ What changed
     hover = poles / transformers / Noja / ABSW / Soule / customers / teams available;
     click a day or an outage = day summary + teams + the Outlook-style details.
     Password-protected planning workbooks now open (it asks for the password).
+
+12-Nov-2026
+  - Soft click sound on buttons, tabs and drop boxes in the tools (not the dashboards).
+  - Outputs: new "Weekly Outputs" box – one "Outputs" button makes 6 files:
+    Ayrshire / Lanark / Glasgow × last week's Done (Mon–Sun) and this week's Plan1
+    (Mon–Fri), projects 11kV Refurb, 33kV Refurb, Aurs Road, Lanark, LV. Names like
+    Ayrshire_done_02-11-2026.xlsx (the Monday). Each row can be unticked or changed.
+  - Outputs custom report: filters with icons and bigger titles, CV groups with the
+    filters, dates together at the bottom with Last week / Last month / This month /
+    Next month. "Add variations" checkbox (explained in the Guide).
+  - An empty selection no longer crashes the report (tool_materials_report.py).
+  - Work Instructions: bigger tabs with icons; helper notes moved to the Guide.
+  - Guide: "Where the files are (in 03.SPEN)" folders on each page.
