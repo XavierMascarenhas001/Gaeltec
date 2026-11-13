@@ -1,0 +1,14 @@
+# Gaeltec team roster – from the Outage Calendar script
+# One group per line:  Group: name, name, *leader
+# Load once on the website: Map > Teams… > Load roster file (.txt). It stays in your browser only.
+Supervisors: Francisco Duarte, Helder Pereira
+Team A: Dennis Njeru, Emmanuel Cayago Caballero, *Paulo Marques, Vitor Matos
+Team B: Francis Evasco, Jeffery Abawag, Lynnyrd Retizo, Ronneil Reyes, *Rui Rocha
+Team C: *Craig Kerr, Jayson Fernandez, Liam Wyllie, Owen Hall, Rhys Burgess
+Team D: Domingos Maia Lopes, Dylan Jess, Harry Campbell, John Karlo Tayong Villalon, *Robert Urie
+Team E: Alan Peacock, *Alastair MacPherson, David MacClean, Enrique JR Reggala, Euan Robertson, Marco Luni
+Team F: Arje Santillan, Brandon Torrance, Jake Campbell, Joey Aranda, Keith Adrielle Arellano Torres, *Kenneth Campbell
+Team G: Agripino Cenina Jr, *Andre Morais, Mark Caponpon, Robert Jay Guape
+Digger Drives: Dale Ferguson, Daniel Fraser, Derran Brown, Joaquim Correia, Jose Rosa, William McGill
+Jointers: Joseph Mooney, Luis Watson, Mark Armstrong
+Pole Lorry: Craig McKee, Craig Wood, Luis Pedro Gaspar
