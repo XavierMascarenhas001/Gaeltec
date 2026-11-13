@@ -1072,6 +1072,107 @@ header .gh-mapbtn svg{width:16px;height:16px}
 .gh-modal .gh-setup{margin:0 0 12px;padding:10px 12px;border:1px dashed var(--acc2,#2E86C1);border-radius:8px;font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .gh-modal .gh-setup code{font-size:12px}
 .gh-modal .gh-setup-msg{font-size:12px;color:var(--muted,#64748b)}
+
+/* ===== map backdrop behind every page (tools + dashboards) ===== */
+html{background:var(--bg)}
+body{background:transparent !important}
+#gh-bgmap{--gb-sea:#edf2f8;--gb-land:#d8e2ee;--gb-zone:#c4d5e9;--gb-edge:#b4c6db;--gb-line:#2a7fc4;--gb-o:1;--gb-vig:var(--bg);
+  position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;opacity:var(--gb-o)}
+:root[data-theme=dark] #gh-bgmap{--gb-sea:#091120;--gb-land:#111e35;--gb-zone:#16304d;--gb-edge:#1f3a5c;--gb-line:#55c9d0;--gb-o:1}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]) #gh-bgmap{--gb-sea:#091120;--gb-land:#111e35;--gb-zone:#16304d;--gb-edge:#1f3a5c;--gb-line:#55c9d0;--gb-o:1}}
+#gh-bgmap .gb-drift{position:absolute;inset:-4%;animation:gbDrift 70s ease-in-out infinite alternate}
+#gh-bgmap svg{width:100%;height:100%;display:block}
+#gh-bgmap svg > rect{fill:var(--gb-sea)}
+#gh-bgmap .gh-c{fill:var(--gb-land);stroke:var(--gb-edge);stroke-width:.8}
+#gh-bgmap .gh-c.f{fill:var(--gb-zone)}
+#gh-bgmap .gh-cl,#gh-bgmap text:not(.gb-lab){display:none}
+#gh-bgmap .gb-zone{fill:none;stroke:var(--gb-line);stroke-width:1.6;stroke-dasharray:9 7;opacity:.35;vector-effect:non-scaling-stroke}
+#gh-bgmap .gb-route{fill:none;stroke:var(--gb-line);stroke-width:1.6;stroke-dasharray:3 9;opacity:.45;vector-effect:non-scaling-stroke;animation:gbRoute 5s linear infinite}
+#gh-bgmap .gb-dot{fill:var(--gb-line);opacity:.45}
+#gh-bgmap .gb-ayr{stroke:#efb16d}#gh-bgmap .gb-dot.gb-ayr{fill:#efb16d}
+#gh-bgmap .gb-lan{stroke:#4d8fe0}#gh-bgmap .gb-dot.gb-lan{fill:#4d8fe0}
+#gh-bgmap .gb-pole{stroke:var(--gb-line);stroke-width:2.6;opacity:.8}
+#gh-bgmap .gb-cloth{fill:#0b2638;stroke:#55c9d0;stroke-width:1.2;transform-origin:1.5px -43px;animation:gbWave 3.4s ease-in-out infinite}
+#gh-bgmap image{animation:gbWave 3.4s ease-in-out infinite;transform-origin:1.5px -43px}
+#gh-bgmap .gb-base{fill:#55c9d0}
+#gh-bgmap .gb-pulse{fill:none;stroke:#55c9d0;stroke-width:1.5;opacity:0;animation:gbPulse 3.6s ease-out infinite}
+#gh-bgmap .gb-pulse.p2{animation-delay:1.8s}
+#gh-bgmap .gb-lab{font:700 11px "Segoe UI",system-ui,sans-serif;letter-spacing:.2em;fill:var(--gb-line);text-anchor:middle;opacity:.75}
+#gh-bgmap .gb-vig{position:absolute;inset:0;background:radial-gradient(ellipse 75% 80% at 50% 50%,color-mix(in srgb,var(--gb-vig) 18%,transparent),color-mix(in srgb,var(--gb-vig) 55%,transparent) 100%)}
+@keyframes gbDrift{from{transform:translate(-1.2%,-.8%) scale(1)}to{transform:translate(1.2%,.8%) scale(1.05)}}
+@keyframes gbRoute{to{stroke-dashoffset:-72}}
+@keyframes gbWave{0%,100%{transform:skewY(0) scaleX(1)}50%{transform:skewY(-4deg) scaleX(.95)}}
+@keyframes gbPulse{0%{r:6;opacity:.7}100%{r:46;opacity:0}}
+@media (prefers-reduced-motion: reduce){#gh-bgmap *{animation:none !important}}
+@media print{#gh-bgmap{display:none}}
+
+/* ===== blue lightsaber behind whatever you can click ===== */
+@property --sb{syntax:"<number>";inherits:false;initial-value:0}
+:is(#app,header,.dbar,.gd,.modal-bg,#gh-landing) :is(button:not(:disabled),.btn,.tile,.lcard,.slot,.dz,select,label.ck,.gh-item):hover,
+.gh-sndfloat:hover{
+  animation:ghSaberIn .26s ease-out both,ghSaberHum 1.5s .26s ease-in-out infinite;position:relative;z-index:1}
+@keyframes ghSaberIn{
+  0%{box-shadow:0 0 0 0 rgba(160,220,255,0),0 0 0 0 rgba(40,150,255,0),0 0 0 0 rgba(30,110,255,0)}
+  60%{box-shadow:0 0 0 1.5px rgba(215,240,255,.95),0 0 16px 5px rgba(60,170,255,.85),0 0 46px 12px rgba(30,110,255,.45)}
+  100%{box-shadow:0 0 0 1px rgba(200,235,255,.9),0 0 10px 2px rgba(60,170,255,.75),0 0 30px 6px rgba(30,110,255,.35)}}
+@keyframes ghSaberHum{
+  0%,100%{box-shadow:0 0 0 1px rgba(200,235,255,.9),0 0 10px 2px rgba(60,170,255,.75),0 0 30px 6px rgba(30,110,255,.35)}
+  23%{box-shadow:0 0 0 1px rgba(200,235,255,.8),0 0 8px 1px rgba(60,170,255,.65),0 0 26px 5px rgba(30,110,255,.3)}
+  27%{box-shadow:0 0 0 1px rgba(220,245,255,1),0 0 13px 3px rgba(80,180,255,.85),0 0 36px 8px rgba(30,110,255,.42)}
+  60%{box-shadow:0 0 0 1px rgba(200,235,255,.9),0 0 11px 2px rgba(60,170,255,.78),0 0 32px 7px rgba(30,110,255,.37)}}
+#gh-home .gh-flag:hover{filter:drop-shadow(0 0 3px #bfe6ff) drop-shadow(0 0 9px #2f9bff)}
+.dsw button.on:hover,.dbar .nav .btn:hover{color:#fff}
+@media (prefers-reduced-motion: reduce){:is(#app,header,.dbar,.gd,.modal-bg,#gh-landing) :is(button,.btn,.tile,.lcard,.slot,.dz,select,label.ck,.gh-item):hover{animation:none;box-shadow:0 0 0 1px #bfe6ff,0 0 12px 3px rgba(60,170,255,.6)}}
+.gh-sndbtn{font-size:14px;line-height:1;min-width:34px}
+.gh-sndfloat{position:fixed;right:16px;bottom:16px;z-index:95;width:40px;height:40px;border-radius:50%;border:1px solid rgba(85,201,208,.45);
+  background:rgba(7,21,33,.8);color:#fff;cursor:pointer;backdrop-filter:blur(6px)}
+
+/* ===== outage close-up ===== */
+#gh-home .gx-wrap{position:fixed;inset:0;z-index:96;display:grid;place-items:center;padding:3vh 3vw}
+#gh-home .gx-back{position:absolute;inset:0;background:radial-gradient(circle at 50% 40%,rgba(5,16,26,.55),rgba(3,9,16,.82));backdrop-filter:blur(5px)}
+#gh-home .gx-panel{position:relative;width:min(900px,96vw);max-height:92vh;overflow:auto;transform-origin:0 0;border-radius:16px;
+  background:linear-gradient(160deg,#0e2537,#08182a 60%);color:#e6f0f5;border:1px solid color-mix(in srgb,var(--c,#55c9d0) 55%,transparent);
+  box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04) inset,0 0 40px color-mix(in srgb,#2f9bff 30%,transparent)}
+#gh-home .gx-top{position:relative;padding:20px 60px 16px 24px;border-bottom:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(120deg,color-mix(in srgb,var(--c) 22%,transparent),transparent 70%)}
+#gh-home .gx-kick{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9bb5c0;display:flex;align-items:center;gap:8px}
+#gh-home .gx-kick i{width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 10px var(--c)}
+#gh-home .gx-top h2{margin:6px 0 4px;font-size:24px;line-height:1.2;color:#fff}
+#gh-home .gx-place{font-size:13.5px;color:#d7e8ec}
+#gh-home .gx-place span{color:#7f97a3;font-size:12px}
+#gh-home .gx-top .gh-risk,#gh-home .gx-status{display:inline-block;margin-top:8px}
+#gh-home .gx-status{font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.08);color:#cfe2ea}
+#gh-home .gx-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:15px;cursor:pointer}
+#gh-home .gx-body{padding:18px 24px 24px}
+#gh-home .gx-cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:20px}
+#gh-home .gx-mini{width:100%;aspect-ratio:330/190;border-radius:12px;border:1px solid rgba(255,255,255,.1);display:block;background:#091c2a}
+#gh-home .gx-mini .gh-cl{display:none}
+#gh-home .gx-ping{animation:gxPing 1.8s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes gxPing{0%{transform:scale(.6);opacity:1}100%{transform:scale(3.2);opacity:0}}
+#gh-home .gx-figs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+#gh-home .gx-f{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.03)}
+#gh-home .gx-f b{display:block;font-size:20px;color:#7f97a3}
+#gh-home .gx-f.on b{color:#fff;text-shadow:0 0 12px color-mix(in srgb,var(--c) 70%,transparent)}
+#gh-home .gx-f small{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9bb5c0}
+#gh-home .gx-r{display:grid;grid-template-columns:110px 1fr;gap:10px;padding:7px 0;border-bottom:1px dashed rgba(255,255,255,.08);font-size:13.5px}
+#gh-home .gx-r em{font-style:normal;color:#9bb5c0;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;padding-top:2px}
+#gh-home .gx-body h4{margin:18px 0 8px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--c)}
+#gh-home .gx-tx{width:100%;border-collapse:collapse;font-size:13px}
+#gh-home .gx-tx th{text-align:left;color:#9bb5c0;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:4px 8px}
+#gh-home .gx-tx td{padding:6px 8px;border-top:1px solid rgba(255,255,255,.07)}
+#gh-home .gx-list{margin:0;padding-left:18px;font-size:13px;color:#d7e8ec}
+#gh-home .gx-list li{margin:3px 0}
+#gh-home .gx-shine{position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(105deg,transparent 30%,rgba(140,210,255,.22) 48%,transparent 62%);background-size:250% 100%;animation:gxShine 1s ease-out forwards}
+@keyframes gxShine{from{background-position:120% 0}to{background-position:-60% 0}}
+@media (max-width:700px){#gh-home .gx-cols{grid-template-columns:1fr}#gh-home .gx-top h2{font-size:20px}}
+
+body:not(.dashmode) > .gh-sndglob{display:none}
+body.gh-locked > .gh-sndglob{display:none}
+
+/* the cards float over the map like frosted glass */
+#app .box,#app .tile,body.dashmode main .box{background:color-mix(in srgb,var(--card) 84%,transparent);backdrop-filter:blur(8px) saturate(1.15);-webkit-backdrop-filter:blur(8px) saturate(1.15)}
+#app .lcard{background:color-mix(in srgb,var(--bg) 70%,transparent)}
 </style>
 </head>
 <body>
@@ -3849,7 +3950,7 @@ function homeMapEl(opts = {}){
         return;
       }
       const o = {ids: [e.id], ref, districtRaw: e.district || "", project: e.project || "", circuits: e.circuit ? [e.circuit] : [], jobs: e.job ? [e.job] : [],
-                 schemes: e.scheme ? [e.scheme] : [], risk: /risk/i.test(e.status || ""), pm: e.pm || "", time: e.time || ""};
+                 schemes: e.scheme ? [e.scheme] : [], risk: /risk/i.test(e.status || ""), pm: e.pm || "", time: e.time || "", status: e.status || "", value: e.value || e.outage_value || ""};
       if (ref) byRef.set(ref + "|" + norm(e.district), o);
       list.push(o);
     });
@@ -4042,7 +4143,7 @@ function homeMapEl(opts = {}){
                    ...o.d.checks.map(([l, ts]) => `${l}: ${ts.join(" / ")}`)] : [])].filter(Boolean).join("\n");
       g.addEventListener("mouseenter", () => setHot(o.id, true));
       g.addEventListener("mouseleave", () => setHot(o.id, false));
-      g.addEventListener("click", () => focusItem(o.id));
+      g.addEventListener("click", () => { focusItem(o.id); openDetail(o, card || g); });
       flags.push({f, g, leader, card, tag, path: routePath(HUB, f.park, i + 1), i, w: f.w});
     });
     const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -4189,7 +4290,7 @@ function homeMapEl(opts = {}){
         it.style.setProperty("--c", d.c);
         it.addEventListener("mouseenter", () => setHot(o.id, true));
         it.addEventListener("mouseleave", () => setHot(o.id, false));
-        it.addEventListener("click", () => flashFlag(o.id));
+        it.addEventListener("click", () => { flashFlag(o.id); openDetail(o, it); });
         L.append(it);
       });
     }
@@ -4254,6 +4355,82 @@ function homeMapEl(opts = {}){
       return "✔ Team set-up loaded – downloading the absence…";
     } catch(e){ return "That isn't a team set-up file: " + e.message; }
   }
+  /* ---------- outage close-up: the clicked card grows into the full outage sheet ---------- */
+  function detailHtml2(o){
+    const d = o.d || {}, c = o.district ? o.district.c : OTHER.c;
+    const row = (k, v) => v ? `<div class="gx-r"><em>${k}</em><span>${v}</span></div>` : "";
+    const fig = (k, v, on) => `<div class="gx-f${on ? " on" : ""}"><b>${v}</b><small>${k}</small></div>`;
+    const P = o.place;
+    let mini = "";
+    if (P && o.district){
+      const w = 560, hgt = 322;
+      mini = `<svg class="gx-mini" viewBox="${P.x - w / 2} ${P.y - hgt / 2} ${w} ${hgt}" preserveAspectRatio="xMidYMid slice">${HM_MAP_SVG}
+        <path d="${GROUPS[o.district.g].outline}" fill="none" stroke="${c}" stroke-width="2" stroke-dasharray="8 6" vector-effect="non-scaling-stroke" opacity=".85"/>
+        <circle cx="${P.x}" cy="${P.y}" r="9" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke" class="gx-ping"/>
+        <g transform="translate(${P.x} ${P.y}) scale(1.6)"><path d="M0 1 V-38" stroke="#d7e8ec" stroke-width="2.2"/><path class="gh-cloth" d="M1 -37 C11 -42 21 -32 32 -37 L32 -13 C21 -8 11 -18 1 -13 Z" fill="#0b2638" stroke="${c}"/>
+        <image href="${HM_LOGO}" x="8.5" y="-33.5" width="16" height="16"/><circle r="2.6" fill="${c}"/></g></svg>`;
+    }
+    const tx = (d.tx || []).map(t => `<tr><td>${esc(t.label)}</td><td>×${fmtN(t.n)}</td><td>${t.enids.length ? esc(t.enids.join(", ")) : "—"}</td></tr>`).join("");
+    const checks = (d.checks || []).map(([l, ts]) => row(esc(l), ts.map(esc).join("<br>"))).join("");
+    const segs = [...new Set((d.segments || []).map(cleanJob))].slice(0, 6).map(sg => `<li>${esc(sg)}</li>`).join("");
+    return `<div class="gx-top" style="--c:${c}">
+        <div class="gx-kick"><i></i>${esc(o.district ? GROUPS[o.district.g].label : (o.districtRaw || "Other district"))}${o.ref ? ` · ${esc(o.ref)}` : ""} · ${esc(fmtLong(HM.day))}</div>
+        <h2>${esc(o.title)}</h2>
+        ${P ? `<div class="gx-place">📍 ${esc(P.label)} <span>· ${esc(P.src)}</span></div>` : ""}
+        ${o.risk ? `<span class="gh-risk">At risk</span>` : o.status ? `<span class="gx-status">${esc(o.status)}</span>` : ""}
+        <button class="gx-x" aria-label="Close">✕</button>
+      </div>
+      <div class="gx-body" style="--c:${c}">
+        <div class="gx-cols">
+          <div>${mini}
+            <div class="gx-figs">${fig("Recover poles", d.inMaster ? fmtN(d.poles) : "—", d.poles)}${fig("Transformers", d.inMaster ? fmtN(d.txN) : "—", d.txN)}
+              ${fig("Noja", d.inMaster ? fmtN(d.noja) : "—", d.noja)}${fig("Soule", d.inMaster ? fmtN(d.soule) : "—", d.soule)}${fig("ABSW", d.inMaster ? fmtN(d.absw) : "—", d.absw)}
+              ${fig("Customers", d.customers ? esc(d.customers) : "—", d.customers)}</div>
+          </div>
+          <div class="gx-info">
+            ${row("Circuit", esc(o.circuit || "—"))}${row("Job", esc(o.job || "—"))}${row("Scheme", esc(o.scheme || ""))}
+            ${row("Project", esc(o.project && o.project !== o.title ? o.project : ""))}${row("SPEN PM", esc(o.pm || ""))}
+            ${row("District", esc(o.districtRaw || ""))}
+            ${d.has && !d.inMaster ? `<div class="gh-miss">Not found in the Master for this date</div>` : ""}
+          </div>
+        </div>
+        ${tx ? `<h4>Transformers</h4><table class="gx-tx"><tr><th>Type</th><th>Qty</th><th>ENID</th></tr>${tx}</table>` : ""}
+        ${checks ? `<h4>Planning checks</h4><div class="gx-checks">${checks}</div>` : ""}
+        ${(d.generators || []).length || (d.battery || []).length ? `<h4>Generators &amp; battery pods</h4><div class="gx-checks">${row("Generators", (d.generators || []).map(esc).join("<br>"))}${row("Battery pods", (d.battery || []).map(esc).join("<br>"))}</div>` : ""}
+        ${(d.genPdfs || []).length ? `<h4>Generator PDFs</h4><ul class="gx-list">${d.genPdfs.map(g => `<li>${esc(g)}</li>`).join("")}</ul>` : ""}
+        ${segs ? `<h4>Master segments</h4><ul class="gx-list">${segs}</ul>` : ""}
+      </div>`;
+  }
+  function openDetail(o, src){
+    if (root.querySelector(".gx-wrap")) return;
+    const wrap = h(`<div class="gx-wrap"><div class="gx-back"></div><article class="gx-panel" role="dialog" aria-label="Outage details">${detailHtml2(o)}</article></div>`);
+    root.append(wrap);
+    const panel = $(".gx-panel", wrap), back = $(".gx-back", wrap);
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const from = src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
+    const to = panel.getBoundingClientRect();
+    const flip = r => `translate(${r.left - to.left}px, ${r.top - to.top}px) scale(${Math.max(.05, r.width / to.width)}, ${Math.max(.05, r.height / to.height)})`;
+    if (from && !reduce){
+      panel.animate([{transform: flip(from), opacity: .6, borderRadius: "10px"}, {transform: "none", opacity: 1, borderRadius: "16px"}], {duration: 560, easing: "cubic-bezier(.2,.85,.2,1)"});
+      panel.querySelectorAll(".gx-top > *, .gx-body > *").forEach((n, i) => n.animate([{opacity: 0, transform: "translateY(10px)"}, {opacity: 1, transform: "none"}], {duration: 380, delay: 260 + i * 45, easing: "ease-out", fill: "backwards"}));
+      back.animate([{opacity: 0}, {opacity: 1}], {duration: 400});
+      const sh = h(`<div class="gx-shine"></div>`); panel.append(sh); setTimeout(() => sh.remove(), 1100);
+    }
+    const close = () => {
+      document.removeEventListener("keydown", key);
+      const r2 = src && src.isConnected ? src.getBoundingClientRect() : null;
+      if (reduce || !r2){ wrap.remove(); return; }
+      const t2 = panel.getBoundingClientRect();
+      const a = panel.animate([{transform: "none", opacity: 1}, {transform: `translate(${r2.left - t2.left}px, ${r2.top - t2.top}px) scale(${Math.max(.05, r2.width / t2.width)}, ${Math.max(.05, r2.height / t2.height)})`, opacity: .2}],
+                              {duration: 380, easing: "cubic-bezier(.6,0,.4,1)", fill: "forwards"});
+      back.animate([{opacity: 1}, {opacity: 0}], {duration: 380, fill: "forwards"});
+      a.onfinish = () => wrap.remove();
+    };
+    const key = e => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", key);
+    back.onclick = close; $(".gx-x", wrap).onclick = close;
+    setTimeout(() => { const x = $(".gx-x", wrap); if (x) x.focus({preventScroll: true}); }, 60);
+  }
   function openTeams(){
     const m = h(`<div class="gh-modal" role="dialog" aria-label="Teams"><div class="gh-mcard box"><div class="gh-mhead"><b>Teams – roster &amp; absence</b><button class="btn sm gh-mclose">Done</button></div></div></div>`);
     const card = $(".gh-mcard", m);
@@ -4271,7 +4448,7 @@ function homeMapEl(opts = {}){
   function setHot(id, on){
     root.querySelectorAll(`[data-id="${id}"]`).forEach(n => n.classList.toggle("hot", on));
     const F = flags.find(F => F.f.o.id === id);
-    if (F && on) G.flags.appendChild(F.g);
+    if (F && on && G.flags.lastChild !== F.g) G.flags.appendChild(F.g);
     if (!on) flags.slice().sort((a, b) => a.f.park.y - b.f.park.y).forEach(F => G.flags.appendChild(F.g));
   }
   function focusItem(id){
@@ -4363,6 +4540,7 @@ const Landing = (() => {
     if (location.hash.replace("#", "")) location.hash = "";        // the tools home sits underneath
     ov = h(`<div id="gh-landing"></div>`);
     ov.append(homeMapEl({full: true, onTools: hide}));
+    ov.append(Fx.soundBtn("gh-sndfloat"));
     document.body.append(ov); document.body.classList.add("gh-locked");
     if (fromEl && !reduce()){
       const {x, y} = centre(fromEl);
@@ -4401,8 +4579,104 @@ document.addEventListener("DOMContentLoaded", () => {
   const guide = $(".gbtn", hdr), pill = $("#srv");
   hdr.insertBefore(mapBtn, guide || pill);
   hdr.insertBefore(tb, pill);
+  hdr.insertBefore(Fx.soundBtn("btn sm gbtn"), pill);
+  Fx.init();
+  document.body.append(Fx.soundBtn("gh-sndfloat gh-sndglob"));
   if (!location.hash.replace("#", "")) Landing.show();              // open on the map
 });
+
+
+/* ================= Site theme: map backdrop, Irvine flag, lightsaber hover (glow + sound) ================= */
+const Fx = (() => {
+  const SKEY = "gaeltec.sound";
+  let on = true; try { on = localStorage.getItem(SKEY) !== "off"; } catch(e){}
+  let ctx = null, master = null, noiseBuf = null, lastT = 0, lastEl = null;
+  const reduce = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const CLICKABLE = "button:not(:disabled), .btn, a[href], .tile, .lcard, .slot, .dz, select, label.ck, summary, .gh-item, .gh-flag, [data-act], [role=button]";
+  const btns = new Set();
+
+  function unlock(){
+    if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    try {
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = .55;
+      const comp = ctx.createDynamicsCompressor(); master.connect(comp); comp.connect(ctx.destination);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * .8, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0); let b = 0;
+      for (let i = 0; i < d.length; i++){ b = .97 * b + .03 * (Math.random() * 2 - 1); d[i] = b * 6; }   // soft, brown-ish air
+    } catch(e){ ctx = null; }
+  }
+  /* a lightsaber swing: a detuned low hum that bends up and back (doppler), a filter that opens with the swing, and a breath of air */
+  function swing(strength){
+    if (!on || !ctx || ctx.state !== "running") return;
+    const t = ctx.currentTime, k = strength || 1, dur = .5 + Math.random() * .12;
+    const up = 1.22 + Math.random() * .14;
+    const out = ctx.createGain(); out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(.085 * k, t + .07); out.gain.exponentialRampToValueAtTime(.0004, t + dur);
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 7;
+    lp.frequency.setValueAtTime(320, t); lp.frequency.exponentialRampToValueAtTime(1500, t + .12); lp.frequency.exponentialRampToValueAtTime(380, t + dur);
+    lp.connect(out); out.connect(master);
+    [[92, "sawtooth", .5], [93.7, "sawtooth", .5], [184.5, "triangle", .35], [46, "sine", .6]].forEach(([f, type, g]) => {
+      const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; og.gain.value = g;
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * up, t + .12); o.frequency.exponentialRampToValueAtTime(f * .93, t + dur);
+      o.connect(og); og.connect(lp); o.start(t); o.stop(t + dur + .05);
+    });
+    const n = ctx.createBufferSource(); n.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(2300, t + .13); bp.frequency.exponentialRampToValueAtTime(420, t + dur);
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(.05 * k, t + .09); ng.gain.exponentialRampToValueAtTime(.0004, t + dur);
+    n.connect(bp); bp.connect(ng); ng.connect(master); n.start(t); n.stop(t + dur + .05);
+  }
+  function onOver(e){
+    if (e.pointerType && e.pointerType !== "mouse") return;
+    const el = e.target.closest && e.target.closest(CLICKABLE);
+    if (!el || el === lastEl) return;
+    if (el.closest("[disabled], .gh-nosnd")) return;
+    lastEl = el;
+    const now = performance.now(); if (now - lastT < 110) return; lastT = now;
+    swing(el.matches(".tile, .lcard, .gh-enter-btn, .gh-item, .gh-flag") ? 1.15 : .8);
+  }
+  function onOut(e){
+    if (lastEl && (!e.relatedTarget || !lastEl.contains(e.relatedTarget))) lastEl = null;
+  }
+  function paint(){ btns.forEach(b => { b.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" fill-opacity=".25"/>${on ? '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>' : '<path d="m16 9 5 6"/><path d="m21 9-5 6"/>'}</svg>`; b.title = on ? "Hover sounds on – click to mute" : "Hover sounds muted – click to turn on"; b.setAttribute("aria-pressed", on ? "true" : "false"); }); }
+  function soundBtn(cls){
+    const b = h(`<button class="${cls} gh-sndbtn" aria-label="Hover sounds"></button>`);
+    b.addEventListener("click", e => { e.stopPropagation(); on = !on; try { localStorage.setItem(SKEY, on ? "on" : "off"); } catch(_){} unlock(); paint(); if (on) setTimeout(() => swing(1), 30); });
+    btns.add(b); paint(); return b;
+  }
+  /* the faint map behind every page (tools and dashboards), with the Gaeltec flag flying over Irvine */
+  function backdrop(){
+    if ($("#gh-bgmap")) return;
+    const G = HM_GEO, [hx, hy] = G.hub, gs = ["ayr", "gla", "lan"];
+    const outl = gs.map(g => `<path class="gb-zone gb-${g}" d="${G.groups[g].outline}"/>`).join("");
+    const routes = gs.map((g, i) => {
+      const [x, y] = G.groups[g].c, mx = (hx + x) / 2 + (y - hy) * .18, my = (hy + y) / 2 - (x - hx) * .18 - 40;
+      return `<path class="gb-route gb-${g}" style="animation-delay:${-i * 1.7}s" d="M${hx} ${hy} Q${mx} ${my} ${x} ${y}"/><circle class="gb-dot gb-${g}" cx="${x}" cy="${y}" r="5"/>`;
+    }).join("");
+    const el = h(`<div id="gh-bgmap" aria-hidden="true"><div class="gb-drift">
+      <svg viewBox="440 470 940 900" preserveAspectRatio="xMidYMid slice">${HM_MAP_SVG}${outl}${routes}
+        <g class="gb-hub" transform="translate(${hx} ${hy})">
+          <circle class="gb-pulse" r="10"/><circle class="gb-pulse p2" r="10"/>
+          <path d="M0 2 V-62" class="gb-pole"/>
+          <path class="gb-cloth" d="M1.5 -61 C17 -69 33 -53 52 -61 L52 -25 C33 -17 17 -33 1.5 -25 Z"/>
+          <image href="${HM_LOGO}" x="13" y="-55" width="26" height="25"/>
+          <circle r="4" class="gb-base"/>
+          <text x="0" y="22" class="gb-lab">IRVINE · GAELTEC</text>
+        </g>
+      </svg></div><div class="gb-vig"></div></div>`);
+    document.body.prepend(el);
+  }
+  function init(){
+    backdrop();
+    document.addEventListener("pointerdown", unlock, {capture: true, passive: true});
+    document.addEventListener("keydown", unlock, {capture: true});
+    document.addEventListener("pointerover", onOver, {passive: true});
+    document.addEventListener("pointerout", onOut, {passive: true});
+  }
+  return {init, soundBtn, swing, unlock, get on(){ return on; }, reduce};
+})();
 
 function home(){
   app.innerHTML = "";
