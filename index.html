@@ -1173,6 +1173,43 @@ body.gh-locked > .gh-sndglob{display:none}
 /* the cards float over the map like frosted glass */
 #app .box,#app .tile,body.dashmode main .box{background:color-mix(in srgb,var(--card) 84%,transparent);backdrop-filter:blur(8px) saturate(1.15);-webkit-backdrop-filter:blur(8px) saturate(1.15)}
 #app .lcard{background:color-mix(in srgb,var(--bg) 70%,transparent)}
+
+/* ===== Mapped items: pictures without the white card, floating over the page ===== */
+.gimg.has,.igrp.centre .gimg.has,.iimg.has{background:transparent !important;border:0 !important;box-shadow:none !important}
+.igrp.centre .gimg.has{position:relative;overflow:visible}
+.igrp.centre .gimg.has::before{content:"";position:absolute;inset:12% 8% 4%;border-radius:50%;z-index:0;pointer-events:none;
+  background:radial-gradient(closest-side,color-mix(in srgb,var(--acc2) 30%,transparent),transparent);filter:blur(10px);animation:gxHalo 5s ease-in-out infinite}
+.igrp.centre .gimg.has img,.iimg.has img{position:relative;z-index:1}
+img.gx-cut{filter:drop-shadow(0 10px 14px rgba(0,0,0,.28)) drop-shadow(0 0 1px rgba(0,0,0,.15))}
+.igrp.centre .gimg.has img.gx-cut{animation:gxFloat 6s ease-in-out infinite}
+img.gx-blend{mix-blend-mode:multiply}
+:root[data-theme=dark] img.gx-blend{mix-blend-mode:normal;filter:brightness(.92)}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]) img.gx-blend{mix-blend-mode:normal;filter:brightness(.92)}}
+:root[data-theme=dark] img.gx-cut{filter:drop-shadow(0 10px 16px rgba(0,0,0,.55)) drop-shadow(0 0 12px color-mix(in srgb,var(--acc2) 30%,transparent))}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]) img.gx-cut{filter:drop-shadow(0 10px 16px rgba(0,0,0,.55)) drop-shadow(0 0 12px color-mix(in srgb,var(--acc2) 30%,transparent))}}
+.icard.withimg:hover img.gx-cut{transform:translateY(-3px) scale(1.04);transition:transform .25s}
+@keyframes gxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes gxHalo{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+@media (prefers-reduced-motion: reduce){.igrp.centre .gimg.has img.gx-cut,.igrp.centre .gimg.has::before{animation:none}}
+
+/* ===== Depth lists (Pole Position Gantt, PID breakdown) ===== */
+.gx-dl{position:relative}
+.gx-depth{cursor:grab;scroll-behavior:auto}
+.gx-depth.gx-grab{cursor:grabbing;user-select:none}
+.gx-depth.gx-grab *{pointer-events:none}
+.pidlist.gx-depth{padding-block:var(--gx-pad) !important;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(180deg,transparent,#000 14%,#000 86%,transparent)}
+.gantt .gscroll.gx-depth .gbody{padding-bottom:var(--gx-pad)}
+.gantt .gscroll.gx-depth .gbody::before{content:"";display:block;height:calc(var(--gx-pad) - 40px)}
+.gx-depth > *,.gx-depth .gbody > *{will-change:transform,opacity;backface-visibility:hidden}
+.pidlist .pidr.gx-focus{background:color-mix(in srgb,var(--acc2) 16%,var(--card));
+  box-shadow:inset 3px 0 0 var(--acc2),0 0 0 1px rgba(200,235,255,.7),0 0 12px 2px rgba(60,170,255,.45),0 0 28px 6px rgba(30,110,255,.2)}
+.pidlist .gx-focus:is(.pidg1,.pidg2,.pidg3){box-shadow:0 0 0 1px rgba(200,235,255,.7),0 0 14px 3px rgba(60,170,255,.45)}
+.gantt .gjob.gx-focus .glab{box-shadow:inset 3px 0 0 #3ba7ff;background:color-mix(in srgb,#3ba7ff 14%,var(--card))}
+.gantt .gjob.gx-focus .gtrack{background:color-mix(in srgb,#3ba7ff 8%,var(--card))}
+.gantt .gjob.gx-focus .gbar{box-shadow:0 0 0 1px rgba(215,240,255,.9),0 0 10px 2px rgba(60,170,255,.7),0 0 26px 6px rgba(30,110,255,.35)}
+.gantt .gjob.gx-focus .glab b{font-size:13.5px}
+.gantt .gx-focus:is(.g1,.g2,.g3){filter:drop-shadow(0 0 8px rgba(60,170,255,.55))}
 </style>
 </head>
 <body>
@@ -4607,6 +4644,38 @@ const Fx = (() => {
       for (let i = 0; i < d.length; i++){ b = .97 * b + .03 * (Math.random() * 2 - 1); d[i] = b * 6; }   // soft, brown-ish air
     } catch(e){ ctx = null; }
   }
+  /* pictures from the Images folder: the white paper around the object is made see-through (flood from the edges, so whites inside the object stay) */
+  function cutout(img){
+    if (img.dataset.cut) return;
+    img.dataset.cut = "1";
+    const w0 = img.naturalWidth, h0 = img.naturalHeight; if (!w0 || !h0) return;
+    const k = Math.min(1, 900 / Math.max(w0, h0)), W = Math.round(w0 * k), H = Math.round(h0 * k);
+    try {
+      const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+      const c2 = cv.getContext("2d", {willReadFrequently: true}); c2.drawImage(img, 0, 0, W, H);
+      const im = c2.getImageData(0, 0, W, H), d = im.data, N = W * H;
+      const light = i => { const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2], a = d[i * 4 + 3];
+        if (a < 20) return 2; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); return mn > 228 && mx - mn < 26 ? 1 : (mn > 200 && mx - mn < 30 ? .5 : 0); };
+      let edgeWhite = 0, edges = 0;
+      for (let x = 0; x < W; x++){ edges += 2; edgeWhite += (light(x) ? 1 : 0) + (light((H - 1) * W + x) ? 1 : 0); }
+      for (let y = 0; y < H; y++){ edges += 2; edgeWhite += (light(y * W) ? 1 : 0) + (light(y * W + W - 1) ? 1 : 0); }
+      if (edgeWhite / edges < .45){ img.classList.add("gx-cut"); return; }        // not a picture on white paper
+      const seen = new Uint8Array(N), st = [];
+      const push = i => { if (!seen[i]){ seen[i] = 1; st.push(i); } };
+      for (let x = 0; x < W; x++){ push(x); push((H - 1) * W + x); }
+      for (let y = 0; y < H; y++){ push(y * W); push(y * W + W - 1); }
+      while (st.length){
+        const i = st.pop(), v = light(i); if (!v) continue;
+        d[i * 4 + 3] = v === .5 ? Math.min(d[i * 4 + 3], 110) : 0;
+        if (v === .5) continue;                                            // soft edge: fade it, stop there
+        const x = i % W;
+        if (x > 0) push(i - 1); if (x < W - 1) push(i + 1); if (i >= W) push(i - W); if (i < N - W) push(i + W);
+      }
+      c2.putImageData(im, 0, 0);
+      img.src = cv.toDataURL("image/png");
+      img.classList.add("gx-cut");
+    } catch(e){ img.classList.add("gx-blend"); }                            // opened from disk: the browser won't let the page read the pixels
+  }
   /* a lightsaber swing: a detuned low hum that bends up and back (doppler), a filter that opens with the swing, and a breath of air */
   function swing(strength){
     if (!on || !ctx || ctx.state !== "running") return;
@@ -4627,6 +4696,29 @@ const Fx = (() => {
     bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(2300, t + .13); bp.frequency.exponentialRampToValueAtTime(420, t + dur);
     const ng = ctx.createGain(); ng.gain.setValueAtTime(0, t); ng.gain.linearRampToValueAtTime(.05 * k, t + .09); ng.gain.exponentialRampToValueAtTime(.0004, t + dur);
     n.connect(bp); bp.connect(ng); ng.connect(master); n.start(t); n.stop(t + dur + .05);
+  }
+  /* click: a short saber clash – a crackling spark, a metallic ring and a low hum that drops away */
+  function clash(){
+    if (!on || !ctx || ctx.state !== "running") return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource(); n.buffer = noiseBuf; n.playbackRate.value = 2.2;
+    const hp = ctx.createBiquadFilter(); hp.type = "bandpass"; hp.frequency.value = 3200; hp.Q.value = .7;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(.16, t); ng.gain.exponentialRampToValueAtTime(.0005, t + .085);
+    n.connect(hp); hp.connect(ng); ng.connect(master); n.start(t); n.stop(t + .1);
+    [[1480, .03], [2215, .022], [3530, .014]].forEach(([f, g]) => {
+      const o = ctx.createOscillator(), og = ctx.createGain(); o.type = "sine"; o.frequency.setValueAtTime(f * 1.02, t); o.frequency.exponentialRampToValueAtTime(f, t + .05);
+      og.gain.setValueAtTime(g, t); og.gain.exponentialRampToValueAtTime(.0002, t + .2); o.connect(og); og.connect(master); o.start(t); o.stop(t + .22);
+    });
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(1400, t); lp.frequency.exponentialRampToValueAtTime(300, t + .2); lp.Q.value = 5;
+    const hg = ctx.createGain(); hg.gain.setValueAtTime(.09, t); hg.gain.exponentialRampToValueAtTime(.0004, t + .24); lp.connect(hg); hg.connect(master);
+    [[150, "sawtooth"], [152.5, "sawtooth"]].forEach(([f, type]) => { const o = ctx.createOscillator(); o.type = type;
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * .52, t + .2); o.connect(lp); o.start(t); o.stop(t + .26); });
+  }
+  function onDown(e){
+    if (e.button !== 0 || !e.target.closest) return;
+    const el = e.target.closest(CLICKABLE);
+    if (!el || el.closest("[disabled], .gh-nosnd")) return;
+    unlock(); if (ctx && ctx.state !== "running") ctx.resume().then(clash).catch(() => {}); else clash();
   }
   function onOver(e){
     if (e.pointerType && e.pointerType !== "mouse") return;
@@ -4671,11 +4763,104 @@ const Fx = (() => {
   function init(){
     backdrop();
     document.addEventListener("pointerdown", unlock, {capture: true, passive: true});
+    document.addEventListener("pointerdown", onDown, {passive: true});
+    document.addEventListener("load", e => { const t = e.target; if (t && t.tagName === "IMG" && t.closest(".gimg, .iimg, .heroimg, .dimg")) cutout(t); }, true);
+    Depth.watch();
     document.addEventListener("keydown", unlock, {capture: true});
     document.addEventListener("pointerover", onOver, {passive: true});
     document.addEventListener("pointerout", onOut, {passive: true});
   }
-  return {init, soundBtn, swing, unlock, get on(){ return on; }, reduce};
+  return {init, soundBtn, swing, clash, cutout, unlock, get on(){ return on; }, reduce};
+})();
+
+
+/* ================= Depth lists: grab and scroll, the row in the middle is in focus, the others fall away ================= */
+const Depth = (() => {
+  const reduce = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function enhance(sc, rowsBox, opts){
+    if (sc.__depth) return; sc.__depth = true;
+    sc.classList.add("gx-dl");
+    const wide = !!opts.wide;
+    let rows = [], tops = [], raf = 0, active = false, lastTop = -1, snapT = 0, drag = null, vel = 0, inert = 0, focus = null;
+    const measure = () => {
+      rows = [...rowsBox.children].filter(n => n.offsetHeight > 0);
+      tops = rows.map(r => r.offsetTop + r.offsetHeight / 2);
+      active = sc.scrollHeight > sc.clientHeight * 1.25 && rows.length > 6;
+      sc.classList.toggle("gx-depth", active);
+      sc.style.setProperty("--gx-pad", Math.max(0, Math.round(sc.clientHeight / 2 - 30)) + "px");
+      if (!active){ rows.forEach(r => { r.style.transform = r.style.opacity = ""; r.classList.remove("gx-focus"); }); if (focus) focus = null; }
+      else { rows = [...rowsBox.children].filter(n => n.offsetHeight > 0); tops = rows.map(r => r.offsetTop + r.offsetHeight / 2); }
+      paint();
+    };
+    const offTop = () => rowsBox === sc ? 0 : rowsBox.offsetTop;
+    function paint(){
+      raf = 0; if (!active) return;
+      const H = sc.clientHeight, mid = sc.scrollTop + H / 2 - offTop() + (opts.headH ? opts.headH() / 2 : 0);
+      const ox = wide ? (sc.scrollLeft + sc.clientWidth / 2) + "px" : "50%";
+      let lo = 0, hi = tops.length;
+      while (lo < hi){ const m = (lo + hi) >> 1; if (tops[m] < mid - H) lo = m + 1; else hi = m; }
+      let best = null, bd = 1e9;
+      for (let i = Math.max(0, lo - 2); i < tops.length && tops[i] < mid + H * 1.1; i++){
+        const r = rows[i], dd = (tops[i] - mid) / (H / 2), a = Math.min(1.2, Math.abs(dd));
+        if (Math.abs(tops[i] - mid) < bd){ bd = Math.abs(tops[i] - mid); best = r; }
+        if (reduce()){ r.style.opacity = (1 - .45 * Math.min(1, a)).toFixed(3); continue; }
+        const sc_ = 1 - (wide ? .1 : .16) * Math.pow(Math.min(1, a), 1.35), rot = Math.max(-1, Math.min(1, dd)) * -(wide ? 9 : 22), ty = -Math.sign(dd) * Math.pow(Math.min(1, a), 2) * 10;
+        r.style.transformOrigin = `${ox} 50%`;
+        r.style.transform = `perspective(900px) translateY(${ty.toFixed(1)}px) rotateX(${rot.toFixed(2)}deg) scale(${sc_.toFixed(3)})`;
+        r.style.opacity = (1 - .62 * Math.pow(Math.min(1, a), 1.4)).toFixed(3);
+      }
+      if (best !== focus){ if (focus) focus.classList.remove("gx-focus"); focus = best; if (focus) focus.classList.add("gx-focus"); }
+    }
+    const req = () => { if (!raf) raf = requestAnimationFrame(paint); };
+    /* settle: bring the nearest row to the middle once the list stops moving */
+    function settle(){
+      clearTimeout(snapT);
+      snapT = setTimeout(() => {
+        if (!active || drag || inert || Math.abs(sc.scrollTop - lastTop) < 1) { lastTop = sc.scrollTop; return; }
+        const H = sc.clientHeight, mid = sc.scrollTop + H / 2 - offTop() + (opts.headH ? opts.headH() / 2 : 0);
+        let bi = -1, bd = 1e9; tops.forEach((t, i) => { const dd = Math.abs(t - mid); if (dd < bd){ bd = dd; bi = i; } });
+        if (bi < 0 || bd < 2){ lastTop = sc.scrollTop; return; }
+        const target = sc.scrollTop + (tops[bi] - mid);
+        lastTop = target; sc.scrollTo({top: target, behavior: reduce() ? "auto" : "smooth"});
+      }, 160);
+    }
+    sc.addEventListener("scroll", () => { req(); settle(); }, {passive: true});
+    /* grab the list and throw it (vertical; the Gantt keeps its own sideways drag) */
+    sc.addEventListener("pointerdown", e => {
+      if (!active || e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("a, button, input, select, textarea")) return;
+      cancelAnimationFrame(inert); inert = 0;
+      drag = {y: e.clientY, t: sc.scrollTop, ly: e.clientY, lt: performance.now(), moved: false};
+    });
+    addEventListener("pointermove", e => {
+      if (!drag) return;
+      const dy = e.clientY - drag.y; if (Math.abs(dy) > 4 && !drag.moved){ drag.moved = true; sc.classList.add("gx-grab"); }
+      if (!drag.moved) return;
+      sc.scrollTop = drag.t - dy;
+      const now = performance.now(), dt = Math.max(1, now - drag.lt); vel = .8 * vel + .2 * (-(e.clientY - drag.ly) / dt * 16); drag.ly = e.clientY; drag.lt = now;
+    });
+    addEventListener("pointerup", () => {
+      if (!drag) return; const moved = drag.moved; drag = null;
+      if (moved){ setTimeout(() => sc.classList.remove("gx-grab"), 0);
+        const step = () => { vel *= .94; if (Math.abs(vel) < .4){ inert = 0; lastTop = -1; settle(); return; } sc.scrollTop += vel; inert = requestAnimationFrame(step); };
+        if (!reduce()) inert = requestAnimationFrame(step); else settle(); }
+      vel = 0 * vel + (moved ? vel : 0);
+    });
+    sc.addEventListener("click", e => { if (sc.classList.contains("gx-grab")){ e.stopPropagation(); e.preventDefault(); } }, true);
+    new MutationObserver(() => requestAnimationFrame(measure)).observe(rowsBox, {childList: true});
+    new ResizeObserver(() => requestAnimationFrame(measure)).observe(sc);
+    requestAnimationFrame(measure);
+  }
+  function scan(root){
+    (root.querySelectorAll ? root : document).querySelectorAll(".gantt .gscroll").forEach(sc => { const b = sc.querySelector(".gbody"); if (b) enhance(sc, b, {wide: true, headH: () => { const g = sc.querySelector(".gh"); return g ? g.offsetHeight : 0; }}); });
+    (root.querySelectorAll ? root : document).querySelectorAll(".pidlist").forEach(sc => enhance(sc, sc, {}));
+    document.querySelectorAll(".gimg img, .iimg img, .heroimg img").forEach(img => { if (img.complete && img.naturalWidth) Fx.cutout(img); else img.addEventListener("load", () => Fx.cutout(img), {once: true}); });
+  }
+  function watch(){
+    let t = 0;
+    new MutationObserver(() => { if (!t) t = requestAnimationFrame(() => { t = 0; scan(document); }); }).observe(document.body, {childList: true, subtree: true});
+    scan(document);
+  }
+  return {watch, enhance};
 })();
 
 function home(){
@@ -6122,6 +6307,7 @@ const IdleGuard = (() => {
 const uiClick = (() => {
   let ctx = null;
   return () => {
+    if (typeof Fx !== "undefined") return;   // the lightsaber click (Fx) replaces this one
     try {
       ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
       if (ctx.state === "suspended") ctx.resume();
