@@ -220,7 +220,10 @@ def norm_enid(v):
     if re.fullmatch(r"\d+\.0+", s):
         s = s.split(".")[0]
     s = re.sub(r"\s+", "", s).upper()
-    return "" if s.lower() in _ENID_SKIP else s
+    if s.lower() in _ENID_SKIP:
+        return ""
+    # only real ENIDs (an 8-digit number) are checked - "New pole", "NEW", "TBC"... are ignored
+    return s if re.fullmatch(r"\d{8}", s) else ""
 
 
 MASTER_COLS = ["sourcefile", "job", "enid", "description", "qty", "project", "project manager",
