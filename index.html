@@ -1352,6 +1352,9 @@ img.gx-ticon{display:block;width:100%;height:100%;object-fit:contain;filter:drop
 #app .tile.gx-itile:focus-visible{outline:2px solid #3ba7ff;outline-offset:4px}
 @media (max-width:600px){#app .grid.gx-igrid{grid-template-columns:repeat(2,1fr)}#app .tile.gx-itile .ico{width:120px !important;height:120px !important}}
 #app .tile.gx-itile .ico img.gx-logo{width:100% !important;height:100% !important}
+/* spread the icon buttons evenly across the full width */
+#app .grid.gx-igrid{display:flex !important;flex-wrap:wrap;justify-content:space-evenly;align-items:flex-start;gap:26px 12px}
+#app .grid.gx-igrid > .tile.gx-itile{flex:0 1 200px;min-width:160px}
 </style>
 </head>
 <body>
