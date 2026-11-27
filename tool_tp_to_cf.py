@@ -7,7 +7,9 @@ Options in the web page:
                       from a segment when they repeat the Line (default 90)
   * pm              - Project Manager for the segment names (instead of Target!D21)
   * master + sources- ENIDs of this Target Price already in those Control Files of the
-                      Master go to a new sheet "Enids already in CF" (only if any)
+                      Master go to a new sheet "Enids already in CF" (only if any), item by
+                      item: added (green), removed (red), quantity changes, and the action to
+                      take in that Control File to match the Target Price
 
 Original logic kept verbatim. The tkinter pieces were replaced:
   * the two askopenfilename dialogs  -> `control_path`, `tp_path` arguments
@@ -274,8 +276,110 @@ def enids_in_master(tp_df, master_path, sources=None, log=print):
     return m, want
 
 
-def _write_enid_sheet(wb, hits, want, log=print):
-    """New sheet 'Enids already in CF' - only when there are repeated ENIDs."""
+def _num(v):
+    try:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return 0.0
+        return float(str(v).replace(",", "").strip() or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _desc_key(v):
+    s = "" if v is None else str(v)
+    if s.lower() in ("nan", "none"):
+        s = ""
+    s = re.sub(r"\s+", " ", s.replace(" ", " ")).strip().lower()
+    return re.sub(r"[\s.;,:]+$", "", s)
+
+
+def _kind_of_job(job):
+    j = str(job or "").strip().lower()
+    return "M" if j.startswith("m -") or j.startswith("m-") else ("C" if j.startswith("c -") or j.startswith("c-") else "")
+
+
+def compare_items(hits, tp_df, log=print):
+    """For every ENID already in a Control File: what the Target Price adds, removes or changes
+    (item = description, M/C kept apart, quantities summed) and the action for the Control File."""
+    tp = tp_df.copy()
+    tp["_k"] = tp["ENID"].map(norm_enid)
+    tp = tp[tp["_k"].isin(set(hits["_k"]))]
+    tp["_kind"] = tp["Segment"].astype(str).str[:1].str.upper()
+    tp["_d"] = tp["Work Description"].map(_desc_key)
+    tp["_q"] = tp["Quantity"].map(_num)
+    hits = hits.copy()
+    hits["_kind"] = hits["job"].map(_kind_of_job)
+    hits["_d"] = hits["description"].map(_desc_key)
+    hits["_q"] = hits["qty"].map(_num)
+    kinds_read = set(tp_df["Segment"].astype(str).str[:1].str.upper())
+    rows = []
+    for (k, src), cf in hits.groupby(["_k", "sourcefile"], sort=True):
+        cf = cf[cf["_kind"].isin(kinds_read) | (cf["_kind"] == "")]
+        t = tp[tp["_k"] == k]
+        info = cf.iloc[0] if len(cf) else hits[(hits["_k"] == k) & (hits["sourcefile"] == src)].iloc[0]
+        jobs = {kd: g["job"].iloc[0] for kd, g in cf.groupby("_kind")}
+        tp_items, cf_items = {}, {}
+        for _, r in t.iterrows():
+            e = tp_items.setdefault((r["_kind"], r["_d"]), {"q": 0.0, "desc": r["Work Description"], "seg": r["Segment"]})
+            e["q"] += r["_q"]
+        for _, r in cf.iterrows():
+            e = cf_items.setdefault((r["_kind"], r["_d"]), {"q": 0.0, "desc": r["description"], "job": r["job"]})
+            e["q"] += r["_q"]
+        # descriptions written slightly differently are still the same item
+        left_tp = [x for x in tp_items if x not in cf_items]
+        left_cf = [x for x in cf_items if x not in tp_items]
+        for x in list(left_tp):
+            best, score = None, 0
+            for y in left_cf:
+                if y[0] != x[0]:
+                    continue
+                sc = fuzz.token_sort_ratio(x[1], y[1])
+                if sc > score:
+                    best, score = y, sc
+            if best is not None and score >= 92:
+                cf_items[x] = cf_items.pop(best)
+                cf_items[x]["reworded"] = True
+                left_cf.remove(best)
+        for key in sorted(set(tp_items) | set(cf_items), key=lambda z: (z[0], z[1])):
+            a, c = tp_items.get(key), cf_items.get(key)
+            kind = key[0]
+            job = (c or {}).get("job") or jobs.get(kind) or (a or {}).get("seg") or ""
+            desc = (a or c)["desc"]
+            q_tp, q_cf = (a or {}).get("q", 0.0), (c or {}).get("q", 0.0)
+
+            def fq(v):
+                return int(v) if float(v).is_integer() else round(v, 3)
+            if a and not c:
+                status, change = "Added", q_tp
+                action = f"Add '{desc}' × {fq(q_tp)} to job '{job}' in {src}"
+            elif c and not a:
+                status, change = "Removed", -q_cf
+                action = f"Remove '{desc}' (qty {fq(q_cf)}) from job '{job}' in {src}"
+            elif abs(q_tp - q_cf) > 1e-9:
+                status = "Quantity up" if q_tp > q_cf else "Quantity down"
+                change = q_tp - q_cf
+                action = f"Change the quantity of '{desc}' in job '{job}' ({src}) from {fq(q_cf)} to {fq(q_tp)}"
+            else:
+                status, change, action = "Same", 0.0, "No change"
+            if c and c.get("reworded") and status != "Removed":
+                action += f"  (Control File says '{c['desc']}')"
+            rows.append({"ENID": k, "Control File": src, "Job in Control File": job, "Type": kind,
+                         "Description": desc, "Qty in Control File": fq(q_cf) if c else None,
+                         "Qty in Target Price": fq(q_tp) if a else None, "Change": fq(change),
+                         "Status": status, "Action needed": action,
+                         "Project": info.get("project"), "Project Manager": info.get("project manager"),
+                         "Circuit": info.get("circuit"), "Plan date": info.get("plan1"), "Done": info.get("done")})
+    out = pd.DataFrame(rows)
+    if len(out):
+        n = out["Status"].value_counts().to_dict()
+        log(f"🔁 Changes on poles already in Control Files: {n.get('Added', 0)} to add, {n.get('Removed', 0)} to remove, "
+            f"{n.get('Quantity up', 0) + n.get('Quantity down', 0)} quantity change(s), {n.get('Same', 0)} the same.")
+    return out
+
+
+def _write_enid_sheet(wb, cmp, log=print):
+    """New sheet 'Enids already in CF' - only when there are repeated ENIDs.
+    Green font = added / more, red font = removed / less, with the action for each line."""
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
     name = "Enids already in CF"
@@ -283,58 +387,67 @@ def _write_enid_sheet(wb, hits, want, log=print):
         del wb[name]
     ws = wb.create_sheet(name)
     ws.sheet_properties.tabColor = "C0392B"
-    head = ["ENID", "Target Price – Segment", "Target Price – Work Description", "Target Price – Quantity",
-            "Control File (source)", "Job in Control File", "Description in Control File", "Quantity in Control File",
-            "Project", "Project Manager", "Circuit", "District", "Plan date", "Done"]
-    ws.append([f"ENIDs of this Target Price already in other Control Files ({hits['_k'].nunique()} ENIDs, {len(hits)} lines)"])
+    head = ["ENID", "Control File", "Job in Control File", "Type", "Description", "Qty in Control File",
+            "Qty in Target Price", "Change", "Status", "Action needed (in the Control File)",
+            "Project", "Project Manager", "Circuit", "Plan date", "Done"]
+    keys = ["ENID", "Control File", "Job in Control File", "Type", "Description", "Qty in Control File",
+            "Qty in Target Price", "Change", "Status", "Action needed", "Project", "Project Manager", "Circuit", "Plan date", "Done"]
+    n = cmp["Status"].value_counts().to_dict()
+    ws.append([f"ENIDs of this Target Price already in other Control Files – {cmp['ENID'].nunique()} ENIDs: "
+               f"{n.get('Added', 0)} to add, {n.get('Removed', 0)} to remove, "
+               f"{n.get('Quantity up', 0) + n.get('Quantity down', 0)} quantity changes, {n.get('Same', 0)} the same"])
     ws["A1"].font = Font(bold=True, size=13, color="FFFFFF")
     ws["A1"].fill = PatternFill("solid", fgColor="1F3B57")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(head))
+    ws.append(["Green = added / more in the Target Price    Red = removed / less in the Target Price    Black = the same"])
+    ws["A2"].font = Font(italic=True, color="5D6D7E")
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(head))
     ws.append(head)
     thin = Side(style="thin", color="C9D3DD")
     for c in range(1, len(head) + 1):
-        cell = ws.cell(row=2, column=c)
+        cell = ws.cell(row=3, column=c)
         cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="2E86C1" if c <= 4 else "C0392B")
+        cell.fill = PatternFill("solid", fgColor="2E86C1" if c <= 9 else "C0392B")
         cell.alignment = Alignment(wrap_text=True, vertical="center")
         cell.border = Border(bottom=thin)
-
-    def _v(r, c):
-        v = r.get(c) if c in r else None
-        try:
-            if v is None or pd.isna(v):
-                return None
-        except (TypeError, ValueError):
-            pass
-        if hasattr(v, "to_pydatetime"):
-            return v.to_pydatetime()
-        return v
+    GREEN, RED = "1E8449", "C0392B"
     band = PatternFill("solid", fgColor="F4F7FA")
-    hits = hits.sort_values(["_k", "sourcefile"], kind="stable")
-    row_i = 3
-    order = {k: i for i, k in enumerate(hits["_k"].unique())}
-    for k, grp in hits.groupby("_k", sort=False):
-        tp_rows = want.get(k, [])
-        t0 = tp_rows[0] if tp_rows else {}
-        tp_qty = sum(float(r["Quantity"]) for r in tp_rows if str(r["Quantity"]).replace(".", "", 1).isdigit())
-        for _, r in grp.iterrows():
-            vals = [k, t0.get("Segment") if len(tp_rows) else None, t0.get("Work Description") if len(tp_rows) else None,
-                    tp_qty if tp_rows else None,
-                    _v(r, "sourcefile"), _v(r, "job"), _v(r, "description"), _v(r, "qty"),
-                    _v(r, "project"), _v(r, "project manager"), _v(r, "circuit"), _v(r, "district"), _v(r, "plan1"), _v(r, "done")]
-            for c, v in enumerate(vals, start=1):
-                cell = ws.cell(row=row_i, column=c, value=v)
-                if hasattr(v, "year"):
-                    cell.number_format = "dd/mm/yyyy"
-                if order[k] % 2:
-                    cell.fill = band
-            row_i += 1
-    widths = [13, 46, 46, 11, 44, 46, 46, 11, 18, 18, 14, 13, 12, 12]
+    order = {"Removed": 0, "Quantity down": 1, "Quantity up": 2, "Added": 3, "Same": 4}
+    cmp = cmp.assign(_o=cmp["Status"].map(order)).sort_values(["ENID", "Control File", "_o", "Description"], kind="stable")
+    grp_i = {k: i for i, k in enumerate(dict.fromkeys(zip(cmp["ENID"], cmp["Control File"])))}
+    row_i = 4
+    for _, r in cmp.iterrows():
+        st = r["Status"]
+        colour = GREEN if st in ("Added", "Quantity up") else RED if st in ("Removed", "Quantity down") else "000000"
+        bold = st != "Same"
+        for c, key in enumerate(keys, start=1):
+            v = r[key]
+            try:
+                if v is None or pd.isna(v):
+                    v = None
+            except (TypeError, ValueError):
+                pass
+            if hasattr(v, "to_pydatetime"):
+                v = v.to_pydatetime()
+            if key == "ENID" and isinstance(v, str) and v.isdigit():
+                v = int(v)
+            if key == "Change" and isinstance(v, (int, float)) and v > 0:
+                v = f"+{v}"
+            cell = ws.cell(row=row_i, column=c, value=v)
+            cell.font = Font(color=colour, bold=bold and key in ("Description", "Change", "Status", "Action needed"))
+            if hasattr(v, "year"):
+                cell.number_format = "dd/mm/yyyy"
+            if key == "Action needed":
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if grp_i[(r["ENID"], r["Control File"])] % 2:
+                cell.fill = band
+        row_i += 1
+    widths = [12, 40, 44, 7, 46, 11, 11, 9, 14, 70, 18, 18, 14, 12, 12]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    ws.freeze_panes = "B3"
-    ws.auto_filter.ref = f"A2:{get_column_letter(len(head))}{max(2, row_i - 1)}"
-    log(f"📑 Added sheet '{name}' with {row_i - 3} line(s).")
+    ws.freeze_panes = "B4"
+    ws.auto_filter.ref = f"A3:{get_column_letter(len(head))}{max(3, row_i - 1)}"
+    log(f"📑 Added sheet '{name}' with {row_i - 4} line(s).")
 
 
 def analyze(tp_path, threshold=90, log=print, sheets=None, master_path=None, sources=None):
@@ -349,17 +462,27 @@ def analyze(tp_path, threshold=90, log=print, sheets=None, master_path=None, sou
         except Exception as e:
             log(f"⚠️ Error reading '{sheet}': {e}")
             continue
+        df["Segment"] = ("M - " if sheet == "Pole Materials" else "C - ")
         frames.append(df)
         for s1, s2, score, diff in detect_similar_lines_unique(df["Line"].tolist(), threshold=threshold):
             pairs.append({"sheet": sheet, "s1": s1, "s2": s2, "similarity": round(float(score), 1), "diff": diff})
     log(f"Found {len(pairs)} similar line pair(s) to review.")
     out = {"pm": str(pm_value), "scheme_title": str(schemetitle_value), "pid": str(PID), "pairs": pairs}
     if master_path and frames:
-        hits, want = enids_in_master(pd.concat(frames, ignore_index=True), master_path, sources, log=log)
+        allf = pd.concat(frames, ignore_index=True)
+        hits, want = enids_in_master(allf, master_path, sources, log=log)
         if len(hits):
             by = (hits.groupby("sourcefile")["_k"].nunique().sort_values(ascending=False))
             out["enid_hits"] = {"enids": int(hits["_k"].nunique()), "lines": int(len(hits)), "tp_enids": len(want),
                                 "files": [{"name": str(k), "enids": int(v)} for k, v in by.items()]}
+            try:
+                cmp = compare_items(hits, allf, log=log)
+                st = cmp["Status"].value_counts().to_dict() if len(cmp) else {}
+                out["enid_hits"]["changes"] = {"add": int(st.get("Added", 0)), "remove": int(st.get("Removed", 0)),
+                                               "qty": int(st.get("Quantity up", 0) + st.get("Quantity down", 0)),
+                                               "same": int(st.get("Same", 0))}
+            except Exception as e:
+                log(f"⚠️ Couldn't compare the items: {e}")
         else:
             out["enid_hits"] = {"enids": 0, "lines": 0, "tp_enids": len(want), "files": []}
     return out
@@ -454,7 +577,7 @@ def run(control_path, tp_path, choices=None, output_dir=None, log=print, thresho
         try:
             hits, want = enids_in_master(tp_combined, master_path, sources, log=log)
             if len(hits):
-                _write_enid_sheet(wb, hits, want, log=log)
+                _write_enid_sheet(wb, compare_items(hits, tp_combined, log=log), log=log)
             else:
                 log("✅ None of the ENIDs are in the chosen Control Files - no extra sheet added.")
         except Exception as e:
