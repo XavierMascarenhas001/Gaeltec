@@ -65,7 +65,7 @@ def _msoffcrypto():
 TRACKER_SHEET = "Generators"          # sheet holding the 'Generators' table
 TRACKER_HEADER_ROW = 2
 PLANNING_HEADER_ROW = 7
-PLANNING_SHEET_PATTERN = r"^\d{4}$"   # year sheets: 2024, 2025, 2026, 2027 ...
+PLANNING_SHEET_PATTERN = r"(?<!\d)20\d\d(?!\d)"   # year sheets: 2026, 2027, "2027 Plan" ...
 
 WEEKDAY_FORMULA = 'IF(B{r}="","",TEXT(B{r},"[$-en-US]dddd"))'
 GENERATOR_TYPE = "generator"          # Type of supply -> text in planning 'Generators'
@@ -153,8 +153,16 @@ def excel_serial(d: dt.date) -> int:
 
 
 # key normalisation used for matching the two workbooks
+def norm_district(v) -> str:
+    """'Lanark' is always 'Lanarkshire' (keeps the cell's style: LANARK -> LANARKSHIRE)."""
+    t = clean_text(v)
+    if t.lower() == "lanark":
+        return "LANARKSHIRE" if t.isupper() else ("lanarkshire" if t.islower() else "Lanarkshire")
+    return t
+
+
 def k_district(v) -> str:
-    return clean_text(v).lower()
+    return norm_district(v).lower()
 
 
 def k_outage(v) -> str:
@@ -164,6 +172,23 @@ def k_outage(v) -> str:
 def k_circuit(v) -> str:
     c = re.sub(r"\s+", "", clean_text(v)).upper()
     return re.sub(r"^SP(?=\d)", "", c)  # 'SP40213' and 40213 are the same circuit
+
+
+def circuit_code(v) -> str:
+    """The SP circuit number inside a circuit text ('SP74112 POTTERY SORN' -> '74112')."""
+    m = re.search(r"(?:^|[^A-Z0-9])(?:SP)?\s*(\d{4,6})(?!\d)", clean_text(v).upper())
+    return m.group(1) if m else ""
+
+
+def same_circuit(a, b) -> bool:
+    """Same circuit even when one side is 'SP74112' and the other 'SP74112 POTTERY SORN'."""
+    x, y = k_circuit(a), k_circuit(b)
+    if x == y:
+        return True
+    cx, cy = circuit_code(a), circuit_code(b)
+    if cx and cy:
+        return cx == cy
+    return bool(x and y) and (x in y or y in x)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -203,11 +228,23 @@ def _headers(ws, header_row: int) -> dict[str, str]:
     return out
 
 
+def _find_header_row(ws, default: int) -> int:
+    """The tracker has section titles above the headers (Gaeltec Update, Generator
+    Specifics, Customers ...) - the header row is the one holding District, Date and Outage."""
+    for r_i, vals in enumerate(ws.iter_rows(min_row=1, max_row=8, values_only=True), start=1):
+        names = {_norm_header(v) for v in vals if v is not None}
+        if {"district", "date"} <= names and any(n.startswith("outage") for n in names):
+            return r_i
+    return default
+
+
 def read_tracker(plain: bytes) -> dict:
     wb = load_workbook(io.BytesIO(plain), read_only=True, data_only=True)
     if TRACKER_SHEET not in wb.sheetnames:
         raise RuntimeError(f"Sheet '{TRACKER_SHEET}' not found in the Generator Tracker.")
     ws = wb[TRACKER_SHEET]
+    global TRACKER_HEADER_ROW
+    TRACKER_HEADER_ROW = _find_header_row(ws, TRACKER_HEADER_ROW)
     hdr = _headers(ws, TRACKER_HEADER_ROW)
     cols = {
         "district": find_col(hdr, "District"),
@@ -227,6 +264,8 @@ def read_tracker(plain: bytes) -> dict:
         "start": find_col(hdr, "Schedule - start", "Schedule start", prefix=True),
         "finish": find_col(hdr, "Schedule - Finish", "Schedule finish", prefix=True),
         "pte": find_col(hdr, "PTE"),
+        "contact": find_col(hdr, "Contact Point", "Contact point", "Contact", prefix=True),
+        "reason": find_col(hdr, "Reason", prefix=True),
         "address": find_col(hdr, "Customer Adress", "Customer Address", prefix=True),
         "w3w": find_col(hdr, "What3words", "What 3 words", prefix=True),
         "days": find_col(hdr, "Days", "Days needed", "Days required", "Number of days", "No of days", "Nº days"),
@@ -235,7 +274,9 @@ def read_tracker(plain: bytes) -> dict:
     if not cols["days"] and cols["finish"]:
         nxt = idx_to_col(col_to_idx(cols["finish"]) + 1)
         used = {v for v in cols.values() if v}
-        if nxt not in used:                       # header may even be empty
+        head_of = {v: k for k, v in hdr.items()}
+        nxt_head = head_of.get(nxt, "")
+        if nxt not in used and (not nxt_head or "day" in nxt_head):   # empty header or a 'days' one
             cols["days"] = nxt
     missing = [k for k in ("district", "date", "outage", "circuit", "pm") if not cols[k]]
     if missing:
@@ -253,20 +294,32 @@ def read_tracker(plain: bytes) -> dict:
         rec = {k: (vals[i] if i < len(vals) else None) for k, i in idx.items()}
         rec["_row"] = r_i
         rec["_date"] = to_date(rec.get("date"))
+        if not is_blank(rec.get("district")):
+            rec["district"] = norm_district(rec.get("district"))
         if rec["_date"] or not is_blank(rec.get("outage")):
             rows.append(rec)
     wb.close()
     return {"cols": cols, "rows": rows, "last_used_row": last_used}
 
 
+def _planning_header_row(ws, default: int) -> int:
+    """Row holding District + Outage Date (row 7 normally; a new year tab may differ)."""
+    for r_i, vals in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=True), start=1):
+        names = {_norm_header(v) for v in vals if v is not None}
+        if "district" in names and ("outage date" in names or "date" in names):
+            return r_i
+    return default
+
+
 def read_planning(plain: bytes) -> dict:
     wb = load_workbook(io.BytesIO(plain), read_only=True, data_only=True)
     sheets, rows = {}, []
     for name in wb.sheetnames:
-        if not re.match(PLANNING_SHEET_PATTERN, name):
+        if not re.search(PLANNING_SHEET_PATTERN, name):
             continue
         ws = wb[name]
-        hdr = _headers(ws, PLANNING_HEADER_ROW)
+        hrow = _planning_header_row(ws, PLANNING_HEADER_ROW)
+        hdr = _headers(ws, hrow)
         cols = {
             "district": find_col(hdr, "District"),
             "date": find_col(hdr, "Outage Date", "Date"),
@@ -285,18 +338,20 @@ def read_planning(plain: bytes) -> dict:
         idx = {k: col_to_idx(v) - 1 for k, v in cols.items() if v}
         max_col = max(idx.values()) + 1
         for r_i, vals in enumerate(
-            ws.iter_rows(min_row=PLANNING_HEADER_ROW + 1, max_col=max_col, values_only=True),
-            start=PLANNING_HEADER_ROW + 1,
+            ws.iter_rows(min_row=hrow + 1, max_col=max_col, values_only=True),
+            start=hrow + 1,
         ):
             rec = {k: (vals[i] if i < len(vals) else None) for k, i in idx.items()}
             d = to_date(rec.get("date"))
             if not d:
                 continue
             rec.update(_row=r_i, _sheet=name, _date=d)
+            if not is_blank(rec.get("district")):
+                rec["district"] = norm_district(rec.get("district"))
             rows.append(rec)
     wb.close()
     if not sheets:
-        raise RuntimeError("High-level planning: no year sheet with 'Outage Date' / 'Generators' headers on row 7.")
+        raise RuntimeError("High-level planning: no year sheet (2026, 2027 …) with 'Outage Date' / 'Generators' headers.")
     return {"sheets": sheets, "rows": rows}
 
 
@@ -321,7 +376,7 @@ def match_score(a: dict, b: dict) -> float | None:
     for fn, key in ((k_district, "district"), (k_outage, "outage"), (k_circuit, "circuit")):
         x, y = fn(a.get(key)), fn(b.get(key))
         if x and y:
-            if x != y:
+            if x != y and not (key == "circuit" and same_circuit(a.get(key), b.get(key))):
                 return None
             score += 1
         elif not x and not y:
@@ -472,13 +527,34 @@ def _trk_summary(t: dict) -> str:
         clean_text(t.get("outage")), clean_text(t.get("circuit")), clean_text(t.get("pm"))) if x)
 
 
+def _t1_key(r: dict) -> tuple:
+    return (r.get("_date"), k_district(r.get("district")), k_outage(r.get("outage")),
+            circuit_code(r.get("circuit")) or k_circuit(r.get("circuit")))
+
+
 def plan_task1(selected: list[dict], trk: dict) -> dict:
-    items = []
+    """Outages already in the tracker (same date + outage, circuit written either way)
+    are never added twice, and the same outage ticked twice is only added once."""
+    items, seen = [], set()
+    uniq = []
     for p in selected:
+        k = _t1_key(p)
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(p)
+    for p in uniq:
         existing, _ = best_match(p, trk["rows"], require_same_outage=True)
         if existing is None:  # several tracker rows fit -> use the first one as the conflict
             fits = [t for t in trk["rows"] if match_score(p, t) is not None
                     and k_outage(p.get("outage")) == k_outage(t.get("outage"))]
+            existing = fits[0] if fits else None
+        if existing is None and k_outage(p.get("outage")):
+            # same day and same Outage # already in the tracker (district / circuit typed differently)
+            fits = [t for t in trk["rows"] if t.get("_date") == p.get("_date")
+                    and k_outage(t.get("outage")) == k_outage(p.get("outage"))
+                    and (not circuit_code(t.get("circuit")) or not circuit_code(p.get("circuit"))
+                         or same_circuit(t.get("circuit"), p.get("circuit")))]
             existing = fits[0] if fits else None
         items.append({
             "p": p, "existing": existing, "conflict": existing is not None,
@@ -510,7 +586,7 @@ def _insert_where(p: dict, trk: dict) -> str:
 def _task1_cells(p: dict, row: int, cols: dict) -> dict:
     d = p["_date"]
     e = {
-        cols["district"]: ("str", clean_text(p.get("district"))),
+        cols["district"]: ("str", norm_district(p.get("district"))),
         cols["date"]: ("num", excel_serial(d)),
         cols["outage"]: ("str", clean_text(p.get("outage"))),
         cols["pm"]: ("str", clean_text(p.get("pm"))),
@@ -591,7 +667,9 @@ def plan_task2(selected_groups: list[dict], plan: dict) -> dict:
                               "PM": clean_text(g["pm"]), "Reason": reason})
             continue
         t = targets.setdefault((match["_sheet"], match["_row"]), {"match": match, "lines": [], "pods": 0.0, "n_pods": 0})
-        t["lines"] += [x for x in (describe_generator(r) for r in g["gens"]) if x]
+        for x in (describe_generator(r) for r in g["gens"]):
+            if x and x not in t["lines"]:
+                t["lines"].append(x)
         t["pods"] += sum(battery_count(r) for r in g["pods"])
         t["n_pods"] += len(g["pods"])
 
@@ -604,9 +682,12 @@ def plan_task2(selected_groups: list[dict], plan: dict) -> dict:
         if t["lines"]:
             new = LINE_SEPARATOR.join(t["lines"])
             cur = clean_text(m.get("generators"))
+            have = {_line_key(x) for x in cur.split("\n") if x.strip()}
+            missing = [x for x in t["lines"] if _line_key(x) not in have]
+            same = cur == new or (bool(cur) and not missing)
             items.append({**base, "field": "Generators", "col": scols["generators"],
-                          "current": cur, "new": new, "value": ("str", new),
-                          "conflict": bool(cur) and cur != new, "same": cur == new})
+                          "current": cur, "new": new, "value": ("str", new), "missing": missing,
+                          "conflict": bool(cur) and not same, "same": same})
         if t["n_pods"]:
             if not scols.get("battery"):
                 unmatched.append({**{k.title(): v for k, v in base.items() if k in ("date", "outage", "circuit", "district", "pm")},
@@ -618,6 +699,10 @@ def plan_task2(selected_groups: list[dict], plan: dict) -> dict:
                               "current": cur, "new": new, "value": ("num", new),
                               "conflict": bool(cur) and _num_txt(cur) != new, "same": _num_txt(cur) == new})
     return {"task": 2, "items": items, "unmatched": unmatched}
+
+
+def _line_key(s: str) -> str:
+    return re.sub(r"[\s.,;]+", " ", str(s or "")).strip().lower()
 
 
 def build_edits_task2(plan_res: dict, choices: dict[int, str]) -> tuple[dict, list[dict]]:
@@ -632,7 +717,8 @@ def build_edits_task2(plan_res: dict, choices: dict[int, str]) -> tuple[dict, li
             summary.append({"Action": "kept existing", "Cell": ref, "Text": it["current"]})
             continue
         if action == "append":
-            value = ("str", it["current"] + LINE_SEPARATOR + it["new"])
+            add = LINE_SEPARATOR.join(it.get("missing") or [it["new"]])   # only the lines not there yet
+            value = ("str", it["current"] + LINE_SEPARATOR + add)
         else:
             value = it["value"]
         edits.setdefault(it["sheet"], {}).setdefault(it["row"], {})[it["col"]] = value
@@ -1113,12 +1199,16 @@ def email_candidates(trk: dict, a: dt.date, b: dt.date) -> list[dict]:
 
 
 def _pte_line(r: dict, w3w: bool = True) -> str:
-    """PTE – BALLAIRD PINWHERRY – Pinwherry, Girvan KA26 0QB – (///word.word.word)"""
+    """PTE – BALLAIRD PINWHERRY – contact point – Pinwherry, Girvan KA26 0QB – (///word.word.word) – Reason: …
+    (the order of the tracker's Customers section: PTE, Contact Point, Address, What3words, Reason)"""
     pte = clean_text(r.get("pte"))
     if pte and not re.match(r"^\s*PTE\b", pte, re.I):
         pte = f"PTE – {pte}"
     pte = re.sub(r"^\s*PTE\s*[-–:]\s*", "PTE – ", pte, flags=re.I) if pte else ""
     parts = [pte or "PTE – (no PTE in the tracker)"]
+    contact = clean_text(r.get("contact"))
+    if contact:
+        parts.append(contact)
     addr = clean_text(r.get("address"))
     if addr:
         parts.append(addr)
@@ -1126,6 +1216,9 @@ def _pte_line(r: dict, w3w: bool = True) -> str:
     if w3w and w:
         w = w.strip("() ")
         parts.append(f"({w if w.startswith('///') else '///' + w.lstrip('/')})")
+    reason = clean_text(r.get("reason"))
+    if w3w and reason:
+        parts.append(f"Reason: {reason}")
     return " – ".join(parts)
 
 
